@@ -10,6 +10,8 @@
     --terra: #ff3a2a; --ochre: #d4b56a; --line: #4a342c;
     --on: #2a100e; --gold: #c6a15a; --gold-in: #8d6d38;
     --gap: clamp(8px, 1.4vw, 14px);
+    /* Clear of the CRT bezel: 8px frame plus the 16px corner curve. */
+    --frame: 24px;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--ink); color: var(--paper); }
@@ -27,10 +29,10 @@
     column-gap: 10px;
     row-gap: 8px;
     padding:
-      max(10px, env(safe-area-inset-top))
-      max(10px, env(safe-area-inset-right))
-      max(10px, env(safe-area-inset-bottom))
-      max(10px, env(safe-area-inset-left));
+      max(var(--frame), env(safe-area-inset-top))
+      max(var(--frame), env(safe-area-inset-right))
+      max(var(--frame), env(safe-area-inset-bottom))
+      max(var(--frame), env(safe-area-inset-left));
     overflow: hidden;
     align-content: start;
   }
@@ -49,29 +51,40 @@
   #col-right:has(#card.open) { width: min(340px, 100%); }
   header.panel {
     position: static; align-self: flex-start; width: max-content; max-width: 100%; padding: 8px 12px 9px;
-    background: #120806; color: #ffe7df; border: 1px solid #ff3a2a;
-    box-shadow: 0 0 14px rgba(255, 42, 32, 0.55), inset 0 0 10px rgba(255, 50, 36, 0.18);
+    background: #120806; color: #ffe7df;
+    border: 1px solid transparent;
+    border-image: linear-gradient(90deg, #ff4a38 0%, #ffc56a 46%, #ffe7a4 54%, #3dff88 100%) 1;
+    box-shadow:
+      -8px 0 14px rgba(255, 42, 30, 0.45),
+      0 0 12px rgba(255, 190, 70, 0.28),
+      8px 0 14px rgba(61, 224, 136, 0.45),
+      inset -8px 0 10px rgba(255, 42, 30, 0.14),
+      inset 8px 0 10px rgba(61, 224, 136, 0.14);
   }
   #tools { position: static; width: min(100%, max-content); max-width: 100%; padding: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: auto; }
-  #tools .actions { display: flex; align-items: center; min-height: 30px; gap: 6px; flex-wrap: wrap; justify-content: flex-end; height: auto; }
-  #tools button { height: auto; min-height: 30px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; padding: 4px 10px; }
-  #tools .actions button, #card .close { background: #1a1411; }
+  #tools button {
+    width: 42px; height: 42px; min-height: 42px; padding: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: #1a1411;
+  }
+  #tools button svg { width: 24px; height: 24px; display: block; }
+  #tools button.on svg { filter: drop-shadow(0 0 3px #ff2a22); }
+  #card .close { background: #1a1411; }
   .seg { background: #120806; }
   .seg button { background: transparent; }
-  #toggle-legend { flex: 0 1 auto; }
-  /* Key belongs to the cut, so it stays with that tab. */
-  #ui:not(:has([data-dock="cut"].on)) #tools,
-  #ui:not(:has([data-dock="cut"].on)) #legend { display: none; }
+  /* The legend button sits under the settings mark, and only while the cut tab is on. */
+  #ui:not(:has([data-dock="cut"].on)) #toggle-legend { display: none; }
   .head { display: block; }
   h1 {
     font-weight: 700; font-size: clamp(17px, 2vw, 22px); letter-spacing: 0.18em; margin: 0; line-height: 1.2; white-space: nowrap;
     text-shadow: 0 0 6px #ff2a1e, 0 0 16px rgba(255, 30, 20, 0.85);
   }
   h1 > span { color: inherit; font-size: 1em; letter-spacing: 0.18em; display: inline; }
+  header.panel h1 { text-shadow: none; }
   h1 > .when {
     display: flex; flex-wrap: nowrap; align-items: baseline; column-gap: 0.55em; row-gap: 1px;
     width: max-content; max-width: 100%;
-    margin: 3px 0 0; color: #ffc56a; font-size: 0.62em; font-weight: 500; letter-spacing: 0.12em; line-height: 1.35;
+    margin: 0; color: #ffc56a; font-size: 0.62em; font-weight: 500; letter-spacing: 0.12em; line-height: 1.35;
     text-shadow: 0 0 8px rgba(255, 160, 40, 0.8);
   }
   #wx-read {
@@ -98,7 +111,7 @@
     box-shadow: 0 0 10px rgba(255, 40, 32, 0.75);
     text-shadow: 0 0 8px #ff2a22;
   }
-  #tools .actions button.on, #tools .actions button:active,
+  #tools button.on, #tools button:active,
   #walk-pad button:active,
   .seg button.on, .seg button:active,
   #card .close:active {
@@ -109,8 +122,14 @@
     box-shadow: 0 0 10px rgba(255, 40, 32, 0.75);
     text-shadow: 0 0 8px #ff2a22;
   }
-  /* A lit place is a green tube. It has to beat the red tab glow. */
-  #zones button.on, #zones button.on:active {
+  /* The bottom selection uses the same green tube as a lit place. */
+  #zones button.on, #zones button.on:active,
+  #controls .tabs button.on, #controls .tabs button.on:active,
+  #controls .tabs button:active,
+  #walk-pad button.on, #walk-pad button.on:active,
+  #walk-pad button:active,
+  #settings-panel .seg button.on, #settings-panel .seg button.on:active,
+  #settings-panel .seg button:active {
     color: #d8ffd0;
     border-color: #39e07a;
     background: #0e2418;
@@ -119,12 +138,32 @@
     text-shadow: 0 0 6px #3dff88;
   }
   @media (hover: hover) {
-    button:hover { border-color: var(--terra); }
+    button:hover,
+    #tools button:hover,
+    #walk-pad button:hover,
+    #zones button:hover,
+    #zones button.on:hover,
+    #controls .tabs button:hover,
+    #controls .tabs button.on:hover,
+    #walk-pad button.on:hover,
+    #card .close:hover {
+      border-color: transparent;
+      border-image: linear-gradient(90deg, #ff4a38 0%, #ffc56a 46%, #ffe7a4 54%, #3dff88 100%) 1;
+      box-shadow:
+        -4px 0 6px rgba(255, 42, 30, 0.55),
+        0 0 6px rgba(255, 190, 70, 0.32),
+        4px 0 6px rgba(61, 224, 136, 0.55);
+    }
   }
   #legend, #card {
     display: none; position: relative; width: 100%; max-height: none; overflow: visible; padding: 14px 16px; z-index: 3;
-    background: #0e0c0a; color: #f4e7cf; border: 1px solid #c6a15a; border-radius: 0;
-    box-shadow: inset 0 0 0 3px #0e0c0a, inset 0 0 0 4px #8d6d38;
+    background: #0e0c0a; color: #f4e7cf; border-radius: 0;
+    border: 1px solid transparent;
+    border-image: linear-gradient(90deg, #ff4a38 0%, #ffc56a 46%, #ffe7a4 54%, #3dff88 100%) 1;
+    box-shadow:
+      -8px 0 14px rgba(255, 42, 30, 0.4),
+      0 0 12px rgba(255, 190, 70, 0.24),
+      8px 0 14px rgba(61, 224, 136, 0.4);
   }
   #card .close { position: absolute; top: 8px; right: 8px; min-width: 28px; min-height: 28px; padding: 0; }
   #card-meta:empty, #card-kicker:empty { display: none; }
@@ -136,9 +175,15 @@
     width: min(920px, 100%); min-width: 0; max-height: min(46dvh, 320px);
     overflow: auto; overscroll-behavior: contain;
     padding: 8px; display: flex; flex-direction: column; gap: 8px;
-    background: rgba(12, 8, 7, 0.92); border-color: #5a3028;
+    background: rgba(12, 8, 7, 0.92);
+    border: 1px solid transparent;
+    border-image: linear-gradient(90deg, #ff4a38 0%, #ffc56a 46%, #ffe7a4 54%, #3dff88 100%) 1;
+    box-shadow:
+      -8px 0 14px rgba(255, 42, 30, 0.4),
+      0 0 12px rgba(255, 190, 70, 0.24),
+      8px 0 14px rgba(61, 224, 136, 0.4);
   }
-  .tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; min-width: 0; }
+  .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; min-width: 0; }
   .tabs button { width: 100%; min-width: 0; padding-inline: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #walk { flex: 1 1 0; min-width: 0; }
   #walk-pad {
@@ -147,29 +192,60 @@
     grid-area: walk; justify-self: start; align-self: end;
     z-index: 4;
     pointer-events: auto;
-    width: min(150px, 100%);
-    grid-template-columns: repeat(3, minmax(0, 46px));
-    grid-template-rows: 46px 46px auto;
-    gap: 6px;
+    width: max-content;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
     touch-action: none;
     user-select: none;
   }
-  #walk-pad button { width: 46px; height: 46px; padding: 0; font-size: 16px; background: #1a1411; color: #e7d7c8; border: 1px solid #4a342c; }
-  #walk-pad [data-move="forward"] { grid-column: 2; grid-row: 1; }
-  #walk-pad [data-move="left"] { grid-column: 1; grid-row: 2; }
-  #walk-pad [data-move="back"] { grid-column: 2; grid-row: 2; }
-  #walk-pad [data-move="right"] { grid-column: 3; grid-row: 2; }
-  #walk-pad p {
-    grid-column: 1 / -1;
-    margin: 2px 0 0;
-    text-align: center;
-    font-family: ui-sans-serif, "PingFang HK", sans-serif;
-    font-size: 11px;
-    line-height: 1.35;
-    color: rgba(231, 215, 200, 0.78);
+  #walk-stick {
+    width: 96px; height: 96px; border-radius: 50%;
+    opacity: 0.5;
+    position: relative; touch-action: none;
+    background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.05), transparent 64%), #120806;
+    border: 1px solid #4a342c;
+    box-shadow: inset 0 0 0 8px rgba(0, 0, 0, 0.28);
   }
-  @media (pointer: coarse), (max-width: 720px), (max-height: 540px) {
-    #walk-pad.on { display: grid; }
+  #walk-stick i {
+    position: absolute; left: 50%; top: 50%;
+    width: 40px; height: 40px; border-radius: 50%;
+    transform: translate(-50%, -50%);
+    background: #3a2c26; border: 1px solid #a07868;
+    box-shadow: 0 2px 0 #0c0908, inset 0 1px 0 rgba(255, 220, 190, 0.28);
+    pointer-events: none;
+  }
+  #walk-stick.on i {
+    background: #0e2418; border-color: #39e07a;
+    box-shadow: 0 0 8px rgba(40, 220, 110, 0.65);
+  }
+  @media (pointer: coarse), (aspect-ratio <= 1) {
+    #walk-pad.on { display: flex; }
+  }
+  /* Walk starts with the stick and a corner View control. View leaves walk. */
+  #walk-view {
+    display: none;
+    position: absolute;
+    right: max(var(--frame), env(safe-area-inset-right));
+    bottom: max(var(--frame), env(safe-area-inset-bottom));
+    z-index: 5;
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    min-height: 42px;
+    padding: 8px;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+  }
+  #walk-view svg { width: 30px; height: 20px; display: block; }
+  #ui.walk-bare #walk-view { display: inline-flex; }
+  #ui.walk-bare #controls { display: none; }
+  #ui.walk-bare {
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "left . right"
+      "walk . .";
   }
   .dock { display: none; gap: 10px 14px; align-items: end; flex-wrap: wrap; }
   .dock.on { display: flex; }
@@ -182,8 +258,8 @@
   .row { flex: 1 1 150px; min-width: 0; }
   .btns { display: flex; flex-wrap: wrap; gap: 6px; }
   .btns button { margin: 0; white-space: normal; text-align: center; line-height: 1.25; max-width: 100%; }
-  /* Phone and tablet: the View choices stay on one line and slide sideways. */
-  @media (max-width: 720px), (pointer: coarse) {
+  /* Portrait, and a phone on its side: the View choices stay on one line and slide sideways. */
+  @media (aspect-ratio <= 1), (pointer: coarse) {
     #dock-places.on { min-width: 0; width: 100%; align-self: stretch; }
     #dock-places .row { min-width: 0; width: 100%; }
     #zones {
@@ -204,11 +280,39 @@
       max-width: none;
     }
   }
-  #dock-settings.on { flex-direction: column; align-items: stretch; gap: 12px; }
-  #dock-settings .row { flex: none; }
-  #dock-settings .seg { flex-wrap: wrap; max-width: 100%; }
-  #dock-settings .seg button { flex: 1 1 auto; white-space: nowrap; }
-  #dock-settings .note { margin: 0; max-width: 36em; color: rgba(228, 211, 184, 0.62); }
+  #settings-layer[hidden] { display: none !important; }
+  body:has(#settings-layer:not([hidden])) #ui { visibility: hidden; }
+  #settings-layer {
+    position: fixed; inset: 0; z-index: 30;
+    display: grid; place-items: center;
+    pointer-events: none;
+  }
+  #settings-scrim {
+    position: absolute; inset: 0;
+    background: rgba(8, 6, 5, 0.55);
+    pointer-events: auto;
+  }
+  #settings-panel {
+    position: relative; z-index: 1;
+    width: min(420px, calc(100vw - 32px));
+    max-height: min(78dvh, 560px);
+    overflow: auto; overscroll-behavior: contain;
+    padding: 16px 16px 14px;
+    display: flex; flex-direction: column; align-items: stretch; gap: 12px;
+    pointer-events: auto;
+    background: #0e0c0a; color: #f4e7cf;
+    border: 1px solid transparent; border-radius: 0;
+    border-image: linear-gradient(90deg, #ff4a38 0%, #ffc56a 46%, #ffe7a4 54%, #3dff88 100%) 1;
+    box-shadow:
+      -8px 0 14px rgba(255, 42, 30, 0.4),
+      0 0 12px rgba(255, 190, 70, 0.24),
+      8px 0 14px rgba(61, 224, 136, 0.4);
+  }
+  #settings-panel h2 { margin: 0 0 2px; }
+  #settings-panel .row { flex: none; }
+  #settings-panel .seg { flex-wrap: wrap; max-width: 100%; }
+  #settings-panel .seg button { flex: 1 1 auto; white-space: nowrap; }
+  #settings-panel .note { margin: 0; max-width: 36em; color: rgba(228, 211, 184, 0.62); }
   .switch {
     position: relative;
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -220,15 +324,19 @@
   }
   .switch i {
     width: 36px; height: 20px; border-radius: 999px; flex: none;
-    border: 1px solid var(--line); background: rgba(230, 225, 214, 0.14);
+    border: 1px solid #ff3a2a; background: #2a100e;
+    box-shadow: 0 0 8px rgba(255, 40, 32, 0.55);
     position: relative;
   }
   .switch i::after {
     content: ""; position: absolute; top: 2px; left: 2px;
-    width: 14px; height: 14px; border-radius: 50%; background: var(--paper);
+    width: 14px; height: 14px; border-radius: 50%; background: #fff;
     transition: transform 0.15s ease;
   }
-  .switch input:checked + i { background: #5a1814; border-color: #ff3a2a; box-shadow: 0 0 8px rgba(255, 40, 32, 0.55); }
+  .switch input:checked + i {
+    background: #0e2418; border-color: #39e07a;
+    box-shadow: 0 0 8px rgba(40, 220, 110, 0.65);
+  }
   .switch input:checked + i::after { transform: translateX(16px); background: #fff; }
   .switch input:focus-visible + i { outline: 1px solid var(--terra); outline-offset: 2px; }
   #readout, #hint { font-family: "PingFang HK", "Heiti TC", sans-serif; font-size: 11px; color: #ffc56a; }
@@ -237,23 +345,22 @@
   .stat span { min-width: 0; }
   .stat b { font-weight: 500; text-align: right; flex: none; }
   #card { padding-right: 36px; }
-  /* Phone portrait. The dock stays on the bottom; open sheets shrink and scroll
-     rather than pushing it off the screen. Short landscape keeps the side columns. */
-  @media (max-width: 640px) and (min-height: 560px) {
+  /* Portrait: height at least the width. The dock stays on the bottom.
+     Landscape keeps the side columns. */
+  @media (aspect-ratio <= 1) {
     #col-left, #col-right { display: contents; }
     #ui { display: flex; flex-direction: column; align-items: stretch; }
-    header.panel { order: 1; align-self: flex-start; width: max-content; max-width: 100%; }
+    header.panel { order: 1; align-self: flex-start; width: max-content; max-width: calc(100% - 64px); }
     header.panel h1 { font-size: 18px; }
-    /* Same top edge as the title, on the right. Out of the column so it does not take a row. */
+    /* Same top edge as the clock, on the right. Out of the column so it does not take a row. */
     #tools {
       position: absolute;
-      top: max(10px, env(safe-area-inset-top));
-      right: max(10px, env(safe-area-inset-right));
+      top: max(var(--frame), env(safe-area-inset-top));
+      right: max(var(--frame), env(safe-area-inset-right));
       z-index: 6;
       width: auto;
       max-width: none;
     }
-    #ui:has([data-dock="cut"].on) header.panel { max-width: calc(100% - 72px); }
     /* Title, tools, pad, and dock keep their height. Open sheets are the
        pieces that shrink, so the sliders stay on screen. */
     header.panel, #tools, #walk-pad, #controls { flex: 0 0 auto; }
@@ -265,7 +372,6 @@
     #walk-pad { order: 4; align-self: flex-start; }
     #walk-pad.on { margin-top: auto; }
     #controls { order: 5; width: 100%; max-width: none; max-height: min(42dvh, 240px); margin-top: auto; }
-    #ui:has([data-dock="settings"].on) #controls { max-height: min(68dvh, 440px); }
     #ui:has(#walk-pad.on) #controls { margin-top: 0; }
     #dock-cut.on { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; align-items: end; }
     #dock-cut .row:last-child { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -273,7 +379,7 @@
     .tabs button { font-size: 11px; }
     #hint { display: none; }
   }
-  @media (max-height: 540px) {
+  @media (aspect-ratio > 1) and (max-height: 540px) {
     #col-left, #col-right { display: flex; }
     #ui {
       grid-template-columns: fit-content(42vw) minmax(64px, 1fr) minmax(0, min(42vw, 340px));
@@ -289,8 +395,8 @@
     #col-left { width: max-content; max-width: 100%; justify-self: start; }
     #col-right { justify-self: end; align-items: flex-end; width: max-content; max-width: min(240px, 100%); }
     #col-right:has(#card.open) {
-      width: min(340px, calc(100vw - 20px));
-      max-width: min(340px, calc(100vw - 20px));
+      width: min(340px, calc(100vw - 2 * var(--frame)));
+      max-width: min(340px, calc(100vw - 2 * var(--frame)));
       justify-self: end;
       align-self: start;
       overflow: visible;
@@ -322,11 +428,10 @@
     #dock-cut.on { display: flex; }
     #hint { display: none; }
     h1 { font-size: 18px; }
-    #walk-pad { width: min(132px, 100%); grid-template-columns: repeat(3, minmax(0, 40px)); grid-template-rows: 40px 40px auto; justify-self: start; }
-    #walk-pad button { width: 40px; height: 40px; }
-    #walk-pad p { display: none; }
+    #walk-stick { width: 72px; height: 72px; }
+    #walk-stick i { width: 30px; height: 30px; }
   }
-  @media (max-width: 640px) and (max-height: 540px) {
+  @media (aspect-ratio > 1) and (max-height: 540px) and (max-width: 900px) {
     #ui { grid-template-columns: minmax(0, min(30vw, 190px)) minmax(64px, 1fr) minmax(0, min(30vw, 190px)); }
     #col-left, #col-right, #col-right:has(#card.open), #col-left:has(#legend.open) { width: 100%; max-width: 100%; }
     header.panel { padding: 6px 8px; width: max-content; max-width: 100%; }
@@ -337,13 +442,61 @@
     button, #tools button, .tabs button, .switch { min-height: 42px; }
     #card .close { min-width: 42px; min-height: 42px; }
     input[type="range"] { height: 28px; }
-    #walk-pad button { width: 48px; height: 48px; }
-    #walk-pad { width: min(168px, 100%); grid-template-columns: repeat(3, minmax(0, 48px)); grid-template-rows: 48px 48px auto; }
+    #walk-stick { width: 112px; height: 112px; }
+    #walk-stick i { width: 46px; height: 46px; }
   }
   @media (pointer: coarse) and (max-height: 540px) {
-    #walk-pad button { width: 40px; height: 40px; }
-    #walk-pad { width: min(132px, 100%); grid-template-columns: repeat(3, minmax(0, 40px)); grid-template-rows: 40px 40px auto; }
+    #walk-stick { width: 84px; height: 84px; }
+    #walk-stick i { width: 36px; height: 36px; }
   }
+  /* The legend is a centered sheet. Type stays at full size; the sheet scrolls. */
+  #legend-layer[hidden] { display: none !important; }
+  body:has(#legend-layer:not([hidden])) #ui { visibility: hidden; }
+  #legend-layer {
+    position: fixed; inset: 0; z-index: 30;
+    display: grid; place-items: center;
+    pointer-events: none;
+    padding:
+      max(var(--frame), env(safe-area-inset-top))
+      max(var(--frame), env(safe-area-inset-right))
+      max(var(--frame), env(safe-area-inset-bottom))
+      max(var(--frame), env(safe-area-inset-left));
+  }
+  #legend-scrim {
+    position: absolute; inset: 0;
+    background: rgba(8, 6, 5, 0.55);
+    pointer-events: auto;
+  }
+  #legend-layer #legend {
+    position: relative; z-index: 1;
+    display: block;
+    width: min(420px, 100%);
+    max-width: min(420px, 100%);
+    height: auto;
+    max-height: min(78dvh, 640px, 100%);
+    overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    flex: none;
+    order: 0;
+    align-self: center;
+    margin: 0;
+    padding: 16px 16px 18px;
+    pointer-events: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(212, 181, 106, 0.55) transparent;
+    background: #0e0c0a; color: #f4e7cf;
+    border: 1px solid transparent; border-radius: 0;
+    border-image: linear-gradient(90deg, #ff4a38 0%, #ffc56a 46%, #ffe7a4 54%, #3dff88 100%) 1;
+    box-shadow:
+      -8px 0 14px rgba(255, 42, 30, 0.4),
+      0 0 12px rgba(255, 190, 70, 0.24),
+      8px 0 14px rgba(61, 224, 136, 0.4);
+  }
+  #legend-layer #legend h2 { margin: 2px 0 10px; font-size: 16px; }
+  #legend-layer #legend .swatch,
+  #legend-layer #legend p { font-size: 12px; line-height: 1.55; }
+  #legend-layer #legend p { margin: 12px 0 0; }
   #boot {
     position: fixed; inset: 0; z-index: 40;
     display: flex; align-items: center; justify-content: center;
@@ -352,7 +505,7 @@
     transition: opacity 0.55s ease;
   }
   #boot.leave { opacity: 0; pointer-events: none; }
-  #boot .boot-card { width: min(22rem, calc(100% - 48px)); }
+  #boot .boot-card { width: max-content; max-width: calc(100% - 48px); }
   #boot h1 {
     margin: 0;
     font-size: clamp(28px, 6vw, 40px);
@@ -360,43 +513,41 @@
     letter-spacing: 0.2em;
     line-height: 1.15;
     white-space: nowrap;
-    color: #ffe7df;
-    text-shadow: 0 0 6px #ff2a1e, 0 0 18px rgba(255, 30, 20, 0.85);
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    text-shadow: none;
+    background-image: linear-gradient(90deg, #ff4a38 0%, #ffc56a 46%, #ffe7a4 54%, #3dff88 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
   }
-  #boot .boot-en {
-    margin: 6px 0 0;
-    font-family: "PingFang HK", "Heiti TC", sans-serif;
-    font-size: 11px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: #ffc56a;
-    text-shadow: 0 0 8px rgba(255, 160, 40, 0.75);
+  #boot.lang-en h1 {
+    font-size: clamp(17px, 5.6vw, 36px);
+    letter-spacing: 0.08em;
+    white-space: nowrap;
   }
   #boot .boot-line {
-    margin: 28px 0 12px;
+    margin: 22px 0 16px;
     font-family: ui-sans-serif, "PingFang HK", sans-serif;
     font-size: 13px;
     line-height: 1.4;
     color: rgba(230, 225, 214, 0.78);
   }
-  #boot .boot-sub {
-    margin: -6px 0 14px;
-    font-family: ui-sans-serif, "Helvetica Neue", sans-serif;
-    font-size: 12px;
-    color: rgba(230, 225, 214, 0.45);
-  }
   #boot .boot-track {
     height: 2px; border-radius: 0; overflow: hidden;
-    background: rgba(255, 58, 42, 0.22);
+    background-image: linear-gradient(90deg, #ff4a38 0%, #ffc56a 46%, #ffe7a4 54%, #3dff88 100%);
+    box-shadow:
+      -6px 0 10px rgba(255, 42, 30, 0.55),
+      0 0 8px rgba(255, 190, 70, 0.35),
+      6px 0 10px rgba(61, 224, 136, 0.55);
   }
   #boot .boot-track i {
     display: block; height: 100%; width: 38%;
-    background: #ff3a2a;
-    box-shadow: 0 0 8px rgba(255, 42, 32, 0.85);
+    background: rgba(255, 255, 255, 0.55);
+    box-shadow: 0 0 8px rgba(255, 250, 240, 0.9);
     animation: boot-slide 1.15s ease-in-out infinite;
   }
-  #boot.done .boot-track i { animation: none; width: 100%; transition: width 0.25s ease; }
-  #boot.fail .boot-track i { animation: none; width: 100%; background: rgba(230, 225, 214, 0.28); }
+  #boot.done .boot-track i { animation: none; width: 100%; transition: width 0.25s ease; background: transparent; box-shadow: none; }
+  #boot.fail .boot-track i { animation: none; width: 100%; background: rgba(230, 225, 214, 0.45); box-shadow: none; }
   @keyframes boot-slide {
     0% { transform: translateX(-130%); }
     100% { transform: translateX(340%); }
@@ -412,7 +563,7 @@
     background:
       repeating-linear-gradient(
         to bottom,
-        rgba(0, 0, 0, 0.36) 0 1px,
+        rgba(0, 0, 0, 0.15) 0 1px,
         rgba(0, 0, 0, 0) 1px 2px
       ),
       repeating-linear-gradient(
@@ -436,54 +587,113 @@
 <body>
 <div id="boot" role="status" aria-live="polite" aria-busy="true">
   <div class="boot-card">
-    <h1>九龍城寨</h1>
-    <p class="boot-en">Kowloon Walled City</p>
+    <h1 id="boot-title">九龍城寨</h1>
     <p class="boot-line" id="boot-line">正在載入畫面</p>
-    <p class="boot-sub" id="boot-sub">Loading the picture</p>
     <div class="boot-track" aria-hidden="true"><i></i></div>
   </div>
 </div>
 <script>
-function bootStage(zh, en) {
+var BOOT = {
+  zh: {
+    title: "九龍城寨",
+    load: "正在載入畫面",
+    raise: "正在建立模型",
+    fail: "畫面載入不到"
+  },
+  en: {
+    title: "Kowloon Walled City",
+    load: "Loading the picture",
+    raise: "Raising the model",
+    fail: "The picture did not load. Try again."
+  },
+  ja: {
+    title: "九龍城",
+    load: "画面を読み込んでいます",
+    raise: "模型を組み立てています",
+    fail: "画面を読み込めませんでした。もう一度試してください。"
+  }
+};
+function preferredLang() {
+  var tag = String((navigator.languages && navigator.languages[0]) || navigator.language || "")
+    .toLowerCase()
+    .replace(/_/g, "-");
+  if (tag === "en" || tag.indexOf("en-") === 0) return "en";
+  if (tag === "ja" || tag.indexOf("ja-") === 0) return "ja";
+  return "zh";
+}
+var bootLang = preferredLang();
+function bootText(key) {
+  var pack = BOOT[bootLang] || BOOT.zh;
+  return pack[key] || BOOT.zh[key] || "";
+}
+function applyBoot() {
+  var boot = document.getElementById("boot");
+  var title = document.getElementById("boot-title");
   var line = document.getElementById("boot-line");
-  var sub = document.getElementById("boot-sub");
-  if (line && zh) line.textContent = zh;
-  if (sub && en) sub.textContent = en;
+  if (boot) boot.classList.toggle("lang-en", bootLang === "en");
+  if (title) title.textContent = bootText("title");
+  if (line) line.textContent = bootText("load");
+  document.documentElement.lang = bootLang === "zh" ? "zh-Hant" : bootLang;
+}
+function bootStage(key) {
+  var line = document.getElementById("boot-line");
+  if (line) line.textContent = bootText(key);
 }
 function bootFail() {
-  bootStage("畫面載入不到", "The picture did not load. Try again.");
+  bootStage("fail");
   var boot = document.getElementById("boot");
   if (boot) {
     boot.classList.add("fail");
     boot.setAttribute("aria-busy", "false");
   }
 }
+applyBoot();
 </script>
 <canvas id="c"></canvas>
 <div id="ui">
   <div id="col-left">
   <header class="panel">
-    <h1><span data-i18n="title"></span> <span class="when"><span id="wx-read"><span id="wx-tod" class="wx-fade"><span id="wx-tod-a"></span><span id="wx-tod-b"></span></span><span id="wx-hour"></span><span id="wx-sky"><span class="wx-fade"><span id="wx-sky-a"></span><span id="wx-sky-b"></span></span></span></span></span></h1>
+    <h1><span class="when"><span id="wx-read"><span id="wx-tod" class="wx-fade"><span id="wx-tod-a"></span><span id="wx-tod-b"></span></span><span id="wx-hour"></span><span id="wx-sky"><span class="wx-fade"><span id="wx-sky-a"></span><span id="wx-sky-b"></span></span></span></span></span></h1>
   </header>
-  <section class="panel" id="legend">
-    <div class="kicker" data-i18n="legendKicker"></div>
-    <h2 data-i18n="legendTitle"></h2>
-    <div class="swatch"><i style="background:#e6e1d6"></i> <span data-i18n="useHome"></span></div>
-    <div class="swatch"><i style="background:#8a7d52"></i> <span data-i18n="useFactory"></span></div>
-    <div class="swatch"><i style="background:#b07058"></i> <span data-i18n="useFood"></span></div>
-    <div class="swatch"><i style="background:#7d9aa3"></i> <span data-i18n="useClinic"></span></div>
-    <div class="swatch"><i style="background:#6e8f72"></i> <span data-i18n="useSchool"></span></div>
-    <div class="swatch"><i style="background:#c4a46a"></i> <span data-i18n="useTemple"></span></div>
-    <div class="swatch"><i style="background:#a66a54"></i> <span data-i18n="useShop"></span></div>
-    <div class="swatch"><i style="background:#3d4a55"></i> <span data-i18n="useService"></span></div>
-    <p data-i18n="legendNote"></p>
-  </section>
   </div>
   <div id="col-right">
   <div id="tools">
-    <div class="actions">
-      <button type="button" id="toggle-legend" data-i18n="keyBtn"></button>
-    </div>
+    <button type="button" id="toggle-settings" aria-expanded="false" aria-label="設定">
+      <svg viewBox="0 0 512 512" aria-hidden="true">
+        <defs>
+          <mask id="kwc-gear" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+            <rect width="512" height="512" fill="#000"/>
+            <path fill="#fff" d="M456.0,256.0 L457.7,245.4 L464.8,234.0 L482.2,220.2 L496.6,204.9 L503.3,189.7 L502.3,176.0 L496.9,163.5 L489.9,151.9 L484.1,139.8 L476.8,128.5 L470.7,116.6 L463.9,104.9 L457.3,93.0 L448.5,82.7 L437.0,75.0 L421.9,71.7 L402.0,75.7 L381.2,83.7 L367.1,84.9 L356.5,81.9 L348.2,75.1 L341.8,63.2 L338.4,41.3 L332.3,21.1 L322.3,8.7 L310.1,1.7 L296.7,0.5 L283.0,0.5 L269.5,0.5 L256.0,0.5 L242.5,0.5 L229.0,0.5 L215.3,0.5 L201.9,1.7 L189.5,7.8 L179.4,20.1 L172.9,39.4 L169.8,62.3 L163.8,75.1 L155.5,81.9 L144.9,84.9 L130.8,83.7 L111.3,77.3 L90.1,71.7 L75.0,75.0 L62.8,82.0 L54.7,93.0 L48.1,104.9 L41.3,116.6 L34.3,128.0 L27.9,139.8 L21.2,151.5 L14.2,163.2 L8.7,175.7 L7.8,189.5 L13.4,204.4 L28.8,220.0 L46.2,233.9 L53.3,245.4 L55.0,256.0 L52.3,266.7 L45.2,278.2 L27.8,292.1 L13.4,307.6 L7.8,322.5 L8.7,336.3 L14.2,348.8 L21.2,360.5 L27.9,372.2 L35.2,383.5 L41.3,395.4 L48.1,407.1 L54.7,419.0 L63.5,429.3 L75.0,437.0 L91.4,438.8 L111.9,434.0 L132.6,425.9 L145.4,426.3 L156.0,429.2 L163.8,436.9 L169.8,449.7 L173.2,471.7 L179.7,490.9 L189.7,503.3 L202.2,509.3 L215.5,511.5 L229.1,511.5 L242.6,511.5 L256.0,511.5 L269.4,511.5 L282.9,511.5 L296.5,511.5 L309.8,509.3 L322.3,503.3 L332.3,490.9 L338.4,470.7 L341.4,447.8 L347.7,436.0 L356.0,429.2 L366.6,426.3 L380.0,426.7 L400.1,434.0 L420.6,438.8 L436.3,436.3 L448.5,429.3 L456.5,418.4 L463.1,406.5 L469.9,394.9 L476.0,383.0 L483.2,371.8 L489.9,360.1 L496.9,348.5 L502.3,336.0 L503.3,322.3 L497.6,307.4 L483.2,292.0 L465.8,278.1 L458.7,266.6 Z"/>
+            <path fill="#000" d="M417.8,264.5 L420.1,273.2 L421.9,282.3 L428.2,292.6 L436.6,304.4 L456.7,321.2 L459.5,334.1 L454.2,344.3 L449.3,354.5 L443.1,364.0 L437.2,373.6 L431.6,383.5 L426.2,393.8 L411.3,395.8 L387.5,387.5 L373.1,386.1 L361.7,386.6 L352.4,388.7 L344.2,391.9 L337.0,396.3 L329.5,400.3 L322.7,405.8 L316.2,412.8 L310.1,422.4 L304.1,435.7 L299.7,461.4 L290.3,472.3 L278.7,471.8 L267.3,471.7 L256.0,472.0 L244.7,471.7 L233.3,471.8 L221.7,472.3 L211.9,463.4 L207.3,437.6 L201.3,424.3 L195.4,413.8 L189.3,405.8 L182.5,400.3 L175.0,396.3 L167.8,391.9 L159.6,388.7 L150.3,386.6 L138.9,386.1 L124.5,387.5 L100.7,395.8 L85.8,393.8 L80.4,383.5 L74.0,374.2 L68.1,364.5 L62.7,354.5 L56.8,344.7 L50.6,334.8 L53.4,321.8 L73.4,304.9 L82.9,292.8 L89.1,282.4 L90.9,273.4 L93.2,264.5 L94.0,256.0 L93.2,247.5 L91.9,238.8 L89.1,229.6 L82.9,219.2 L75.4,207.6 L56.3,191.1 L50.6,177.2 L56.8,167.3 L61.8,157.0 L68.1,147.5 L73.2,137.3 L78.8,127.3 L85.0,117.5 L98.5,114.1 L123.1,123.1 L138.2,125.2 L149.0,123.9 L158.4,121.7 L167.2,119.3 L174.5,114.8 L182.0,110.8 L188.9,105.3 L195.4,98.2 L201.3,87.7 L207.3,74.4 L211.7,47.7 L221.6,38.7 L233.2,39.2 L244.6,39.3 L256.0,39.0 L267.4,39.3 L278.8,39.2 L290.4,38.7 L299.7,50.6 L304.4,75.4 L310.4,88.6 L316.6,98.2 L323.1,105.3 L330.0,110.8 L337.0,115.7 L344.8,119.3 L353.6,121.7 L362.4,124.7 L373.8,125.2 L389.6,122.4 L414.3,113.5 L426.2,118.2 L431.6,128.5 L438.0,137.8 L443.1,148.0 L449.3,157.5 L455.2,167.3 L461.4,177.2 L453.8,191.7 L435.7,207.9 L427.2,219.6 L421.9,229.7 L419.1,238.9 L417.8,247.5 L417.0,256.0 Z"/>
+            <circle cx="256" cy="256" r="98.2" fill="#fff"/>
+            <circle cx="256" cy="256" r="59.1" fill="#000"/>
+          </mask>
+        </defs>
+        <rect width="512" height="512" fill="currentColor" mask="url(#kwc-gear)"/>
+      </svg>
+    </button>
+    <button type="button" id="toggle-legend" aria-expanded="false" aria-label="圖例">
+      <svg viewBox="64 33 670 734" aria-hidden="true">
+        <defs>
+          <mask id="kwc-legend" maskUnits="userSpaceOnUse" x="64" y="33" width="670" height="734">
+            <rect x="64" y="33" width="670" height="734" fill="#000"/>
+            <rect x="66" y="33" width="134" height="134" fill="#fff"/>
+            <rect x="100" y="67" width="66" height="66" fill="#000"/>
+            <rect x="300" y="100" width="434" height="34" fill="#fff"/>
+            <circle cx="132.5" cy="299.5" r="66.5" fill="#fff"/>
+            <circle cx="132.5" cy="299.5" r="33" fill="#000"/>
+            <rect x="300" y="300" width="434" height="34" fill="#fff"/>
+            <rect x="66" y="433" width="134" height="134" fill="#fff"/>
+            <rect x="100" y="467" width="66" height="66" fill="#000"/>
+            <rect x="300" y="500" width="434" height="34" fill="#fff"/>
+            <polygon points="133,640 64,766 201,766" fill="#fff"/>
+            <polygon points="133,711 121,733 145,733" fill="#000"/>
+            <rect x="300" y="700" width="434" height="34" fill="#fff"/>
+          </mask>
+        </defs>
+        <rect x="64" y="33" width="670" height="734" fill="currentColor" mask="url(#kwc-legend)"/>
+      </svg>
+    </button>
   </div>
   <aside class="panel" id="card">
     <button type="button" class="close" id="close-card" aria-label="Close">×</button>
@@ -505,7 +715,6 @@ function bootFail() {
       <button type="button" id="walk" data-i18n="walkBtn"></button>
       <button type="button" data-dock="places" class="on" data-i18n="tabPlaces"></button>
       <button type="button" data-dock="cut" data-i18n="tabCut"></button>
-      <button type="button" data-dock="settings" data-i18n="tabSettings"></button>
     </div>
     <div class="dock" id="dock-cut">
       <div class="row">
@@ -531,49 +740,71 @@ function bootFail() {
         </div>
       </div>
     </div>
-    <div class="dock" id="dock-settings">
-      <label class="switch">
-        <span data-i18n="labelsBtn"></span>
-        <input id="labels" type="checkbox" checked />
-        <i aria-hidden="true"></i>
-      </label>
-      <div class="row">
-        <label data-i18n="langLabel"></label>
-        <div class="seg">
-          <button type="button" id="lang-zh" class="on">繁</button>
-          <button type="button" id="lang-en">EN</button>
-          <button type="button" id="lang-ja">日</button>
-        </div>
-      </div>
-      <div class="row">
-        <label data-i18n="todLabel"></label>
-        <div class="seg" id="tod-seg">
-          <button type="button" data-tod="auto" class="on" data-i18n="todAuto"></button>
-          <button type="button" data-tod="day" data-i18n="todDay"></button>
-          <button type="button" data-tod="sunset" data-i18n="todSunset"></button>
-          <button type="button" data-tod="night" data-i18n="todNight"></button>
-        </div>
-      </div>
-      <div class="row">
-        <label data-i18n="tabAir"></label>
-        <div class="seg" id="wx-seg">
-          <button type="button" data-wx="auto" class="on" data-i18n="wxAuto"></button>
-          <button type="button" data-wx="clear" data-i18n="wxClear"></button>
-          <button type="button" data-wx="haze" data-i18n="wxHaze"></button>
-          <button type="button" data-wx="rain" data-i18n="wxRain"></button>
-        </div>
-      </div>
-      <p class="note" id="air-note" data-i18n="airNote"></p>
-    </div>
     <div id="hint" data-i18n="hint"></div>
   </div>
   <div id="walk-pad" aria-hidden="true">
-    <button type="button" data-move="forward" aria-label="Forward">↑</button>
-    <button type="button" data-move="left" aria-label="Left">←</button>
-    <button type="button" data-move="back" aria-label="Back">↓</button>
-    <button type="button" data-move="right" aria-label="Right">→</button>
-    <p data-i18n="walkNote"></p>
+    <div id="walk-stick" role="application" aria-label="Move"><i aria-hidden="true"></i></div>
   </div>
+  <button type="button" id="walk-view" aria-label="視角">
+    <svg viewBox="0 0 512 332" aria-hidden="true">
+      <path fill="currentColor" fill-rule="evenodd" d="M2 166C70 10 160 3 256 3c96 0 186 7 254 163-68 156-158 163-254 163C160 329 70 322 2 166zm34 0c52-108 126-114 220-114s168 6 220 114c-52 108-126 114-220 114S88 274 36 166z"/>
+      <path fill="currentColor" fill-rule="evenodd" d="M356 166a100 100 0 1 1-200 0 100 100 0 1 1 200 0zm-33 0a67 67 0 1 0-134 0 67 67 0 1 0 134 0z"/>
+    </svg>
+  </button>
+</div>
+<div id="settings-layer" hidden>
+  <div id="settings-scrim"></div>
+  <div class="panel" id="settings-panel" role="dialog" aria-modal="true" aria-label="設定">
+    <h2 data-i18n="tabSettings"></h2>
+    <label class="switch">
+      <span data-i18n="labelsBtn"></span>
+      <input id="labels" type="checkbox" checked />
+      <i aria-hidden="true"></i>
+    </label>
+    <div class="row">
+      <label data-i18n="langLabel"></label>
+      <div class="seg">
+        <button type="button" id="lang-zh" class="on">繁</button>
+        <button type="button" id="lang-en">EN</button>
+        <button type="button" id="lang-ja">日</button>
+      </div>
+    </div>
+    <div class="row">
+      <label data-i18n="todLabel"></label>
+      <div class="seg" id="tod-seg">
+        <button type="button" data-tod="auto" class="on" data-i18n="todAuto"></button>
+        <button type="button" data-tod="day" data-i18n="todDay"></button>
+        <button type="button" data-tod="sunset" data-i18n="todSunset"></button>
+        <button type="button" data-tod="night" data-i18n="todNight"></button>
+      </div>
+    </div>
+    <div class="row">
+      <label data-i18n="tabAir"></label>
+      <div class="seg" id="wx-seg">
+        <button type="button" data-wx="auto" class="on" data-i18n="wxAuto"></button>
+        <button type="button" data-wx="clear" data-i18n="wxClear"></button>
+        <button type="button" data-wx="haze" data-i18n="wxHaze"></button>
+        <button type="button" data-wx="rain" data-i18n="wxRain"></button>
+      </div>
+    </div>
+    <p class="note" id="air-note" data-i18n="airNote"></p>
+  </div>
+</div>
+<div id="legend-layer" hidden>
+  <div id="legend-scrim"></div>
+  <section class="panel" id="legend" role="dialog" aria-modal="true" aria-label="圖例">
+    <div class="kicker" data-i18n="legendKicker"></div>
+    <h2 data-i18n="legendTitle"></h2>
+    <div class="swatch"><i style="background:#e6e1d6"></i> <span data-i18n="useHome"></span></div>
+    <div class="swatch"><i style="background:#8a7d52"></i> <span data-i18n="useFactory"></span></div>
+    <div class="swatch"><i style="background:#b07058"></i> <span data-i18n="useFood"></span></div>
+    <div class="swatch"><i style="background:#7d9aa3"></i> <span data-i18n="useClinic"></span></div>
+    <div class="swatch"><i style="background:#6e8f72"></i> <span data-i18n="useSchool"></span></div>
+    <div class="swatch"><i style="background:#c4a46a"></i> <span data-i18n="useTemple"></span></div>
+    <div class="swatch"><i style="background:#a66a54"></i> <span data-i18n="useShop"></span></div>
+    <div class="swatch"><i style="background:#3d4a55"></i> <span data-i18n="useService"></span></div>
+    <p data-i18n="legendNote"></p>
+  </section>
 </div>
 <div id="crt" aria-hidden="true"></div>
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js" onerror="bootFail()"></script>
@@ -703,6 +934,78 @@ const sectionPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), SITE_D + 8);
 const floorPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), ROOF_H + 4);
 const clips = [sectionPlane, floorPlane];
 
+// Hardware mips average a wire and its hole into one mid-grey texel. alphaTest
+// then drops the whole sheet until the camera is close enough for the base
+// level, so the mesh pops on as you approach. Each smaller level keeps the
+// coverage instead: a texel stays a wire or a hole, and the same test passes
+// at every distance.
+function meshMips(canvas) {
+  function pot(n) { return n > 0 && (n & (n - 1)) === 0; }
+  function cover(x, y, av) {
+    if (av >= 0.72) return true;
+    if (av <= 0.06) return false;
+    const h = Math.imul((x * 374761393 + y * 668265263) | 0, 1274126177) >>> 0;
+    return (h & 65535) / 65535 < av;
+  }
+  function down(src) {
+    const sw = src.width, sh = src.height;
+    const w = Math.max(1, sw >> 1), h = Math.max(1, sh >> 1);
+    const sd = src.getContext("2d").getImageData(0, 0, sw, sh).data;
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const g = c.getContext("2d");
+    const img = g.createImageData(w, h);
+    const d = img.data;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let r = 0, gc = 0, b = 0, a = 0, n = 0;
+        for (let oy = 0; oy < 2; oy++) {
+          for (let ox = 0; ox < 2; ox++) {
+            const sx = x * 2 + ox, sy = y * 2 + oy;
+            if (sx >= sw || sy >= sh) continue;
+            const i = (sy * sw + sx) * 4;
+            const aa = sd[i + 3];
+            r += sd[i] * aa; gc += sd[i + 1] * aa; b += sd[i + 2] * aa; a += aa;
+            n++;
+          }
+        }
+        const o = (y * w + x) * 4;
+        const av = n ? a / (n * 255) : 0;
+        if (a <= 0 || !cover(x, y, av)) {
+          d[o] = d[o + 1] = d[o + 2] = d[o + 3] = 0;
+        } else {
+          d[o] = Math.min(255, r / a);
+          d[o + 1] = Math.min(255, gc / a);
+          d[o + 2] = Math.min(255, b / a);
+          d[o + 3] = 255;
+        }
+      }
+    }
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+  const mips = [canvas];
+  const canMip = pot(canvas.width) && pot(canvas.height);
+  if (canMip) {
+    let src = canvas;
+    while (src.width > 1 || src.height > 1) {
+      src = down(src);
+      mips.push(src);
+    }
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = THREE.LinearFilter;
+  if (canMip) {
+    tex.mipmaps = mips;
+    tex.generateMipmaps = false;
+    tex.minFilter = THREE.NearestMipmapLinearFilter;
+  } else {
+    tex.generateMipmaps = false;
+    tex.minFilter = THREE.LinearFilter;
+  }
+  tex.needsUpdate = true;
+  return tex;
+}
 // Outdoor ground, from the 1987 alley photographs: cracked pours, damp patches,
 // grit and repair slabs. Not a sealed floor. Marks wrap so a repeat has no seam.
 function wornFloorTexture(mode) {
@@ -1155,6 +1458,154 @@ ground.material.onBeforeCompile = shader => {
   ].join("\n"));
 };
 ground.material.customProgramCacheKey = function () { return "groundWet"; };
+// Alley pours are their own maps, laid on top of the outer ground. Without this
+// they stay dry while the earth around them puddles.
+function attachWetFloor(mat) {
+  if (!mat || mat.userData.wetFloor) return;
+  mat.userData.wetFloor = 1;
+  const prev = mat.onBeforeCompile;
+  const prevKey = mat.customProgramCacheKey;
+  mat.customProgramCacheKey = function () {
+    return (prevKey ? prevKey.call(this) : "") + "|wetFloor";
+  };
+  mat.onBeforeCompile = function (shader) {
+    if (prev) prev.call(this, shader);
+    shader.uniforms.uWet = uWet;
+    shader.uniforms.uWetCol = uWetCol;
+    shader.uniforms.uWetTime = uWetTime;
+    shader.uniforms.uWetNight = uWetNight;
+    shader.uniforms.uWetRefl = uWetRefl;
+    shader.uniforms.uWetRes = uWetRes;
+    shader.uniforms.uWetReflOn = uWetReflOn;
+    shader.uniforms.uWetMatrix = uWetMatrix;
+    if (shader.vertexShader.indexOf("vWetWorld") < 0) {
+      shader.vertexShader = "varying vec3 vWetN;\nvarying vec3 vWetV;\nvarying vec3 vWetWorld;\n" + shader.vertexShader.replace(
+        "#include <project_vertex>",
+        "#ifdef USE_INSTANCING\n  vec4 wetWorld = modelMatrix * instanceMatrix * vec4(transformed, 1.0);\n#else\n  vec4 wetWorld = modelMatrix * vec4(transformed, 1.0);\n#endif\nvWetWorld = wetWorld.xyz;\nvWetN = normalize(mat3(modelMatrix) * objectNormal);\nvWetV = cameraPosition - wetWorld.xyz;\n#include <project_vertex>"
+      );
+    }
+    if (shader.fragmentShader.indexOf("uniform float uWet") < 0) {
+      shader.fragmentShader = WET_DECL + shader.fragmentShader
+        .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\n" + wetSurfaceChunk("vWetWorld.xz"))
+        .replace("#include <fog_fragment>", WET_GLINT + "\n#include <fog_fragment>");
+    }
+  };
+}
+// Rain on an outside wall or a blade sign. Threads are a centimetre or two wide,
+// and a short bead slides down each one. Shop interiors stay dry. Floors keep their puddles.
+const DRIP_DECL = [
+  "varying vec3 vWetN;",
+  "varying vec3 vWetV;",
+  "varying vec3 vWetWorld;",
+  "uniform float uWet;",
+  "uniform vec3 uWetCol;",
+  "uniform float uWetTime;",
+  "uniform float uWetNight;",
+  "float wetPud;",
+  "float wetHash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}",
+  "float wetNoise(vec2 p){vec2 i=floor(p);vec2 f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(wetHash(i),wetHash(i+vec2(1.0,0.0)),f.x),mix(wetHash(i+vec2(0.0,1.0)),wetHash(i+vec2(1.0,1.0)),f.x),f.y);}",
+  ""
+].join("\n");
+function dripLayer(scale, shift, gate) {
+  return [
+    "{",
+    "float col = floor(ax * " + scale + " + " + shift + ");",
+    "float h = wetHash(vec2(col, " + shift + "));",
+    "float u = fract(ax * " + scale + " + " + shift + ");",
+    "float center = 0.28 + h * 0.44;",
+    "float width = 0.055 + h * 0.04;",
+    "float sway = (wetNoise(vec2(col * 0.73, yy * 0.85 + " + shift + ")) - 0.5) * 0.05;",
+    "float line = smoothstep(width, width * 0.28, abs(u - center - sway));",
+    "line *= step(" + gate + ", h);",
+    "float speed = 0.7 + h * 1.1;",
+    "float travel = fract(uWetTime * speed * 0.55 + yy * 1.7 + h * 11.0);",
+    "float bead = smoothstep(0.06, 0.0, travel);",
+    "float tail = smoothstep(0.38, 0.06, travel);",
+    "run = max(run, line * (0.28 + tail * 0.35 + bead * 0.7));",
+    "}"
+  ].join("\n");
+}
+function dripSurfaceChunk() {
+  return [
+    "wetPud = 0.0;",
+    "float wetK = clamp(uWet, 0.0, 1.0);",
+    "float wallFace = 1.0 - smoothstep(0.22, 0.58, abs(vWetN.y));",
+    "if (wetK > 0.001 && wallFace > 0.001) {",
+    "  vec3 wn = normalize(vWetN);",
+    "  vec3 side = normalize(cross(vec3(0.0, 1.0, 0.0), wn));",
+    "  float ax = dot(vWetWorld, side);",
+    "  float yy = vWetWorld.y;",
+    "  float run = 0.0;",
+    dripLayer("4.5", "1.3", "0.48"),
+    dripLayer("8.5", "6.2", "0.7"),
+    "  run *= wallFace * wetK;",
+    "  wetPud = run;",
+    "  diffuseColor.rgb *= mix(1.0, 0.9, wetK * wallFace * 0.55);",
+    "  diffuseColor.rgb *= mix(1.0, 0.64, run);",
+    "  roughnessFactor = mix(roughnessFactor, roughnessFactor * 0.9, wetK * wallFace * 0.4);",
+    "  roughnessFactor = mix(roughnessFactor, 0.42, run);",
+    "  metalnessFactor = mix(metalnessFactor, 0.04, run * 0.35);",
+    "  float wob = wetNoise(vec2(ax * 9.0, yy * 2.4)) - 0.5;",
+    "  normal = normalize(normal + mat3(viewMatrix) * (side * wob * run * 0.22 + vec3(0.0, -0.25, 0.0) * run));",
+    "}",
+    ""
+  ].join("\n");
+}
+const DRIP_CHUNK = dripSurfaceChunk();
+const DRIP_SHEEN = [
+  "float drip = clamp(wetPud, 0.0, 1.0);",
+  "if (drip > 0.03) {",
+  "  vec3 dN = normalize(vWetN);",
+  "  vec3 dV = normalize(vWetV);",
+  "  float fres = pow(1.0 - clamp(dot(dN, dV), 0.0, 1.0), 1.8);",
+  "  float night = clamp(uWetNight, 0.0, 1.0);",
+  "  vec3 film = mix(vec3(0.7, 0.78, 0.84), pow(max(uWetCol, vec3(0.001)), vec3(0.5)), 0.4);",
+  "  film = mix(film, film * vec3(0.6, 0.68, 0.76), night);",
+  "  vec3 lit = gl_FragColor.rgb;",
+  "  lit *= mix(1.0, 0.86, drip * 0.65);",
+  "  float head = smoothstep(0.72, 0.95, drip);",
+  "  gl_FragColor.rgb = lit + film * drip * (0.1 + fres * 0.22) * wetK;",
+  "  gl_FragColor.rgb += vec3(0.75, 0.82, 0.86) * head * 0.28 * wetK;",
+  "}"
+].join("\n");
+const DRIP_VERT = [
+  "#ifdef USE_INSTANCING",
+  "  vec4 wetWorld = modelMatrix * instanceMatrix * vec4(transformed, 1.0);",
+  "  vWetN = normalize(mat3(modelMatrix) * (mat3(instanceMatrix) * objectNormal));",
+  "#else",
+  "  vec4 wetWorld = modelMatrix * vec4(transformed, 1.0);",
+  "  vWetN = normalize(mat3(modelMatrix) * objectNormal);",
+  "#endif",
+  "vWetWorld = wetWorld.xyz;",
+  "vWetV = cameraPosition - wetWorld.xyz;"
+].join("\n");
+function attachWetWall(mat) {
+  if (!mat || mat.userData.wetWall || mat.userData.wetFloor) return;
+  mat.userData.wetWall = 1;
+  const prev = mat.onBeforeCompile;
+  const prevKey = mat.customProgramCacheKey;
+  mat.customProgramCacheKey = function () {
+    return (prevKey ? prevKey.call(this) : "") + "|wetWall";
+  };
+  mat.onBeforeCompile = function (shader) {
+    if (prev) prev.call(this, shader);
+    shader.uniforms.uWet = uWet;
+    shader.uniforms.uWetCol = uWetCol;
+    shader.uniforms.uWetTime = uWetTime;
+    shader.uniforms.uWetNight = uWetNight;
+    if (shader.vertexShader.indexOf("vWetWorld") < 0) {
+      shader.vertexShader = "varying vec3 vWetN;\nvarying vec3 vWetV;\nvarying vec3 vWetWorld;\n" + shader.vertexShader.replace(
+        "#include <project_vertex>",
+        DRIP_VERT + "\n#include <project_vertex>"
+      );
+    }
+    if (shader.fragmentShader.indexOf("uniform float uWet") < 0) {
+      shader.fragmentShader = DRIP_DECL + shader.fragmentShader
+        .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\n" + DRIP_CHUNK)
+        .replace("#include <fog_fragment>", DRIP_SHEEN + "\n#include <fog_fragment>");
+    }
+  };
+}
 ground.receiveShadow = true;
 ground.renderOrder = -1;
 scene.add(ground);
@@ -1791,7 +2242,7 @@ function buildShopFinish() {
     }
   });
   const offset = { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, clippingPlanes: clips };
-  return {
+  const finish = {
     timber: new THREE.MeshStandardMaterial(Object.assign({ map: timberMap, color: 0xc4aa8a, roughness: 0.86, metalness: 0.02 }, offset)),
     metal: new THREE.MeshStandardMaterial(Object.assign({ map: metalMap, color: 0x8a8680, roughness: 0.78, metalness: 0.16 }, offset)),
     plaster: new THREE.MeshStandardMaterial({ map: plasterMap, color: 0xd2c6b4, roughness: 0.92, metalness: 0, clippingPlanes: clips }),
@@ -1806,6 +2257,7 @@ function buildShopFinish() {
     chair: new THREE.MeshStandardMaterial({ map: clothWearMap(), color: 0x6e6c64, roughness: 0.9, metalness: 0.02, clippingPlanes: clips }),
     shelf: new THREE.MeshStandardMaterial({ color: 0x6a4030, roughness: 0.84, metalness: 0, clippingPlanes: clips })
   };
+  return finish;
 }
 function makeCrate() {
   const geos = [];
@@ -2130,12 +2582,14 @@ function alleySignMat(text, bg, ink, nightI, horizontal, flip) {
   const key = "asign:" + text + ":" + bg + ":" + ink + ":" + (horizontal ? 1 : 0) + ":" + (flip ? 1 : 0) + ":" + glow;
   return shopMat(key, () => {
     const map = horizontal ? plasticTex(text, bg, ink, !!flip) : bladeTex(text, bg, ink, !!flip);
-    return new THREE.MeshStandardMaterial({
+    const mat = new THREE.MeshStandardMaterial({
       map, color: 0xffffff, roughness: horizontal ? 0.76 : 0.84, metalness: 0.02,
       emissive: new THREE.Color(horizontal ? bg : 0xffffff),
       emissiveMap: map, emissiveIntensity: horizontal ? 0.06 : 0.08,
       side: horizontal ? THREE.DoubleSide : THREE.FrontSide
     });
+    if (!horizontal) attachWetWall(mat);
+    return mat;
   }, horizontal ? 0.06 : 0.08, glow);
 }
 function solidMat(key, color, rough, metal, day, nightI) {
@@ -3228,6 +3682,7 @@ function addMass(x, z, w, d, floors, meta) {
   const wall = new THREE.MeshStandardMaterial({
     map, color: wallColor(), roughness: 0.9 + rnd() * 0.08, metalness: 0.02, clippingPlanes: clips
   });
+  attachWetWall(wall);
   const roofMat = addMass.roofMat || (addMass.roofMat = new THREE.MeshStandardMaterial({ color: 0x2a241e, roughness: 0.96, clippingPlanes: clips }));
   const facePlans = streetFaces(x, z, w, d).map(hit => ({
     face: hit.f, clearance: hit.clearance, plans: planShopFace(x, z, w, d, hit.f)
@@ -3244,6 +3699,7 @@ function addMass(x, z, w, d, floors, meta) {
   const frameMat = new THREE.MeshStandardMaterial({
     map, color: frameTint, roughness: 0.94 + rnd() * 0.04, metalness: 0.03, clippingPlanes: clips
   });
+  attachWetWall(frameMat);
   const meshes = [new THREE.Mesh(framed.shell, wall), new THREE.Mesh(framed.frame, frameMat)];
   meshes.forEach(mesh => mesh.position.set(x + w / 2, 0, z + d / 2));
   const rooms = [];
@@ -4113,6 +4569,7 @@ function dressAlleys() {
   const wearMat = new THREE.MeshStandardMaterial({
     map: stain, color: 0xffffff, roughness: 0.96, metalness: 0, clippingPlanes: clips
   });
+  attachWetFloor(wearMat);
   const galv = new THREE.MeshStandardMaterial({ map: pipeStainMap(), color: 0xb0aea4, roughness: 0.9, metalness: 0.06, clippingPlanes: clips });
   const pvc = new THREE.MeshStandardMaterial({ map: pipeStainMap(), color: 0xa8a498, roughness: 0.92, metalness: 0.02, clippingPlanes: clips });
   const cable = new THREE.MeshStandardMaterial({ color: 0x050403, roughness: 0.94, metalness: 0, clippingPlanes: clips });
@@ -5090,6 +5547,7 @@ flushShops();
 dressAlleys();
 
 const brick = new THREE.MeshStandardMaterial({ map: greyBrickMap(1.2, 1.3), color: 0x8a8478, roughness: 0.94, metalness: 0, clippingPlanes: clips });
+attachWetWall(brick);
 const yamenStone = new THREE.MeshStandardMaterial({ map: stoneNoiseMap(), color: 0xc4beb4, roughness: 0.96, metalness: 0, clippingPlanes: clips });
 const doorRed = new THREE.MeshStandardMaterial({ color: 0x7a2e28, roughness: 0.72, clippingPlanes: clips });
 const woodMat = new THREE.MeshStandardMaterial({ map: woodGrainMap(), color: 0xd2c4b4, roughness: 0.92, metalness: 0, clippingPlanes: clips });
@@ -5288,6 +5746,7 @@ function qingRoof(x, z, w, d, eaveY, ornament) {
     city.add(end);
   });
   const gableMat = mappedMat(greyBrickMap(3, 3), 0.92);
+  attachWetWall(gableMat);
   [-1, 1].forEach(sign => {
     const steps = 6;
     for (let i = 0; i < steps; i++) {
@@ -5352,6 +5811,7 @@ function hall(x, z, w, d, name, opts) {
   opts = opts || {};
   const h = 3.6;
   const wall = mappedMat(greyBrickMap(Math.max(1.5, w / 1.8), Math.max(1.2, h / 1.6)), 0.93);
+  attachWetWall(wall);
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wall);
   mesh.position.set(x + w / 2, h / 2, z + d / 2);
   mesh.userData = { zone: "yamen", street: "衙門", name, floors: 1, hall: true, w, d, x, z };
@@ -5448,9 +5908,11 @@ hall(87, 53.5, 15, 6.2, "衙門");
 hall(88.2, 65, 12, 5.2, "衙門", { lintel: true });
 [[84.3, 65.4], [100.5, 65.4]].forEach(([ex, ez]) => {
   const ew = 3.3, ed = 4.2, eh = 2.65;
+  const roomMat = mappedMat(greyBrickMap(2.2, 1.8), 0.93);
+  attachWetWall(roomMat);
   const room = new THREE.Mesh(
     new THREE.BoxGeometry(ew, eh, ed),
-    mappedMat(greyBrickMap(2.2, 1.8), 0.93)
+    roomMat
   );
   room.position.set(ex + ew / 2, eh / 2, ez + ed / 2);
   room.userData = { zone: "yamen", street: "衙門", name: "耳房", floors: 1, hall: true, w: ew, d: ed, x: ex, z: ez };
@@ -5463,7 +5925,9 @@ hall(88.2, 65, 12, 5.2, "衙門", { lintel: true });
   lattice(ex + ew / 2, 1.35, ez + ed + 0.04, 0, 0.62, 0.85);
 });
 [[87.15, 49.25, 4.2], [101.85, 49.25, 4.2], [87.15, 59.85, 5.05], [101.85, 59.85, 5.05]].forEach(([wx, wz, wd]) => {
-  const side = new THREE.Mesh(new THREE.BoxGeometry(0.32, 2.05, wd), mappedMat(greyBrickMap(2, 3), 0.93));
+  const sideMat = mappedMat(greyBrickMap(2, 3), 0.93);
+  attachWetWall(sideMat);
+  const side = new THREE.Mesh(new THREE.BoxGeometry(0.32, 2.05, wd), sideMat);
   side.position.set(wx, 1.15, wz + wd / 2);
   city.add(side);
   addAnchor(wx - 0.2, wz, 0.4, wd, squareAnchor);
@@ -5604,7 +6068,7 @@ function refuseNet(cx, cz, w, d, y, filth) {
       g.fill();
     });
   }
-  const tex = new THREE.CanvasTexture(c);
+  const tex = meshMips(c);
   tex.encoding = THREE.sRGBEncoding;
   const mat = new THREE.MeshStandardMaterial({
     map: tex, transparent: true, alphaTest: filth ? 0.08 : 0.25, side: THREE.DoubleSide,
@@ -5669,6 +6133,7 @@ city.add(wellFill);
   const data = { zone: "temple", street: "天后廟街", name: "天后廟", floors: 1, hall: true, w, d, x, z };
   const wall = mappedMat(greyBrickMap(Math.max(1.5, w / 1.8), Math.max(1.2, h / 1.6)), 0.94);
   wall.color.setHex(0x8a847c);
+  attachWetWall(wall);
   const cx = x + w / 2;
   const zFace = z + d;
   const t = 0.32;
@@ -5787,7 +6252,7 @@ city.add(wellFill);
     else cg.lineTo(px, py);
   }
   cg.stroke();
-  const coilTex = new THREE.CanvasTexture(coilC);
+  const coilTex = meshMips(coilC);
   coilTex.encoding = THREE.sRGBEncoding;
   const coilMat = new THREE.MeshStandardMaterial({
     map: coilTex, transparent: true, alphaTest: 0.25, side: THREE.DoubleSide,
@@ -7302,9 +7767,9 @@ const zoneViews = {
   tsun:   { pos: [55, 50, 88], tgt: [42, 5, 108.75], stand: [46, 108.75], yaw: -Math.PI / 2 },
   yamen:  { pos: [118, 46, 86], tgt: [94.5, 4, 56], stand: [112, 72], yaw: -Math.PI / 2 }
 };
-// No place chosen: the pavement at the north-east corner, beside the lamp
-// and the kerb, looking east along the front and up into the balconies.
-const pavementStand = { x: 205, z: -2.3, yaw: -1.95, pitch: 0.34 };
+// No place chosen: the east pavement at the north-east corner, in front of
+// the clinic, looking into the shopfronts and up at the cages.
+const pavementStand = { x: 214.2, z: -1.15, yaw: 2.18, pitch: 0.18 };
 function aim(pos, tgt) {
   // A camera out over the roads keeps its angle and slides with the point it looks at.
   // A camera in a street uses that street's own lean, or it would stand inside a wall.
@@ -7319,14 +7784,34 @@ function setCardKicker(chapterId, fallback) {
   else if (chapterId) el.textContent = chapterName(chapterId);
   else el.textContent = fallback || "";
 }
-function mobileSheets() {
-  return window.matchMedia("(max-width: 640px), (max-height: 540px)").matches;
+function portraitSheet() {
+  return window.matchMedia("(aspect-ratio <= 1)").matches;
 }
 function closeLegend() {
+  const layer = document.getElementById("legend-layer");
   const legend = document.getElementById("legend");
-  legend.classList.remove("open");
+  if (layer) layer.hidden = true;
+  if (legend) {
+    legend.classList.remove("open");
+    legend.style.zoom = "";
+  }
+  const key = document.getElementById("toggle-legend");
+  if (!key) return;
+  key.classList.remove("on");
+  key.setAttribute("aria-expanded", "false");
+}
+function setLegend(open) {
+  const layer = document.getElementById("legend-layer");
+  const legend = document.getElementById("legend");
+  const key = document.getElementById("toggle-legend");
+  if (!layer || !legend || !key) return;
+  if (open) setSettings(false);
+  layer.hidden = !open;
+  legend.classList.toggle("open", open);
   legend.style.zoom = "";
-  document.getElementById("toggle-legend").classList.remove("on");
+  if (open) legend.scrollTop = 0;
+  key.classList.toggle("on", open);
+  key.setAttribute("aria-expanded", open ? "true" : "false");
 }
 function closeCard() {
   const card = document.getElementById("card");
@@ -7356,52 +7841,9 @@ function fitCard() {
     card.style.zoom = box.height > room + 1 && room >= 80 ? String(Math.min(1, room / box.height)) : "";
   });
 }
-let fitLegendGen = 0;
 function fitLegend() {
   const legend = document.getElementById("legend");
-  const gen = ++fitLegendGen;
-  const alive = () => gen === fitLegendGen && legend.classList.contains("open") && mobileSheets() && getComputedStyle(legend).display !== "none";
-  const paint = (z) => { legend.style.zoom = z >= 0.995 ? "" : String(z); };
-  if (!legend.classList.contains("open") || !mobileSheets()) {
-    legend.style.zoom = "";
-    return;
-  }
-  // Zoom changes how the note wraps, so one ratio undershoots. Keep the largest size that still sits above the dock.
-  let best = 0;
-  const refine = (z, n) => {
-    paint(z);
-    requestAnimationFrame(() => {
-      if (!alive()) {
-        if (gen === fitLegendGen) legend.style.zoom = "";
-        return;
-      }
-      const room = sheetRoom(legend);
-      const h = legend.getBoundingClientRect().height;
-      if (room < 48) return;
-      const slack = room - h;
-      if (slack >= 0 && z > best) best = z;
-      const next = slack < 0 && best > 0 ? (best + z) / 2 : Math.max(0.12, Math.min(1, z * room / h));
-      if (n <= 0 || (slack >= 0 && slack < 12) || Math.abs(next - z) < 0.008) {
-        if (slack < 0 && best > 0) paint(best);
-        return;
-      }
-      refine(next, n - 1);
-    });
-  };
-  legend.style.zoom = "1";
-  requestAnimationFrame(() => {
-    if (!alive()) {
-      if (gen === fitLegendGen) legend.style.zoom = "";
-      return;
-    }
-    const room = sheetRoom(legend);
-    const h = legend.getBoundingClientRect().height;
-    if (room < 48 || h <= room + 1) {
-      legend.style.zoom = "";
-      return;
-    }
-    refine(Math.max(0.12, room / h), 8);
-  });
+  if (legend) legend.style.zoom = "";
 }
 function focusViewButton() {
   const row = document.getElementById("zones");
@@ -7436,16 +7878,16 @@ function showZone(id) {
   focusViewButton();
 }
 document.querySelectorAll("[data-zone]").forEach(b => b.onclick = () => {
-  if (mobileSheets()) closeLegend();
+  if (portraitSheet()) closeLegend();
   showZone(b.dataset.zone);
 });
 const views = {
   air: { pos: [168, 140, 200], tgt: [105, 12, 58] },
-  // A phone is too narrow for the desktop oblique. From the east, high enough to read the roofs and the court, with the outer road down the right.
+  // A portrait frame is too narrow for the wide oblique. From the east, high enough to read the roofs and the court, with the outer road down the right.
   airPhone: { pos: [300, 60, -30], tgt: [150, 0, 40] }
 };
 function go(name) {
-  const v = name === "air" && mobileSheets() ? views.airPhone : views[name];
+  const v = name === "air" && portraitSheet() ? views.airPhone : views[name];
   if (!v) return;
   if (walkMode) setWalk(false);
   activeZone = null;
@@ -7467,6 +7909,7 @@ addEventListener("keydown", e => {
     e.preventDefault();
   }
   if (e.repeat) return;
+  if (e.key === "Escape") { setSettings(false); setLegend(false); return; }
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
   if (e.key === "1") go("air");
   if (e.key === "5") setWalk(!walkMode);
@@ -7478,6 +7921,7 @@ go("air");
 const ray = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
+let sheetPortrait = null;
 function fit() {
   const r = renderer.domElement.getBoundingClientRect();
   const w = Math.max(1, Math.round(r.width));
@@ -7485,7 +7929,11 @@ function fit() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h, false);
-  if (mobileSheets() && document.getElementById("legend").classList.contains("open") && document.getElementById("card").classList.contains("open")) closeLegend();
+  const nextPortrait = portraitSheet();
+  const crossed = sheetPortrait !== null && nextPortrait !== sheetPortrait;
+  sheetPortrait = nextPortrait;
+  // A chosen place or a walk stays put. Only the open aerial follows the new shape.
+  if (crossed && !walkMode && !activeZone) go("air");
   fitCard();
   fitLegend();
   focusViewButton();
@@ -7494,17 +7942,23 @@ addEventListener("resize", fit);
 addEventListener("orientationchange", fit);
 if (window.visualViewport) visualViewport.addEventListener("resize", fit);
 fit();
-function wireToggle(buttonId, panelId) {
-  const button = document.getElementById(buttonId);
-  const panel = document.getElementById(panelId);
-  button.onclick = () => {
-    const open = panel.classList.toggle("open");
-    button.classList.toggle("on", open);
-    if (open && panelId === "legend" && mobileSheets()) closeCard();
-    fitLegend();
-  };
+document.getElementById("toggle-legend").onclick = () => {
+  setLegend(document.getElementById("legend-layer").hidden);
+};
+document.getElementById("legend-scrim").onclick = () => setLegend(false);
+function setSettings(open) {
+  const layer = document.getElementById("settings-layer");
+  const btn = document.getElementById("toggle-settings");
+  if (!layer || !btn) return;
+  layer.hidden = !open;
+  btn.classList.toggle("on", open);
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) closeLegend();
 }
-wireToggle("toggle-legend", "legend");
+document.getElementById("toggle-settings").onclick = () => {
+  setSettings(document.getElementById("settings-layer").hidden);
+};
+document.getElementById("settings-scrim").onclick = () => setSettings(false);
 document.getElementById("close-card").onclick = () => {
   const card = document.getElementById("card");
   card.classList.remove("open");
@@ -7534,7 +7988,6 @@ const I18N = {
     cutLabel: "剖面位置", hint: "拖曳旋轉 · 滾輪縮放 · 點選樓塊 · 1 俯瞰 · 5 步行",
     walkBtn: "步行",
     hintWalk: "拖曳張望 · W A S D 行走 · Shift 加快 · 再按步行或 5 返回",
-    walkNote: "拖曳畫面張望",
     cutOff: "未切開", cutOn: "保留北面，切面朝南",
     yamenMeta: "單層三進兩院，屋脊約 6.5 米。東側低矮的是老人中心和青年中心。",
     templeMeta: "一九五一年的廟廳，門向南，天井上有鐵網",
@@ -7565,7 +8018,7 @@ const I18N = {
   },
   en: {
     title: "Kowloon Walled City",
-    keyBtn: "Key",
+    keyBtn: "Legend",
     legendKicker: "Section colours", legendTitle: "What the cut face means",
     useHome: "Dwelling, often one room for several people", useFactory: "Workshop — plastic, garment, metal", useFood: "Food works — noodles, fish balls, roast meat",
     useClinic: "Unlicensed clinic or dentist", useSchool: "School, kindergarten, church room", useTemple: "Temple, shrine, association hall",
@@ -7586,7 +8039,6 @@ const I18N = {
     cutLabel: "Cut position", hint: "drag orbit · scroll zoom · click a mass · 1 aerial · 5 walks",
     walkBtn: "Walk",
     hintWalk: "Drag to look · W A S D walks · Shift is quicker · Walk or 5 returns",
-    walkNote: "Drag the picture to look",
     cutOff: "no cut", cutOn: "keeping the north side, cut faces south",
     yamenMeta: "One storey, three halls, two courts, ridge about 6.5 m. The low blocks to the east are the old people’s centre and the youth centre.",
     templeMeta: "1951 hall, door to the south, a net over the court",
@@ -7638,7 +8090,6 @@ const I18N = {
     cutLabel: "断面の位置", hint: "ドラッグで周回 · スクロール · 棟をクリック · 1 俯瞰 · 5 で歩行",
     walkBtn: "歩く",
     hintWalk: "ドラッグで見る · W A S D で歩く · Shift で速く · 歩くか 5 で戻る",
-    walkNote: "画面をドラッグして見る",
     cutOff: "切断なし", cutOn: "北側を残し、断面は南向き",
     yamenMeta: "平屋、三進両院、棟約 6.5 メートル。東の低い棟は老人中心と青年中心。",
     templeMeta: "一九五一年の廟殿、扉は南、中庭の上に金網",
@@ -7668,7 +8119,7 @@ const I18N = {
     }
   }
 };
-let lang = "zh";
+let lang = preferredLang();
 function t(key) { return (I18N[lang] && I18N[lang][key]) || key; }
 function placeName(id) { return (I18N[lang].places && I18N[lang].places[id]) || id; }
 function chapterName(id) { return (I18N[lang].chapters && I18N[lang].chapters[id]) || id; }
@@ -7713,6 +8164,16 @@ function applyLang(next) {
     const key = el.getAttribute("data-i18n");
     if (I18N[lang][key] != null) el.textContent = I18N[lang][key];
   });
+  const settingsBtn = document.getElementById("toggle-settings");
+  const keyBtn = document.getElementById("toggle-legend");
+  const viewBtn = document.getElementById("walk-view");
+  const settingsPanel = document.getElementById("settings-panel");
+  if (settingsBtn && I18N[lang].tabSettings) settingsBtn.setAttribute("aria-label", I18N[lang].tabSettings);
+  if (keyBtn && I18N[lang].keyBtn) keyBtn.setAttribute("aria-label", I18N[lang].keyBtn);
+  if (viewBtn && I18N[lang].tabPlaces) viewBtn.setAttribute("aria-label", I18N[lang].tabPlaces);
+  if (settingsPanel && I18N[lang].tabSettings) settingsPanel.setAttribute("aria-label", I18N[lang].tabSettings);
+  const legendPanel = document.getElementById("legend");
+  if (legendPanel && I18N[lang].keyBtn) legendPanel.setAttribute("aria-label", I18N[lang].keyBtn);
   document.querySelectorAll("[data-zone]").forEach(b => { b.textContent = placeName(b.dataset.zone); });
   ["zh", "en", "ja"].forEach(code => {
     const b = document.getElementById("lang-" + code);
@@ -7721,7 +8182,7 @@ function applyLang(next) {
   uiText.cutOff = I18N[lang].cutOff || "";
   uiText.cutOn = I18N[lang].cutOn || "";
   paintAllLabels();
-  const legendHeld = mobileSheets() && document.getElementById("legend").classList.contains("open");
+  const legendHeld = portraitSheet() && document.getElementById("legend").classList.contains("open");
   if (activePick) showPick(activePick);
   else if (activeZone) showZone(activeZone);
   if (legendHeld) closeCard();
@@ -7768,7 +8229,7 @@ renderer.domElement.addEventListener("pointerup", (ev) => {
   const bay = hit.object.userData && hit.object.userData.bayData;
   const u = bay ? bay[hit.instanceId] : hit.object.userData;
   if (!u) return;
-  if (mobileSheets()) closeLegend();
+  if (portraitSheet()) closeLegend();
   showPick(u);
 });
 document.querySelectorAll("[data-dock]").forEach(b => b.onclick = () => {
@@ -7776,16 +8237,15 @@ document.querySelectorAll("[data-dock]").forEach(b => b.onclick = () => {
   document.querySelectorAll("[data-dock]").forEach(x => x.classList.toggle("on", x === b));
   document.querySelectorAll(".dock").forEach(p => p.classList.toggle("on", p.id === "dock-" + b.dataset.dock));
   if (b.dataset.dock === "places") focusViewButton();
-  if (mobileSheets() && document.getElementById("legend").classList.contains("open") && document.getElementById("card").classList.contains("open")) closeLegend();
   fitLegend();
 });
 document.getElementById("lang-zh").onclick = () => applyLang("zh");
 document.getElementById("lang-en").onclick = () => applyLang("en");
 document.getElementById("lang-ja").onclick = () => applyLang("ja");
-applyLang("zh");
+applyLang(lang);
 document.getElementById("lang-en").onclick = () => applyLang("en");
 document.getElementById("lang-ja").onclick = () => applyLang("ja");
-applyLang("zh");
+applyLang(lang);
 
 const vfx = new THREE.Group();
 scene.add(vfx);
@@ -8211,14 +8671,14 @@ function dressPerimeter() {
   }
   function grilleTexture() {
     const c = document.createElement("canvas");
-    c.width = 64; c.height = 96;
+    c.width = 64; c.height = 128;
     const g = c.getContext("2d");
-    g.clearRect(0, 0, 64, 96);
+    g.clearRect(0, 0, 64, 128);
     g.strokeStyle = "rgba(28, 26, 24, 0.92)";
     g.lineWidth = 3;
-    for (let x = 3; x < 64; x += 8) { g.beginPath(); g.moveTo(x, 2); g.lineTo(x, 94); g.stroke(); }
-    for (let y = 3; y < 96; y += 11) { g.beginPath(); g.moveTo(2, y); g.lineTo(62, y); g.stroke(); }
-    const tex = new THREE.CanvasTexture(c);
+    for (let x = 3; x < 64; x += 8) { g.beginPath(); g.moveTo(x, 2); g.lineTo(x, 126); g.stroke(); }
+    for (let y = 3; y < 128; y += 11) { g.beginPath(); g.moveTo(2, y); g.lineTo(62, y); g.stroke(); }
+    const tex = meshMips(c);
     tex.encoding = THREE.sRGBEncoding;
     return tex;
   }
@@ -8483,7 +8943,7 @@ function dressCages() {
       d[p] = r; d[p + 1] = gc; d[p + 2] = b;
     }
     g.putImageData(img, 0, 0);
-    const tex = new THREE.CanvasTexture(c);
+    const tex = meshMips(c);
     tex.encoding = THREE.sRGBEncoding;
     return tex;
   }
@@ -8574,7 +9034,7 @@ function dressCages() {
       g.fillStyle = col;
       g.beginPath(); g.arc(x, y, r, 0, 6.3); g.fill();
     });
-    const tex = new THREE.CanvasTexture(c);
+    const tex = meshMips(c);
     tex.encoding = THREE.sRGBEncoding;
     return tex;
   }
@@ -11574,7 +12034,12 @@ function setWalk(on) {
     pad.classList.toggle("on", on);
     pad.setAttribute("aria-hidden", on ? "false" : "true");
   }
+  if (!on) releaseStick();
+  const shell = document.getElementById("ui");
+  if (shell) shell.classList.toggle("walk-bare", on);
   if (on) {
+    setSettings(false);
+    closeLegend();
     document.querySelectorAll("[data-dock]").forEach(x => x.classList.remove("on"));
     document.querySelectorAll(".dock").forEach(p => p.classList.remove("on"));
   }
@@ -11639,10 +12104,17 @@ function stepWalk(dt) {
   if (back) { mx -= -sin; mz -= -cos; }
   if (right) { mx += cos; mz += -sin; }
   if (left) { mx += -cos; mz += sin; }
+  const keyActive = forward || back || left || right;
+  const stickMag = Math.hypot(stickVec.x, stickVec.y);
+  if (stickMag > 0.12) {
+    mx += cos * stickVec.x + -sin * -stickVec.y;
+    mz += -sin * stickVec.x + -cos * -stickVec.y;
+  }
   const len = Math.hypot(mx, mz);
   if (len > 0) {
     const quicker = walkHeld.has("ShiftLeft") || walkHeld.has("ShiftRight");
-    const speed = (quicker ? 4.6 : 2.55) / len;
+    const push = keyActive ? 1 : Math.min(1, stickMag);
+    const speed = (quicker ? 4.6 : 2.55) * push / len;
     const nx = walkX + mx * speed * dt;
     const nz = walkZ + mz * speed * dt;
     if (walkInside(nx, walkZ) && !walkBlocked(nx, walkZ)) walkX = nx;
@@ -11656,22 +12128,54 @@ document.getElementById("walk").onclick = (e) => {
   setWalk(!walkMode);
   e.currentTarget.blur();
 };
-document.querySelectorAll("#walk-pad [data-move]").forEach(btn => {
-  const code = { forward: "KeyW", back: "KeyS", left: "KeyA", right: "KeyD" }[btn.dataset.move];
-  const release = () => {
-    walkHeld.delete(code);
-    btn.classList.remove("on");
-  };
-  btn.addEventListener("pointerdown", (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    walkHeld.add(code);
-    btn.classList.add("on");
-    btn.setPointerCapture(ev.pointerId);
-  });
-  btn.addEventListener("pointerup", release);
-  btn.addEventListener("pointercancel", release);
+document.getElementById("walk-view").onclick = (e) => {
+  const places = document.querySelector('[data-dock="places"]');
+  if (places) places.click();
+  e.currentTarget.blur();
+};
+const stickEl = document.getElementById("walk-stick");
+const stickKnob = stickEl.querySelector("i");
+const stickVec = { x: 0, y: 0 };
+let stickPointer = null;
+function placeStick(x, y) {
+  const len = Math.hypot(x, y);
+  if (len > 1) { x /= len; y /= len; }
+  stickVec.x = x;
+  stickVec.y = y;
+  const box = stickEl.getBoundingClientRect();
+  const travel = Math.max(16, box.width * 0.28);
+  stickKnob.style.transform = "translate(calc(-50% + " + (x * travel) + "px), calc(-50% + " + (y * travel) + "px))";
+  stickEl.classList.toggle("on", len > 0.12);
+}
+function releaseStick() {
+  stickPointer = null;
+  placeStick(0, 0);
+}
+function stickFromEvent(ev) {
+  const box = stickEl.getBoundingClientRect();
+  const radius = box.width * 0.36;
+  placeStick((ev.clientX - (box.left + box.width / 2)) / radius, (ev.clientY - (box.top + box.height / 2)) / radius);
+}
+stickEl.addEventListener("pointerdown", (ev) => {
+  if (!walkMode) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  stickPointer = ev.pointerId;
+  stickEl.setPointerCapture(ev.pointerId);
+  stickFromEvent(ev);
 });
+stickEl.addEventListener("pointermove", (ev) => {
+  if (ev.pointerId !== stickPointer) return;
+  ev.preventDefault();
+  stickFromEvent(ev);
+});
+function stickUp(ev) {
+  if (ev.pointerId !== stickPointer) return;
+  releaseStick();
+}
+stickEl.addEventListener("pointerup", stickUp);
+stickEl.addEventListener("pointercancel", stickUp);
+addEventListener("blur", releaseStick);
 
 // The lot and the wall line keep the parallelogram. Tenement meshes are
 // counter-sheared so each block is a rectangular prism shifted with its row.
@@ -12161,18 +12665,8 @@ function scopeInstances(mesh) {
 city.traverse(obj => {
   if (obj.isInstancedMesh && obj.visible && obj.count > 0) scopeInstances(obj);
 });
-let cageDetail = camera.position.y < 72;
-function applyCageDetail() {
-  city.traverse(obj => {
-    if (obj.userData && obj.userData.lod === "detail") obj.visible = cageDetail;
-  });
-  for (let i = 0; i < walkers.length; i++) walkers[i].visible = cageDetail;
-}
-if (!cageDetail) applyCageDetail();
-function setCageDetail(show) {
-  cageDetail = show;
-  applyCageDetail();
-}
+// Cage frames and people stay drawn at every distance. Hiding them above a
+// camera height made the city pop from a flat shell into a full model.
 function packStatic() {
   scene.updateMatrixWorld(true);
   function moving(obj) {
@@ -13247,86 +13741,15 @@ function renderRoofReflection() {
   renderRoofReflection.quat.copy(camera.quaternion);
 }
 // The floor is left sharp. The old depth pass blurred the plain outside the lot.
-// The view is a colour CRT: bowed glass, a phosphor grille, and scanlines.
-// The grade stays light so the streets, the signs, and the lamps still read.
-const crtTarget = (renderer.capabilities.isWebGL2 && tier > 1)
-  ? new THREE.WebGLMultisampleRenderTarget(1, 1)
-  : new THREE.WebGLRenderTarget(1, 1);
-crtTarget.texture.minFilter = THREE.LinearFilter;
-crtTarget.texture.magFilter = THREE.LinearFilter;
-crtTarget.texture.generateMipmaps = false;
-crtTarget.depthBuffer = true;
-crtTarget.stencilBuffer = false;
-const crtScene = new THREE.Scene();
-const crtCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-const crtMat = new THREE.ShaderMaterial({
-  uniforms: {
-    tDiffuse: { value: crtTarget.texture },
-    uTime: { value: 0 },
-    uRes: { value: new THREE.Vector2(1, 1) }
-  },
-  depthTest: false,
-  depthWrite: false,
-  toneMapped: false,
-  vertexShader: [
-    "varying vec2 vUv;",
-    "void main() {",
-    "  vUv = uv;",
-    "  gl_Position = vec4(position.xy, 0.0, 1.0);",
-    "}"
-  ].join("\n"),
-  fragmentShader: [
-    "varying vec2 vUv;",
-    "uniform sampler2D tDiffuse;",
-    "uniform vec2 uRes;",
-    "uniform float uTime;",
-    "vec2 bow(vec2 uv) {",
-    "  vec2 c = uv - 0.5;",
-    "  float r2 = dot(c, c);",
-    "  c *= 1.0 + r2 * (0.072 + r2 * 0.048);",
-    "  return c + 0.5;",
-    "}",
-    "void main() {",
-    "  vec2 uv = bow(vUv);",
-    "  vec2 edge = vec2(0.001);",
-    "  vec2 clamped = clamp(uv, edge, vec2(1.0) - edge);",
-    "  float r2 = dot(vUv - 0.5, vUv - 0.5);",
-    "  vec2 dir = vUv - 0.5;",
-    "  float fringe = 0.0011 + r2 * 0.0055;",
-    "  vec3 col;",
-    "  col.r = texture2D(tDiffuse, clamp(clamped + dir * fringe, edge, vec2(1.0) - edge)).r;",
-    "  col.g = texture2D(tDiffuse, clamped).g;",
-    "  col.b = texture2D(tDiffuse, clamp(clamped - dir * fringe, edge, vec2(1.0) - edge)).b;",
-    "  vec2 px = 1.35 / max(uRes, vec2(1.0));",
-    "  vec3 bleed = (",
-    "    texture2D(tDiffuse, clamped + vec2(px.x, 0.0)).rgb +",
-    "    texture2D(tDiffuse, clamped - vec2(px.x, 0.0)).rgb +",
-    "    texture2D(tDiffuse, clamped + vec2(0.0, px.y)).rgb +",
-    "    texture2D(tDiffuse, clamped - vec2(0.0, px.y)).rgb",
-    "  ) * 0.25;",
-    "  float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));",
-    "  col = mix(col, max(col, bleed), 0.16);",
-    "  col += bleed * smoothstep(0.32, 1.05, luma) * 0.10;",
-    "  col *= 0.994 + 0.006 * sin(uTime * 6.4);",
-    "  col = col * vec3(1.04, 1.0, 0.97) + vec3(0.012, 0.011, 0.009);",
-    "  col = pow(max(col, 0.0), vec3(0.454545));",
-    "  gl_FragColor = vec4(col, 1.0);",
-    "}"
-  ].join("\n")
-});
-crtScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), crtMat));
+// The glass in front of the picture is the CRT: scanlines, a phosphor grille,
+// and the bowed bezel. The city itself is drawn straight to the screen.
+// Resampling it through an offscreen pass picked the wrong texture level, so a
+// wall read as a flat mask until the camera came close.
 function renderFrame() {
   renderWetReflection();
   renderRoofReflection();
-  const bw = Math.max(1, renderer.domElement.width || 1);
-  const bh = Math.max(1, renderer.domElement.height || 1);
-  if (crtTarget.width !== bw || crtTarget.height !== bh) crtTarget.setSize(bw, bh);
-  crtMat.uniforms.uTime.value = performance.now() * 0.001;
-  crtMat.uniforms.uRes.value.set(bw, bh);
-  renderer.setRenderTarget(crtTarget);
-  renderer.render(scene, camera);
   renderer.setRenderTarget(null);
-  renderer.render(crtScene, crtCam);
+  renderer.render(scene, camera);
 }
 function bakeFleet() {
   for (let i = 0; i < traffic.length; i++) {
@@ -13598,8 +14021,6 @@ syncPace();
   requestAnimationFrame(tick);
   const now = performance.now() * 0.001;
   stepSky(now);
-  const showDetail = camera.position.y < (cageDetail ? 78 : 62);
-  if (showDetail !== cageDetail) setCageDetail(showDetail);
   const smokeName = wxLead();
   const smokeLook = darkness.toFixed(2) + smokeName;
   const tintSmoke = smokeLook !== tick.smoke;
@@ -13784,7 +14205,7 @@ function dismissBoot() {
 }
 
 requestAnimationFrame(function () {
-  bootStage("正在建立模型", "Raising the model");
+  bootStage("raise");
   requestAnimationFrame(function () {
     try { raiseCity(); }
     catch (err) { console.error(err); bootFail(); }
