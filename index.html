@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>九龍城寨 — Kowloon Walled City</title>
+<title>九龍城寨 — Kowloon Walled City Simulator</title>
 <style>
   :root {
     --ink: #100e0c; --paper: #ffe7df; --teal: #ffc56a;
@@ -325,6 +325,7 @@
   #ui.walk-bare #mode .mode-walk { display: none; }
   #ui.walk-bare #mode .mode-eye { display: block; }
   #ui.walk-bare #dock-wrap { display: none; }
+  #ui.walk-bare #toggle-legend { display: none; }
   #card-walk {
     width: 100%;
     margin-top: 12px;
@@ -1070,10 +1071,18 @@ const renderer = new THREE.WebGLRenderer({
   antialias: tier > 1,
   powerPreference: "high-performance"
 });
-let pxCap = Math.min(devicePixelRatio || 1, tier === 0 ? 0.6 : tier === 1 ? 1.05 : 1.25);
-let pxFloor = Math.min(tier === 0 ? 0.38 : tier === 1 ? 0.55 : 0.75, pxCap);
-let pxNow = pxCap;
-renderer.setPixelRatio(pxNow);
+// The tube reads when the picture is about 720p on the long side. A sharper
+// buffer turns the scanlines into a faint veil, so the size stays put.
+const CRT_LONG = 1280;
+function crtSize(cssW, cssH) {
+  const long = Math.max(cssW, cssH, 1);
+  const scale = Math.min(1, CRT_LONG / long);
+  return {
+    w: Math.max(1, Math.round(cssW * scale)),
+    h: Math.max(1, Math.round(cssH * scale))
+  };
+}
+renderer.setPixelRatio(1);
 // How often the wet mirrors redraw, and how large they are. A fast card
 // rebuilds them whenever the eye moves. A slower one keeps the last picture
 // for a frame or two and draws it smaller.
@@ -1089,7 +1098,10 @@ const pace = {
   roofMax: tier === 0 ? 240 : tier === 1 ? 340 : 420,
   roofMove: tier === 0 ? 3 : tier === 1 ? 2 : 1
 };
-renderer.setSize(innerWidth, innerHeight, false);
+{
+  const firstBuf = crtSize(innerWidth, innerHeight);
+  renderer.setSize(firstBuf.w, firstBuf.h, false);
+}
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.autoUpdate = false;
 let shadowWarm = 2;
@@ -9390,11 +9402,12 @@ const pointer = new THREE.Vector2();
 let sheetPortrait = null;
 function fit() {
   const r = renderer.domElement.getBoundingClientRect();
-  const w = Math.max(1, Math.round(r.width));
-  const h = Math.max(1, Math.round(r.height));
-  camera.aspect = w / h;
+  const cssW = Math.max(1, Math.round(r.width));
+  const cssH = Math.max(1, Math.round(r.height));
+  const buf = crtSize(cssW, cssH);
+  camera.aspect = cssW / cssH;
   camera.updateProjectionMatrix();
-  renderer.setSize(w, h, false);
+  renderer.setSize(buf.w, buf.h, false);
   const nextPortrait = portraitSheet();
   const crossed = sheetPortrait !== null && nextPortrait !== sheetPortrait;
   sheetPortrait = nextPortrait;
@@ -16001,14 +16014,6 @@ function syncPace() {
   pace.roofMove = t === 0 ? 3 : t === 1 ? 2 : 1;
   rainGeo.instanceCount = t === 0 ? 2200 : t === 1 ? 3800 : 5600;
   splashGeo.instanceCount = t === 0 ? 600 : t === 1 ? 1100 : 1800;
-  const dpr = devicePixelRatio || 1;
-  pxCap = Math.min(dpr, t === 0 ? 0.6 : t === 1 ? 1.05 : 1.25);
-  pxFloor = Math.min(t === 0 ? 0.38 : t === 1 ? 0.55 : 0.75, pxCap);
-  if (pxNow > pxCap) {
-    pxNow = pxCap;
-    renderer.setPixelRatio(pxNow);
-    fit();
-  }
   if (pace.anisoTier !== t && t < 2) {
     pace.anisoTier = t;
     const max = t === 0 ? 1 : 2;
@@ -16181,19 +16186,9 @@ syncPace();
       syncPace();
       tick.hot = 0;
       tick.cool = 0;
-    } else if (tick.hot > 3 && pxNow > pxFloor + 0.02) {
-      pxNow = Math.max(pxFloor, pxNow - (pace.tier === 0 ? 0.08 : 0.12));
-      renderer.setPixelRatio(pxNow);
-      fit();
-      tick.hot = 0;
     } else if (tick.cool > 80 && pace.tier < glInfo.tier) {
       pace.tier++;
       syncPace();
-      tick.cool = 0;
-    } else if (tick.cool > 40 && pxNow < pxCap - 0.04) {
-      pxNow = Math.min(pxCap, pxNow + 0.08);
-      renderer.setPixelRatio(pxNow);
-      fit();
       tick.cool = 0;
     }
   }
