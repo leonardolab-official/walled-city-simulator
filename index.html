@@ -14074,6 +14074,12 @@ function setWalk(on, fromPlace) {
     setSettings(false);
     closeLegend();
     closeCard();
+    const section = document.getElementById("section");
+    const floor = document.getElementById("floor");
+    if (section) section.value = 100;
+    if (floor) floor.value = 14;
+    setSection(1);
+    setFloor(14);
   }
   const hintEl = document.getElementById("hint");
   if (on) {
