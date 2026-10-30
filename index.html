@@ -1073,12 +1073,12 @@ const renderer = new THREE.WebGLRenderer({
   antialias: tier > 1,
   powerPreference: "high-performance"
 });
-// The tube reads when the picture is about 720p on the long side. A sharper
-// buffer turns the scanlines into a faint veil, so the size stays put.
-const CRT_LONG = 1280;
+// An 1980s television frame is about 720 by 480. Anything finer reads as a
+// modern panel under the scanlines, so the buffer never grows past that.
+const CRT_W = 720;
+const CRT_H = 480;
 function crtSize(cssW, cssH) {
-  const long = Math.max(cssW, cssH, 1);
-  const scale = Math.min(1, CRT_LONG / long);
+  const scale = Math.min(1, CRT_W / Math.max(cssW, 1), CRT_H / Math.max(cssH, 1));
   return {
     w: Math.max(1, Math.round(cssW * scale)),
     h: Math.max(1, Math.round(cssH * scale))
