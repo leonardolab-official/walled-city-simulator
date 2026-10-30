@@ -839,7 +839,9 @@ function applyBoot() {
   var title = document.getElementById("boot-title");
   var line = document.getElementById("boot-line");
   var titleLang = bootLang === "ja" ? "ja" : "zh";
-  if (title) title.textContent = (BOOT[titleLang] && BOOT[titleLang].title) || BOOT.zh.title;
+  var placeTitle = (BOOT[titleLang] && BOOT[titleLang].title) || BOOT.zh.title;
+  if (title) title.textContent = placeTitle;
+  document.title = placeTitle + " — Kowloon Walled City Simulator";
   if (line) line.textContent = bootText("load");
   document.documentElement.lang = bootLang === "zh" ? "zh-Hant" : bootLang;
 }
