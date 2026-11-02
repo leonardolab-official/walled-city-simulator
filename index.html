@@ -5552,9 +5552,9 @@ function segEW(z, x0, x1, width) {
   return { x: x0, z: z - width / 2, x2: x1, z2: z + width / 2 };
 }
 // Parcels and street voids traced from the Kai Fong welfare-association sheet.
-// The yamen garden is the west half of the low compound. 老人中心 and 青年中心
-// occupy the east half. A dropped north-edge parcel is restored; the Tin Hau
-// hall takes the lots that actually front 天后廟街.
+// The yamen garden is the west half of the compound. The 1979 old people’s
+// centre and the youth centre occupy the east half. A dropped north-edge
+// parcel is restored; the Tin Hau hall takes the lots that actually front 天后廟街.
 const TEMPLE_X = 54.2, TEMPLE_Z = 7.7, TEMPLE_W = 11.6, TEMPLE_D = 4.3;
 const court = { x: 84, z: 39, x2: 121.5, z2: 81, court: true };
 const FOOT_LOTS = [
@@ -8440,8 +8440,11 @@ city.add(courtPave);
 const courtAxis = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.04, 30), yamenStone);
 courtAxis.position.set(94.5, 0.2, 56.5);
 city.add(courtAxis);
-const eastYard = new THREE.Mesh(new THREE.BoxGeometry(12, 0.06, 3.0), courtPave.material);
-eastYard.position.set(111.2, 0.16, 57.1);
+// The strip west of the old people’s centre. The two centres meet at a right
+// angle, with a gap on the youth centre’s south side, so this paving is the
+// walk along the centre’s west wall rather than a yard cut through the block.
+const eastYard = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.06, 12.4), courtPave.material);
+eastYard.position.set(105.8, 0.16, 66.6);
 city.add(eastYard);
 function lowBlock(x, z, w, d, h, name) {
   const floors = 2;
@@ -8515,15 +8518,192 @@ function lowBlock(x, z, w, d, h, name) {
   city.add(pole);
 }
 lowBlock(104.2, 43, 14, 12, 4.0, "青年中心");
-lowBlock(104.2, 59.2, 14, 11, 3.8, "老人中心");
-function refuseNet(cx, cz, w, d, y, filth) {
+function elderPaintMap() {
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 128;
+  const g = c.getContext("2d");
+  g.fillStyle = "#c8beae";
+  g.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 70; i++) {
+    const shade = 198 + ((i * 17) % 34);
+    g.fillStyle = "rgba(" + shade + "," + (shade - 4) + "," + (shade - 10) + ",0.22)";
+    g.fillRect((i * 23) % 122, (i * 11) % 122, 4 + (i % 3), 2 + (i % 2));
+  }
+  g.strokeStyle = "rgba(150,142,130,0.14)";
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(0, 63);
+  g.lineTo(128, 64);
+  g.stroke();
+  const tex = new THREE.CanvasTexture(c);
+  tex.encoding = THREE.sRGBEncoding;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+function centreSign(words) {
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 128;
+  const g = c.getContext("2d");
+  g.fillStyle = "#e7e0d4";
+  g.fillRect(0, 0, 512, 128);
+  g.strokeStyle = "#8d8476";
+  g.lineWidth = 8;
+  g.strokeRect(8, 8, 496, 112);
+  g.fillStyle = "#2a2622";
+  g.font = "700 72px " + SHOP_FONT;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText(words, 256, 66);
+  const tex = new THREE.CanvasTexture(c);
+  tex.encoding = THREE.sRGBEncoding;
+  return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.86, metalness: 0, clippingPlanes: clips });
+}
+// 1979 old people’s centre. The premises were about three times a 1,600 sq ft
+// offer, so about 4,800 sq ft. A 1992 rooftop photograph shows the block as
+// two storeys, at a right angle to the youth centre. 12.4 × 18.0 m is one
+// floor; two floors are about 446 m². Painted cement render, regular barred
+// windows, a flat roof. The tenement stain — board seams, 2.5 m joints,
+// street soot, drip bands — stays off this wall. Rain only darkens the paint.
+function elderCentre() {
+  const x = 107.4, z = 57.4, w = 12.4, d = 18.0;
+  const storey = 3.15;
+  const wallH = storey * 2;
+  const name = "老人中心";
+  const paint = mappedMat(elderPaintMap(), 0.92, 2.2);
+  attachWetFilm(paint);
+  const bandMat = paint.clone();
+  bandMat.color.setRGB(0.76, 0.72, 0.66);
+  const baseMat = paint.clone();
+  baseMat.color.setRGB(0.55, 0.52, 0.47);
+  const glassMat = new THREE.MeshStandardMaterial({
+    color: 0x101416, roughness: 0.24, metalness: 0.08,
+    emissive: 0xf0e2c4, emissiveIntensity: 0.015, clippingPlanes: clips
+  });
+  attachWetFilm(glassMat);
+  shopGlow.push({ mat: glassMat, day: 0.015, night: 0.26 });
+  const barMat = new THREE.MeshStandardMaterial({
+    color: 0x242a2c, roughness: 0.38, metalness: 0.58, clippingPlanes: clips
+  });
+  attachWetFilm(barMat);
+  const frameMat = new THREE.MeshStandardMaterial({
+    color: 0x343c3e, roughness: 0.46, metalness: 0.42, clippingPlanes: clips
+  });
+  attachWetFilm(frameMat);
+  const data = { zone: "yamen", street: "衙門", name, floors: 2, hall: true, w, d, x, z };
+  function addBox(mat, sx, sy, sz, px, py, pz, pick) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+    mesh.position.set(px, py, pz);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    if (pick) {
+      mesh.userData = data;
+      pickables.push(mesh);
+    }
+    city.add(mesh);
+    return mesh;
+  }
+  addBox(paint, w, wallH, d, x + w / 2, wallH / 2, z + d / 2, true);
+  const bh = 0.26;
+  addBox(baseMat, w + 0.12, bh, 0.14, x + w / 2, bh / 2, z + 0.02);
+  addBox(baseMat, w + 0.12, bh, 0.16, x + w / 2, bh / 2, z + d - 0.02);
+  addBox(baseMat, 0.14, bh, d, x + w - 0.02, bh / 2, z + d / 2);
+  addBox(baseMat, 0.16, bh, 7.85, x - 0.02, bh / 2, z + 3.925);
+  addBox(baseMat, 0.16, bh, 7.85, x - 0.02, bh / 2, z + 14.075);
+  const by = storey;
+  addBox(bandMat, w + 0.18, 0.16, 0.14, x + w / 2, by, z - 0.02);
+  addBox(bandMat, w + 0.18, 0.16, 0.14, x + w / 2, by, z + d + 0.02);
+  addBox(bandMat, 0.14, 0.16, d, x - 0.02, by, z + d / 2);
+  addBox(bandMat, 0.14, 0.16, d, x + w + 0.02, by, z + d / 2);
+  const deck = mappedMat(concreteRoofMap(), 0.93, 1.4);
+  deck.color.setHex(0xb3ab9f);
+  attachWetRoof(deck);
+  addBox(deck, w - 0.42, 0.08, d - 0.42, x + w / 2, wallH + 0.04, z + d / 2);
+  const ph = 0.64, pt = 0.16, py = wallH + ph / 2;
+  addBox(paint, w + pt, ph, pt, x + w / 2, py, z + pt / 2);
+  addBox(paint, w + pt, ph, pt, x + w / 2, py, z + d - pt / 2);
+  addBox(paint, pt, ph, d - pt, x + pt / 2, py, z + d / 2);
+  addBox(paint, pt, ph, d - pt, x + w - pt / 2, py, z + d / 2);
+  function windowOn(face, along, yMid, ww, hh) {
+    const deep = 0.07, t = 0.05;
+    let cx, cz, wide, ox, oz;
+    const cy = yMid;
+    if (face === "s") { cx = x + along; cz = z + d + 0.035; wide = true; ox = 0; oz = 0.04; }
+    else if (face === "n") { cx = x + along; cz = z - 0.035; wide = true; ox = 0; oz = -0.04; }
+    else if (face === "e") { cx = x + w + 0.035; cz = z + along; wide = false; ox = 0.04; oz = 0; }
+    else { cx = x - 0.035; cz = z + along; wide = false; ox = -0.04; oz = 0; }
+    function piece(mat, sx, sy, sz, px, py, pz) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+      mesh.position.set(px, py, pz);
+      city.add(mesh);
+    }
+    piece(glassMat, wide ? ww - 0.1 : 0.03, hh - 0.1, wide ? 0.03 : ww - 0.1, cx, cy, cz);
+    piece(frameMat, wide ? ww + 0.06 : deep, t, wide ? deep : ww + 0.06, cx, cy + hh / 2, cz);
+    piece(frameMat, wide ? ww + 0.06 : deep, t, wide ? deep : ww + 0.06, cx, cy - hh / 2, cz);
+    piece(frameMat, wide ? t : deep, hh, wide ? deep : t, cx + (wide ? -ww / 2 : 0), cy, cz + (wide ? 0 : -ww / 2));
+    piece(frameMat, wide ? t : deep, hh, wide ? deep : t, cx + (wide ? ww / 2 : 0), cy, cz + (wide ? 0 : ww / 2));
+    [-ww / 6, ww / 6].forEach(shift => {
+      piece(barMat, wide ? 0.04 : 0.045, hh - 0.16, wide ? 0.045 : 0.04, cx + (wide ? shift : ox), cy, cz + (wide ? oz : shift));
+    });
+    [-0.24, 0.24].forEach(function (k) {
+      piece(barMat, wide ? ww - 0.16 : 0.038, 0.034, wide ? 0.038 : ww - 0.16, cx + (wide ? 0 : ox), cy + hh * k, cz + (wide ? oz : 0));
+    });
+  }
+  const shortAt = [w * 0.2, w * 0.5, w * 0.8];
+  const longAt = [0.5, 1.5, 2.5, 3.5, 4.5].map(i => d * i / 5);
+  const gSill = 0.95, gH = 1.52, uSill = 4.16, uH = 1.46;
+  function row(face, ats, y0, hh, skip) {
+    const ww = face === "e" || face === "w" ? 1.55 : 1.4;
+    for (let i = 0; i < ats.length; i++) {
+      if (i === skip) continue;
+      windowOn(face, ats[i], y0 + hh / 2, ww, hh);
+    }
+  }
+  row("s", shortAt, gSill, gH, -1);
+  row("s", shortAt, uSill, uH, -1);
+  row("n", shortAt, gSill, gH, -1);
+  row("n", shortAt, uSill, uH, -1);
+  row("e", longAt, gSill, gH, -1);
+  row("e", longAt, uSill, uH, -1);
+  row("w", longAt, gSill, gH, 2);
+  row("w", longAt, uSill, uH, -1);
+  // The door faces the yamen courts, on the long west wall.
+  const doorW = 1.55, doorH = 2.45;
+  const dz = z + d / 2;
+  const dx = x - 0.05;
+  addBox(frameMat, 0.08, 0.06, doorW + 0.14, dx, doorH, dz);
+  addBox(frameMat, 0.08, doorH, 0.06, dx, doorH / 2, dz - doorW / 2);
+  addBox(frameMat, 0.08, doorH, 0.06, dx, doorH / 2, dz + doorW / 2);
+  addBox(glassMat, 0.03, doorH - 0.14, doorW * 0.44, dx, (doorH - 0.14) / 2 + 0.02, dz - doorW * 0.24);
+  addBox(glassMat, 0.03, doorH - 0.14, doorW * 0.44, dx, (doorH - 0.14) / 2 + 0.02, dz + doorW * 0.24);
+  addBox(barMat, 0.045, doorH - 0.12, 0.04, dx - 0.03, doorH / 2, dz);
+  addBox(bandMat, 1.2, 0.11, 3.15, x - 0.52, 2.66, dz);
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.56, 3.4), centreSign(name));
+  plate.position.set(x - 0.09, 3.58, dz);
+  city.add(plate);
+  const stepMat = mappedMat(graniteStepMap(), 0.96, 1.2);
+  addBox(stepMat, 0.5, 0.12, 2.25, x - 0.24, 0.18, dz);
+  addBox(stepMat, 0.72, 0.12, 2.55, x - 0.7, 0.06, dz);
+  const pipeMat = new THREE.MeshStandardMaterial({
+    color: 0x8a928f, roughness: 0.48, metalness: 0.4, clippingPlanes: clips
+  });
+  attachWetFilm(pipeMat);
+  addBox(pipeMat, 0.07, wallH + 0.45, 0.07, x + w + 0.015, (wallH + 0.45) / 2, z + 17.55);
+  addAnchor(x, z, w, d, squareAnchor);
+  walkSolids.push({ x, z, x2: x + w, z2: z + d });
+  walkSolids.push({ x: x - 1.15, z: dz - 1.35, x2: x, z2: dz + 1.35 });
+}
+elderCentre();
+function refuseNet(cx, cz, w, d, y, filth, sag) {
   const c = document.createElement("canvas");
   c.width = 128;
   c.height = 128;
   const g = c.getContext("2d");
   g.clearRect(0, 0, 128, 128);
-  g.strokeStyle = filth ? "rgba(74,70,62,0.95)" : "rgba(96,92,84,0.95)";
-  g.lineWidth = 1.5;
+  g.strokeStyle = filth ? "rgba(74,70,62,0.95)" : "rgba(42,40,36,0.96)";
+  g.lineWidth = filth ? 1.5 : 2;
   for (let i = 0; i <= 128; i += 8) {
     g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 128); g.stroke();
     g.beginPath(); g.moveTo(0, i); g.lineTo(128, i); g.stroke();
@@ -8547,26 +8727,84 @@ function refuseNet(cx, cz, w, d, y, filth) {
   }
   const tex = meshMips(c);
   tex.encoding = THREE.sRGBEncoding;
+  const cutout = !filth;
   const mat = new THREE.MeshStandardMaterial({
-    map: tex, transparent: true, alphaTest: filth ? 0.08 : 0.25, side: THREE.DoubleSide,
-    roughness: 0.94, metalness: 0.06, color: filth ? 0x6a655c : 0x4a4742,
-    opacity: filth ? 0.95 : 1, depthWrite: false, clippingPlanes: clips
+    map: tex, transparent: !cutout, alphaTest: filth ? 0.08 : 0.32, side: THREE.DoubleSide,
+    roughness: 0.9, metalness: 0.08, color: filth ? 0x6a655c : 0x3c3a36,
+    opacity: filth ? 0.95 : 1, depthWrite: cutout, clippingPlanes: clips
   });
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d, 4, 3), mat);
+  const drop = sag == null ? 0.45 : sag;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d, 8, 5), mat);
   const pos = mesh.geometry.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const u = pos.getX(i) / (w / 2);
     const v = pos.getY(i) / (d / 2);
-    pos.setZ(i, -(1 - u * u) * (1 - v * v) * 0.45);
+    pos.setZ(i, -(1 - u * u) * (1 - v * v) * drop);
   }
   pos.needsUpdate = true;
   mesh.geometry.computeVertexNormals();
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.set(cx, y == null ? 7.6 : y, cz);
   city.add(mesh);
+  return mesh;
 }
-refuseNet(94.5, 51.4, 12, 3.4);
-refuseNet(94.5, 62.4, 11.5, 3.8);
+// Late photographs show the wire tied under the eaves, sagging across the
+// court with the rubbish thrown from the towers. A sheet at 7.6 m cleared
+// the ridge and read as floating. The edge sits just under the eave board
+// (about 3.5 m) and the belly drops toward the court.
+function courtNet(cx, cz, w, d, eaveNorth, eaveSouth) {
+  const y = 3.32;
+  const sag = 0.72;
+  refuseNet(cx, cz, w, d, y, false, sag);
+  const cord = courtNet.cord || (courtNet.cord = new THREE.MeshStandardMaterial({
+    color: 0x2c2a26, roughness: 0.68, metalness: 0.3, clippingPlanes: clips
+  }));
+  const scrap = courtNet.scrap || (courtNet.scrap = new THREE.MeshStandardMaterial({
+    color: 0x4a4036, roughness: 0.96, metalness: 0, clippingPlanes: clips
+  }));
+  const x0 = cx - w / 2, x1 = cx + w / 2, z0 = cz - d / 2, z1 = cz + d / 2;
+  function rope(px, pz, len, axis) {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(axis === "x" ? len : 0.045, 0.04, axis === "z" ? len : 0.045),
+      cord
+    );
+    mesh.position.set(px, y, pz);
+    city.add(mesh);
+  }
+  rope(cx, z0, w, "x");
+  rope(cx, z1, w, "x");
+  rope(x0, cz, d, "z");
+  rope(x1, cz, d, "z");
+  function stay(ax, ay, az, bx, by, bz) {
+    const dir = new THREE.Vector3(bx - ax, by - ay, bz - az);
+    const len = dir.length();
+    if (len < 0.02) return;
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, len, 4), cord);
+    mesh.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.multiplyScalar(1 / len));
+    city.add(mesh);
+  }
+  const wallY = 2.18, west = 87.31, east = 101.69;
+  [z0, cz, z1].forEach(z => {
+    stay(x0, y, z, west, wallY, z);
+    stay(x1, y, z, east, wallY, z);
+  });
+  [x0 + w * 0.22, cx, x1 - w * 0.22].forEach(x => {
+    stay(x, y, z0, x, 3.5, eaveNorth + 0.03);
+    stay(x, y, z1, x, 3.5, eaveSouth - 0.03);
+  });
+  [[-1.15, 0.12, 0.62, 0.07, 0.34], [0.85, -0.16, 0.46, 0.06, 0.3], [-0.15, 0.28, 0.32, 0.05, 0.24], [1.35, 0.02, 0.4, 0.06, 0.22]].forEach(b => {
+    const u = b[0] / (w / 2);
+    const v = b[1] / (d / 2);
+    const drop = (1 - u * u) * (1 - v * v) * sag;
+    const bit = new THREE.Mesh(new THREE.BoxGeometry(b[2], b[3], b[4]), scrap);
+    bit.position.set(cx + b[0], y - drop + b[3] / 2, cz + b[1]);
+    bit.rotation.y = b[0] * 0.4;
+    city.add(bit);
+  });
+}
+courtNet(94.5, 51.35, 13.68, 2.39, 50.033, 52.667);
+courtNet(94.5, 62.35, 13.68, 3.39, 60.533, 64.167);
 squareAnchor = null;
 
 const wellMat = new THREE.MeshStandardMaterial({
@@ -11323,7 +11561,7 @@ const I18N = {
     backBtn: "返回",
     hintWalk: "拖曳張望 · W A S D 行走 · Shift 加快 · 再按步行或 5 返回",
     cutOff: "未切開", cutOn: "保留北面，切面朝南",
-    yamenMeta: "單層三進兩院，屋脊約 6.5 米。東側低矮的是老人中心和青年中心。",
+    yamenMeta: "單層三進兩院，屋脊約 6.5 米。東側老人中心是一九七九年的兩層房子，樓面約四千八百平方呎；青年中心在北面，與它成直角。",
     templeMeta: "一九五一年的廟廳，門向南，天井上有鐵網",
     places: { west: "西城路", well: "大井街", loyan: "老人街", kwong: "光明街", shing: "龍城路", szkung: "社公街", chun: "龍津路", lane: "龍津橫巷", tsun: "龍津道", yamen: "九龍巡檢司衙署", temple: "天后廟", core: "內裏" },
     labels: {
@@ -11345,7 +11583,7 @@ const I18N = {
       chun: "城內最老的街，東西向，對準城東、後來埋在啟德地下的龍津石橋，不是南門。街冊英文作 Lung Chun Avenue，以別於一九五一年才開的龍津道。龍津義學是衙署以外的另一座清建築，沿這條街。到一九八七年，原址已是唐樓義學大樓。書中剖面把它畫在龍如樓與東升樓之間。這幅模型沒有單獨標出那一座。",
       tsun: "南面城基拆後，一九五一年樓房夾出的路，用「道」字和龍津路分開，取「聚龍通津」。魯金記麻雀館、牌九、番攤、狗肉檔、煙館集中於此。英文作 Lung Tsun Road。",
       lane: "龍津路支巷，街冊作龍津橫巷。すきま物語：約一米的隙、滴水喉管、樓與樓之間的垃圾網，以及不落地的路徑。",
-      yamen: "九龍巡檢司衙署，城內唯一留到清拆的清代建築。單層三進兩院：前進兩側是耳房，中進是公堂，後進是官邸。青磚、麻石柱礎，柱和山牆承檩，屋面是素燒筒瓦和布瓦。模型屋脊約六米半，四周唐樓留高，天井才像一個坑。一八九九年以後做過安老院、學校和診所。這裡的學校是廣蔭院的學額，不是龍津義學。約一九〇六年石門額刻上 ALMSHOUSE；廣蔭院一九六九年遷去鑽石山，這幾個字在一九八七年還在。公園一九九五年才寫的門聯，這幅圖不放。晚期照片裡，天井上方有一張網，接著唐樓扔下的垃圾。一八〇二年的兩門炮見於二十世紀初的照片，一九九六年修復後又放回入口兩側；這幅一九八七年的圖不把炮放回去。",
+      yamen: "九龍巡檢司衙署，城內唯一留到清拆的清代建築。單層三進兩院：前進兩側是耳房，中進是公堂，後進是官邸。青磚、麻石柱礎，柱和山牆承檩，屋面是素燒筒瓦和布瓦。模型屋脊約六米半，四周唐樓留高，天井才像一個坑。一八九九年以後做過安老院、學校和診所。這裡的學校是廣蔭院的學額，不是龍津義學。約一九〇六年石門額刻上 ALMSHOUSE；廣蔭院一九六九年遷去鑽石山，這幾個字在一九八七年還在。公園一九九五年才寫的門聯，這幅圖不放。晚期照片裡，天井上方有一張網，接著唐樓扔下的垃圾。一八〇二年的兩門炮見於二十世紀初的照片，一九九六年修復後又放回入口兩側；這幅一九八七年的圖不把炮放回去。東側的老人中心是一九七九年的兩層房子，兩層樓面約四千八百平方呎，北面的青年中心與它成直角。一九九三年留下的是衙署，不是這兩座。",
       temple: "城寨這座天后廟是一九五一年所建。海邊的舊廟被清拆後，坊眾把神像遷入，廟廳放在北面天后廟街的中段，青磚、素燒瓦頂，門向南。通向廟門的是一條濕窄巷。門與街之間是一小天井，上張鐵網，承接樓上扔下的垃圾，網眼裡偶有天光。香爐一個，在門前。神像在廳內，不放在街上。天后廟後街是朝光明街的橫巷。城邊另有一座福德祠，位置沒有測到這張圖上，模型不另起一座。廟與城寨一同清拆，天后像後移打鼓嶺道九龍城天后會。生活復元パノラマ把神廳和廚房畫在同一帶。",
       core: "這座樓不臨有名字的街。書裡的暗核是住戶和工場，地面多是一扇門。街名只留給真正開向那條街的舖。"
     }
@@ -11375,7 +11613,7 @@ const I18N = {
     backBtn: "Back",
     hintWalk: "Drag to look · W A S D walks · Shift is quicker · Walk or 5 returns",
     cutOff: "no cut", cutOn: "keeping the north side, cut faces south",
-    yamenMeta: "One storey, three halls, two courts, ridge about 6.5 m. The low blocks to the east are the old people’s centre and the youth centre.",
+    yamenMeta: "One storey, three halls, two courts, ridge about 6.5 m. The old people’s centre to the east is the 1979 two-storey block, about 4,800 sq ft, with the youth centre at right angles to its north.",
     templeMeta: "1951 hall, door to the south, a net over the court",
     places: { west: "West City Road", well: "Tai Chang Street", loyan: "Lo Yan Street", kwong: "Kwong Ming Street", shing: "Lung Shing Road", szkung: "Sz Kung Street", chun: "Lung Chun Avenue", lane: "Lung Chun Lane", tsun: "Lung Tsun Road", yamen: "Kowloon assistant magistrate's yamen", temple: "Tin Hau Temple", core: "Interior" },
     labels: {
@@ -11397,7 +11635,7 @@ const I18N = {
       chun: "Oldest internal street, running east–west toward the Lung Tsun Stone Bridge east of the city, later buried under Kai Tak. It is not the south gate. Street lists give Lung Chun Avenue, distinct from Lung Tsun Road, which was cut in 1951. 龍津義學 was the other Qing building, on this street and distinct from the yamen. By 1987 the site was the tenement 義學大樓. The book’s section draws it between 龍如樓 and 東升樓. This model does not mark that tower.",
       tsun: "Opened in 1951 on the demolished south wall, named 龍津道 — a 道, not a 路 — for 聚龍通津, to distinguish it from Lung Chun Avenue. Lu Jin places mahjong, pai kau, fan-tan, dog-meat stalls and opium dens here. The English name is Lung Tsun Road.",
       lane: "Lung Chun Lane, recorded as 龍津橫巷, a branch of Lung Chun Avenue. すきま物語: metre-wide slits, dripping pipes, refuse nets, and routes that never touch the ground.",
-      yamen: "Yamen of the Kowloon assistant magistrate, the only Qing building to survive until demolition. One storey, three halls and two courts: ear rooms flank the front hall, the middle hall was the public court, and the rear hall the residence. Grey brick and granite bases. Columns and gable walls carry the purlins, under a roof of unglazed barrel tiles and flat tiles. The ridge is about 6.5 m, and the tenements stay tall so the courts read as a pit. After 1899 it was an almshouse, a school and a clinic. That school belonged to 廣蔭院, and it is not 龍津義學. About 1906 the stone lintel was cut with ALMSHOUSE. The home, later called 廣蔭院, left for Diamond Hill in 1969; the letters are still on the gate in this 1987 view. The couplets beside the gate were written for the park in 1995, so they are not here. Late photographs show a wire net over the courts, holding refuse thrown from the towers. Two muzzle-loading cannon dated 1802 appear in early-twentieth-century photographs and again beside the entrance after the 1996 restoration. This 1987 view does not put them back.",
+      yamen: "Yamen of the Kowloon assistant magistrate, the only Qing building to survive until demolition. One storey, three halls and two courts: ear rooms flank the front hall, the middle hall was the public court, and the rear hall the residence. Grey brick and granite bases. Columns and gable walls carry the purlins, under a roof of unglazed barrel tiles and flat tiles. The ridge is about 6.5 m, and the tenements stay tall so the courts read as a pit. After 1899 it was an almshouse, a school and a clinic. That school belonged to 廣蔭院, and it is not 龍津義學. About 1906 the stone lintel was cut with ALMSHOUSE. The home, later called 廣蔭院, left for Diamond Hill in 1969; the letters are still on the gate in this 1987 view. The couplets beside the gate were written for the park in 1995, so they are not here. Late photographs show a wire net over the courts, holding refuse thrown from the towers. Two muzzle-loading cannon dated 1802 appear in early-twentieth-century photographs and again beside the entrance after the 1996 restoration. This 1987 view does not put them back. The old people’s centre to the east is the 1979 two-storey block, about 4,800 sq ft over both floors, and the youth centre stands at right angles on its north side. What was kept in 1993 was the yamen, not these two blocks.",
       temple: "The Tin Hau temple inside the Walled City was built in 1951, after an older hall by the shore was cleared and the image was brought in. It stands in the north district, one grey-brick hall across 天后廟街, unglazed tiles, door to the south. A wet ginnel leads to the gate. Between the door and the street is a small court. Wire netting over it holds the rubbish thrown from the windows, and a little daylight comes through the mesh. One incense burner stands in front of the door. The image is inside the hall, not in the street. 天后廟後街 is the side lane toward Kwong Ming Street. A Fuk Tak shrine stood at the edge of the city. Its site is not fixed on this plan, so the model does not add a second hall. The temple was cleared with the city; the image later stood with the Kowloon City Tin Hau Association on Tak Ku Ling Road. The panorama sets shrines beside kitchens.",
       core: "This block does not front a named street. In the book the dark core is dwellings and workshops, and the ground is often only a door. A street name is kept for the shops that open onto that street."
     }
@@ -11427,7 +11665,7 @@ const I18N = {
     backBtn: "戻る",
     hintWalk: "ドラッグで見る · W A S D で歩く · Shift で速く · 歩くか 5 で戻る",
     cutOff: "切断なし", cutOn: "北側を残し、断面は南向き",
-    yamenMeta: "平屋、三進両院、棟約 6.5 メートル。東の低い棟は老人中心と青年中心。",
+    yamenMeta: "平屋、三進両院、棟約 6.5 メートル。東の老人中心は一九七九年の二階建て、延べ約四千八百平方フィート。青年中心はその北で直角に並ぶ。",
     templeMeta: "一九五一年の廟殿、扉は南、中庭の上に金網",
     places: { west: "西城路", well: "大井街", loyan: "老人街", kwong: "光明街", shing: "龍城路", szkung: "社公街", chun: "龍津路", lane: "龍津横巷", tsun: "龍津道", yamen: "九龍巡検司衙門", temple: "天后廟", core: "内部" },
     labels: {
@@ -11449,7 +11687,7 @@ const I18N = {
       chun: "城内最古の街。東西に走り、城の東、のち啓徳の下に埋まった龍津石橋に正対する。南門ではない。街冊の英文は Lung Chun Avenue。一九五一年に開いた龍津道とは別。龍津義學は衙門とは別の清代建築で、この街にあった。一九八七年にはその場所は唐楼の義學大樓になっていた。書の断面はそれを龍如樓と東升樓のあいだに描く。この模型はその一棟を別に標さない。",
       tsun: "南の城基が除かれたあと、一九五一年に楼と楼のあいだへ開いた路。龍津路と分けるため「道」の字を用い、聚龍通津を願った。魯金は麻雀、牌九、番攤、狗肉、煙館をここに置く。英文は Lung Tsun Road。",
       lane: "龍津路の支巷。街冊は龍津横巷。すきま物語は約一メートルの隙間、滴る管、楼と楼のごみ網、地に降りない経路。",
-      yamen: "九龍巡検司の衙門。清拆まで残った唯一の清代建築。平屋の三進両院。前進の両脇は耳房、中進が公堂、後進が官邸。青磚、麻石の柱礎、柱と山牆が檩を受け、屋根は素焼きの筒瓦と平瓦。棟は約六・五メートル。周囲の唐楼は高く残し、中庭を穴に読ませる。一八九九年以後は安老院、学校、診療所。ここでの学校は広蔭院の学額であり、龍津義學ではない。一九〇六年頃、石の扁額に ALMSHOUSE と刻まれた。広蔭院は一九六九年に鑽石山へ移ったが、この文字は一九八七年にも残る。公園の門聯は一九九五年に書かれたので、ここには置かない。晩期の写真では、中庭の上に金網があり、唐楼から落ちるごみを受けている。一八〇二年の前装砲二門は二十世紀初の写真にあり、一九九六年の修復後に入口の両脇へ戻された。この一九八七年の図には戻さない。",
+      yamen: "九龍巡検司の衙門。清拆まで残った唯一の清代建築。平屋の三進両院。前進の両脇は耳房、中進が公堂、後進が官邸。青磚、麻石の柱礎、柱と山牆が檩を受け、屋根は素焼きの筒瓦と平瓦。棟は約六・五メートル。周囲の唐楼は高く残し、中庭を穴に読ませる。一八九九年以後は安老院、学校、診療所。ここでの学校は広蔭院の学額であり、龍津義學ではない。一九〇六年頃、石の扁額に ALMSHOUSE と刻まれた。広蔭院は一九六九年に鑽石山へ移ったが、この文字は一九八七年にも残る。公園の門聯は一九九五年に書かれたので、ここには置かない。晩期の写真では、中庭の上に金網があり、唐楼から落ちるごみを受けている。一八〇二年の前装砲二門は二十世紀初の写真にあり、一九九六年の修復後に入口の両脇へ戻された。この一九八七年の図には戻さない。東の老人中心は一九七九年の二階建てで、延べ約四千八百平方フィート。青年中心はその北で直角に並ぶ。一九九三年に残ったのは衙門で、この二棟ではない。",
       temple: "城内の天后廟は一九五一年に建った。海辺の旧廟が除かれたあと、神像を遷し、北の天后廟街の中ほどに廟殿を置いた。青磚、素焼きの瓦、扉は南。廟門へ続くのは湿った狭い巷。扉と街のあいだに小さな中庭があり、上に金網を張って楼上から落ちるごみを受ける。網の目からわずかに光が落ちる。香炉は一つ、門の前。神像は廳の内に置き、街には出さない。天后廟後街は光明街へ向かう横巷。城の縁には福徳祠もあった。位置はこの図に定まらないので、模型は廟を別に立てない。廟は城と共に除かれ、天后像はのち打鼓嶺道の九龍城天后会へ。生活復元パノラマは神庁と台所を同じ帯に置く。",
       core: "この棟は名のある街に面していない。書の暗い核は住居と工場で、地面は扉だけのことが多い。街名は、その街に開いた店にだけ付ける。"
     }
@@ -17484,8 +17722,8 @@ seatPavement();
   spread(east, 3, 2);
 })();
 // A few people in the yamen garden. The halls, ear rooms and the two centres
-// stay empty; these tracks are the courts, the west side, the yard between
-// the centres, and the ground in front of the gate. They are added after the
+// stay empty; these tracks are the courts, the west side, the path along the
+// old people’s centre, and the ground in front of the gate. They are added after the
 // city reparent, so they stay in the scene and the easting is already world.
 (function crowdAtYamen() {
   const shift = SHEAR_K * YAMEN_AZ;
@@ -17501,8 +17739,8 @@ seatPavement();
   const northCourt = track({ axis: "x", c: 52.35, a: 88.3, b: 101.1, keep: 0.28, y: 0.24, pause: 7.5 });
   const southCourt = track({ axis: "x", c: 63.5, a: 88.9, b: 99.7, keep: 0.28, y: 0.24, pause: 7.5 });
   const westSide = track({ axis: "z", c: 85.5, a: 40.4, b: 64.2, keep: 0.2, pause: 6.2 });
-  const eastYard = track({ axis: "x", c: 57.1, a: 105.4, b: 117.3, keep: 0.24, y: 0.24, pause: 6.5 });
-  const southGate = track({ axis: "x", c: 73.85, a: 85.4, b: 116.2, keep: 0.38, pause: 6.8 });
+  const eastYard = track({ axis: "z", c: 105.8, a: 60.6, b: 72.8, keep: 0.2, y: 0.24, pause: 6.5 });
+  const southGate = track({ axis: "x", c: 73.85, a: 85.4, b: 106.0, keep: 0.38, pause: 6.8 });
   const people = [
     { path: northCourt, outfit: 2, dir: 1, along: 0.48, wait: 16, speed: 0.4 },
     { path: northCourt, outfit: 6, dir: -1, along: 0.22, wait: 0, speed: 0.48 },
