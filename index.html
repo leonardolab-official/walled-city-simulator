@@ -5203,7 +5203,7 @@ function lotRoll(x, z, salt) {
   n = Math.imul(n ^ Math.imul(Math.floor(z * 10) + 1, 668265263), 1274126177);
   return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
 }
-function makeFramedBlock(w, d, floors, floorH, openFaces, ox, oz, stairCut) {
+function makeFramedBlock(w, d, floors, floorH, openFaces, ox, oz, stairCut, step) {
   const open = {};
   (openFaces || []).forEach(f => { open[f] = true; });
   const h = floors * floorH;
@@ -5249,18 +5249,19 @@ function makeFramedBlock(w, d, floors, floorH, openFaces, ox, oz, stairCut) {
       else spanBox(sx0, sx1 - notch, zA, zB);
     }
   }
-  function faceWall(face, y0, y1, along0, thick, depth) {
+  function faceWall(face, y0, y1, along0, thick, depth, inward) {
     const sy = y1 - y0;
+    const back = inward || 0;
     if (sy < 0.04 || thick < 0.04 || depth < 0.04) return;
     // East and west frames sit a centimetre inside the lot line so a shared
     // corner does not paint the same face twice.
     const bias = (face === "e" || face === "w") ? 0.012 : 0;
     if (face === "n" || face === "s") {
-      const z = face === "n" ? -d / 2 + depth / 2 : d / 2 - depth / 2;
+      const z = face === "n" ? -d / 2 + back + depth / 2 : d / 2 - back - depth / 2;
       const x = -w / 2 + along0 + thick / 2;
       box(frame, x, (y0 + y1) / 2, z, thick, sy, depth);
     } else {
-      const x = face === "w" ? -w / 2 + bias + depth / 2 : w / 2 - bias - depth / 2;
+      const x = face === "w" ? -w / 2 + bias + back + depth / 2 : w / 2 - bias - back - depth / 2;
       const z = -d / 2 + along0 + thick / 2;
       box(frame, x, (y0 + y1) / 2, z, depth, sy, thick);
     }
@@ -5268,7 +5269,13 @@ function makeFramedBlock(w, d, floors, floorH, openFaces, ox, oz, stairCut) {
   for (let f = 0; f < floors; f++) {
     const ground = f === 0;
     const inset = face => open[face] ? (ground ? 0.48 : 0.28) : 0.035;
-    const nI = inset("n"), sI = inset("s"), wI = inset("w"), eI = inset("e");
+    let nI = inset("n"), sI = inset("s"), wI = inset("w"), eI = inset("e");
+    if (step && f >= step.from) {
+      nI += step.n;
+      sI += step.s;
+      wI += step.w;
+      eI += step.e;
+    }
     const y0 = f * floorH + 0.055;
     const y1 = (f + 1) * floorH - 0.055;
     const sx0 = -w / 2 + wI, sx1 = w / 2 - eI;
@@ -5286,15 +5293,33 @@ function makeFramedBlock(w, d, floors, floorH, openFaces, ox, oz, stairCut) {
     if (open[next]) a1 = span - 0.3;
     if (a1 - a0 < 0.45) { a0 = 0.05; a1 = span - 0.05; }
     for (let f = 1; f <= floors; f++) {
+      let b0 = a0, b1 = a1, pull = 0;
+      if (step && f >= step.from) {
+        if (face === "n" || face === "s") {
+          b0 = a0 + step.w;
+          b1 = a1 - step.e;
+        } else {
+          b0 = a0 + step.n;
+          b1 = a1 - step.s;
+        }
+        pull = face === "n" ? step.n : face === "s" ? step.s : face === "w" ? step.w : step.e;
+        if (b1 - b0 < 0.4) continue;
+      }
       const y = f * floorH;
-      faceWall(face, y - 0.17, y + 0.17, a0, a1 - a0, 0.32);
+      faceWall(face, y - 0.17, y + 0.17, b0, b1 - b0, 0.32, pull);
     }
   });
-  const pH = 0.64, pT = 0.11, yP = h + pH / 2;
-  box(frame, 0, yP, -d / 2 + 0.02 + pT / 2, Math.max(0.2, w - 0.1 - pT * 2), pH, pT);
-  box(frame, 0, yP, d / 2 - 0.02 - pT / 2, Math.max(0.2, w - 0.1 - pT * 2), pH, pT);
-  box(frame, -w / 2 + 0.02 + pT / 2, yP, 0, pT, pH, Math.max(0.2, d - 0.05));
-  box(frame, w / 2 - 0.02 - pT / 2, yP, 0, pT, pH, Math.max(0.2, d - 0.05));
+  const topIn = (step && floors - 1 >= step.from) ? step : { n: 0, s: 0, e: 0, w: 0 };
+  const pH = floors > 2 ? 0.32 + lotRoll(ox || 0, oz || 0, 0xA11) * 0.58 : 0.64;
+  const pT = 0.11, yP = h + pH / 2;
+  const tw = Math.max(0.2, w - topIn.w - topIn.e - 0.1 - pT * 2);
+  const td = Math.max(0.2, d - topIn.n - topIn.s - 0.05);
+  const pcx = (topIn.w - topIn.e) / 2;
+  const pcz = (topIn.n - topIn.s) / 2;
+  box(frame, pcx, yP, -d / 2 + topIn.n + 0.02 + pT / 2, tw, pH, pT);
+  box(frame, pcx, yP, d / 2 - topIn.s - 0.02 - pT / 2, tw, pH, pT);
+  box(frame, -w / 2 + topIn.w + 0.02 + pT / 2, yP, pcz, pT, pH, td);
+  box(frame, w / 2 - topIn.e - 0.02 - pT / 2, yP, pcz, pT, pH, td);
   const shellGeo = mergedBoxes(shell);
   const frameGeo = mergedBoxes(frame);
   // Plaster grain, broad enough that the repeat is not a course line.
@@ -5431,8 +5456,41 @@ function reserveBuildingStair(x, z, w, d, floors, facePlans, openFaces) {
   if (openFaces.indexOf(best) < 0) openFaces.push(best);
   return stairSlot(x, z, w, d, best, openFaces);
 }
+// A later household often stopped short of the lot line. The lower floors
+// keep the parcel. The added storeys step back, and the ledge is the roof
+// they built on. The outer street wall of a low block stays square.
+function massStep(x, z, w, d, floors) {
+  if (floors < 6 || w < 4.4 || d < 4.4) return null;
+  if (lotRoll(x, z, 0x57E9) < 0.56) return null;
+  const extra = 1 + Math.floor(lotRoll(x, z, 0x57EA) * Math.min(3, floors - 4));
+  const from = floors - extra;
+  if (from < 3) return null;
+  const bite = 0.48 + lotRoll(x, z, 0x57EB) * 0.95;
+  const side = lotRoll(x, z, 0x57EC);
+  const inset = { n: 0, s: 0, e: 0, w: 0 };
+  if (d >= w) {
+    if (side < 0.55) inset.s = bite;
+    else inset.n = bite;
+    if (lotRoll(x, z, 0x57ED) < 0.3 && w > 6.2) inset.e = bite * 0.55;
+  } else {
+    if (side < 0.55) inset.e = bite;
+    else inset.w = bite;
+    if (lotRoll(x, z, 0x57ED) < 0.3 && d > 6.2) inset.n = bite * 0.55;
+  }
+  inset.n = Math.min(inset.n, d * 0.26);
+  inset.s = Math.min(inset.s, d * 0.26);
+  inset.e = Math.min(inset.e, w * 0.26);
+  inset.w = Math.min(inset.w, w * 0.26);
+  if (w - inset.e - inset.w < 2.4 || d - inset.n - inset.s < 2.4) return null;
+  if (inset.n + inset.s + inset.e + inset.w < 0.35) return null;
+  return { from, n: inset.n, s: inset.s, e: inset.e, w: inset.w };
+}
 function addMass(x, z, w, d, floors, meta) {
   const h = floors * FLOOR_H;
+  const step = massStep(x, z, w, d, floors);
+  const top = step
+    ? { x: x + step.w, z: z + step.n, w: w - step.w - step.e, d: d - step.n - step.s }
+    : { x: x, z: z, w: w, d: d };
   const facadeIndex = facadePick(x, z, meta.facade == null ? Math.floor(rnd() * facades.length) : meta.facade);
   const map = facades[facadeIndex].clone();
   map.wrapS = map.wrapT = THREE.RepeatWrapping;
@@ -5455,7 +5513,7 @@ function addMass(x, z, w, d, floors, meta) {
     if (p.x > court.x + 0.15 && p.x < court.x2 - 0.15 && p.z > court.z + 0.15 && p.z < court.z2 - 0.15) openFaces.push(f);
   });
   const stair = reserveBuildingStair(x, z, w, d, floors, facePlans, openFaces);
-  const framed = makeFramedBlock(w, d, floors, FLOOR_H, openFaces, x, z, stair && stair.cut);
+  const framed = makeFramedBlock(w, d, floors, FLOOR_H, openFaces, x, z, stair && stair.cut, step);
   const frameTint = wallColor();
   frameTint.lerp(wallTint, 0.7);
   frameTint.multiplyScalar(0.9 + rnd() * 0.06);
@@ -5492,6 +5550,7 @@ function addMass(x, z, w, d, floors, meta) {
     openFaces: openFaces.slice(),
     shops: facePlans.reduce((acc, fp) => acc.concat(fp.plans.map(p => p.kind)), [])
   };
+  if (step) data.step = step;
   if (stair) data.shops.push("stair");
   meshes.forEach(mesh => {
     mesh.geometry.userData.pack = 1;
@@ -5502,12 +5561,30 @@ function addMass(x, z, w, d, floors, meta) {
     pickables.push(mesh);
   });
   massCount++;
-  const roofSlab = new THREE.Mesh(new THREE.BoxGeometry(Math.max(0.5, w - 0.3), 0.16, Math.max(0.5, d - 0.3)), roofMat);
+  const roofSlab = new THREE.Mesh(new THREE.BoxGeometry(Math.max(0.5, top.w - 0.3), 0.16, Math.max(0.5, top.d - 0.3)), roofMat);
   roofSlab.geometry.userData.pack = 2;
-  roofSlab.position.set(x + w / 2, h + 0.08, z + d / 2);
+  roofSlab.position.set(top.x + top.w / 2, h + 0.08, top.z + top.d / 2);
   roofSlab.userData = { roof: 1 };
   city.add(roofSlab);
   roofMeshes.push(roofSlab);
+  if (step) {
+    const ledgeY = step.from * FLOOR_H + 0.05;
+    function ledge(sx, sz, px, pz) {
+      if (sx < 0.25 || sz < 0.25) return;
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, 0.1, sz), roofMat);
+      mesh.geometry.userData.pack = 2;
+      mesh.position.set(px, ledgeY, pz);
+      mesh.userData = { roof: 1 };
+      mesh.receiveShadow = true;
+      city.add(mesh);
+      roofMeshes.push(mesh);
+    }
+    if (step.n > 0.2) ledge(w, step.n, x + w / 2, z + step.n / 2);
+    if (step.s > 0.2) ledge(w, step.s, x + w / 2, z + d - step.s / 2);
+    const z0 = z + step.n, z1 = z + d - step.s, zd = z1 - z0;
+    if (step.w > 0.2 && zd > 0.3) ledge(step.w, zd, x + step.w / 2, (z0 + z1) / 2);
+    if (step.e > 0.2 && zd > 0.3) ledge(step.e, zd, x + w - step.e / 2, (z0 + z1) / 2);
+  }
 
   facePlans.forEach(fp => {
     fp.plans.forEach(p => placeBay(p.bay, fp.face, p.kind, p.rng, data, fp.clearance, z, x + w * 0.5, z + d * 0.5));
@@ -5524,7 +5601,7 @@ function addMass(x, z, w, d, floors, meta) {
         return mat;
       })())
     );
-    duct.position.set(x + w * 0.55, h + 0.85, z + d * 0.5);
+    duct.position.set(top.x + top.w * 0.55, h + 0.85, top.z + top.d * 0.5);
     city.add(duct);
   }
   if (meta.buckets) {
@@ -5541,7 +5618,7 @@ function addMass(x, z, w, d, floors, meta) {
   }
   addAnchor(x, z, w, d);
   walkSolids.push({ x, z, x2: x + w, z2: z + d });
-  dressRoof(x, z, w, d, h);
+  dressRoof(top.x, top.z, top.w, top.d, h);
   return data;
 }
 
@@ -5675,17 +5752,27 @@ function hitVoid(x, z, w, d) {
 function storeysAt(x, z, w, d) {
   const cx = x + w / 2, cz = z + d / 2;
   const roll = mulberry32((Math.floor(cx * 4) * 73856093) ^ (Math.floor(cz * 4) * 19349663))();
+  const roll2 = mulberry32((Math.floor(cx * 7) * 19349663) ^ (Math.floor(cz * 5) * 83492791))();
   const southGap = SITE_D - (z + d);
-  const inset = Math.min(cx, SITE_W - cx, cz, SITE_D - cz);
-  let n;
-  if (southGap < 9 && cz > 80) n = roll < 0.78 ? 14 : 13;
-  else if (southGap < 18 && cz > 72) n = 12 + Math.floor(roll * 3);
-  else if (inset < 14) n = 11 + Math.floor(roll * 4);
-  else if (inset < 30) n = 10 + Math.floor(roll * 4);
-  else if (roll < 0.07) n = 8;
-  else if (roll < 0.14) n = 9;
-  else n = 10 + Math.floor(roll * 3);
-  return Math.max(8, Math.min(MAX_F, n));
+  const inset = Math.min(cx, SITE_W - cx, cz, southGap);
+  // The sheet fixes the parcel. The height does not: edge blocks stayed
+  // lower, the core climbed toward the Kai Tak limit, and the next lot
+  // rarely matched. A small parcel often stopped a storey early.
+  const lotBias = w * d > 50 ? 1 : w * d < 30 ? -1 : 0;
+  let lo, hi;
+  if (inset < 9) { lo = 4; hi = 8; }
+  else if (inset < 18) { lo = 6; hi = 11; }
+  else if (inset < 32) { lo = 7; hi = 13; }
+  else { lo = 8; hi = 14; }
+  if (southGap < 8 && cz > 88) { lo = Math.max(lo, 8); hi = 14; }
+  else if (southGap < 16 && cz > 76) { lo = Math.max(lo, 7); hi = 13; }
+  lo = Math.max(3, Math.min(MAX_F, lo + lotBias));
+  hi = Math.max(lo, Math.min(MAX_F, hi + lotBias));
+  const t = 0.28 + roll * 0.72;
+  let n = lo + Math.floor(t * (hi - lo + 1));
+  if (roll2 < 0.16) n -= 1;
+  else if (roll2 > 0.84) n += 1;
+  return Math.max(3, Math.min(MAX_F, n));
 }
 function nearCourt(x, z, w, d) {
   const cx = x + w / 2, cz = z + d / 2;
@@ -5812,7 +5899,7 @@ function fillBlock(x0, z0, x1, z1) {
       const md = (z + stepD < z1 - 1) ? stepD - gap : Math.min(stepD, z1 - z);
       if (mw >= 4.2 && md >= 4.2 && !hitVoid(x, z, mw, md)) {
         let floors = storeysAt(x, z, mw, md);
-        if (nearCourt(x, z, mw, md)) floors = Math.max(floors, 12);
+        if (nearCourt(x, z, mw, md)) floors = Math.min(MAX_F, Math.max(floors, 9 + Math.floor(lotRoll(x, z, 0xC047) * 5)));
         addMass(x, z, mw, md, floors, zoneMeta(id));
         if (zone.nets && rnd() > 0.55) {
           // The roll stays so later lots do not move. A net hung off one
@@ -6363,8 +6450,8 @@ function buildRoof() {
     else if (obj.isMesh || obj.isGroup) applySquare(obj, true);
     if (obj.userData && obj.userData.kit) obj.layers.set(2);
   }
-  window.__kwcClutter = clutterStats;
 }
+
 function alleyConcrete() {
   return wornFloorTexture("alley");
 }
@@ -7713,26 +7800,6 @@ function dressAlleys() {
     fillGoods(new THREE.CylinderGeometry(0.5, 0.48, 1, 8), drumMat, goods.drum)
   ].forEach(mesh => streetMesh(mesh, false));
   streetMesh(fillInst(unit, soffitMat, cross.soffit, placeBox), true);
-  window.__kwcAlley = {
-    drains: seatedDrains.length,
-    soffit: cross.soffit.length,
-    plank: cross.plank.length,
-    zinc: cross.zinc.length,
-    tubes: cross.tube.length + cross.warm.length + cross.green.length,
-    cross: cross.galv.length,
-    cable: pipes.cable.length,
-    loom: cross.loom.length,
-    cord: cross.cord.length,
-    damp: bits.damp.length,
-    goods: goods.bucket.length + goods.sack.length + goods.bag.length + goods.crate.length + goods.sheet.length + goods.drum.length + goods.rag.length,
-    scrap: bits.scrap.length,
-    gate: gates.length,
-    sign: signs.length,
-    lantern: lanterns.length,
-    drum: goods.drum.length,
-    rag: goods.rag.length,
-    low: lowHung
-  };
 }
 function nearestSlit(x, z, w, d) {
   let best = null;
@@ -7827,7 +7894,7 @@ function placeFootprint() {
     const id = lotZone(x, z, w, d);
     const zone = ZONES[id] || ZONES.lane;
     let floors = storeysAt(x, z, w, d);
-    if (nearCourt(x, z, w, d)) floors = Math.max(floors, 12);
+    if (nearCourt(x, z, w, d)) floors = Math.min(MAX_F, Math.max(floors, 9 + Math.floor(lotRoll(x, z, 0xC047) * 5)));
     addMass(x, z, w, d, floors, zoneMeta(id));
     if (zone.nets && rnd() > 0.55) {
       const lift = rnd();
@@ -8519,77 +8586,220 @@ function lowBlock(x, z, w, d, h, name) {
 }
 lowBlock(104.2, 43, 14, 12, 4.0, "青年中心");
 function elderPaintMap() {
+  // One tile is 2.2 m of the 1979 cement coat. By the rooftop photographs
+  // the paint is dulled, blotched and streaked, not a fresh mix.
+  const S = 256;
   const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 128;
+  c.width = S;
+  c.height = S;
   const g = c.getContext("2d");
-  g.fillStyle = "#c8beae";
-  g.fillRect(0, 0, 128, 128);
-  for (let i = 0; i < 70; i++) {
-    const shade = 198 + ((i * 17) % 34);
-    g.fillStyle = "rgba(" + shade + "," + (shade - 4) + "," + (shade - 10) + ",0.22)";
-    g.fillRect((i * 23) % 122, (i * 11) % 122, 4 + (i % 3), 2 + (i % 2));
+  // Light enough that the wet-wall darkening still reads as damp cement
+  // in the shaded court, with the streaks and blotches doing the ageing.
+  g.fillStyle = "#d4c8b6";
+  g.fillRect(0, 0, S, S);
+  for (let i = 0; i < 36; i++) {
+    const x = (i * 53) % S, y = (i * 37) % S, rad = 16 + (i % 6) * 9;
+    const grd = g.createRadialGradient(x, y, 2, x, y, rad);
+    const k = 62 + (i * 11) % 70;
+    grd.addColorStop(0, "rgba(" + k + "," + (k - 6) + "," + (k - 14) + ",0.5)");
+    grd.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = grd;
+    g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
   }
-  g.strokeStyle = "rgba(150,142,130,0.14)";
-  g.lineWidth = 1;
-  g.beginPath();
-  g.moveTo(0, 63);
-  g.lineTo(128, 64);
-  g.stroke();
+  for (let i = 0; i < 18; i++) {
+    const x = (i * 41 + 7) % (S - 6);
+    const w = 2 + (i % 3);
+    const grd = g.createLinearGradient(0, 0, 0, S);
+    grd.addColorStop(0, "rgba(48,42,34,0.16)");
+    grd.addColorStop(0.35, "rgba(42,36,30," + (0.42 + (i % 4) * 0.1) + ")");
+    grd.addColorStop(1, "rgba(36,30,24,0.2)");
+    g.fillStyle = grd;
+    g.fillRect(x, 0, w, S);
+  }
+  g.fillStyle = "rgba(46,58,40,0.16)";
+  for (let i = 0; i < 12; i++) g.fillRect((i * 29) % S, (i * 47) % S, 10 + (i % 4), 3);
+  for (let i = 0; i < 220; i++) {
+    const shade = 36 + ((i * 19) % 80);
+    g.fillStyle = "rgba(" + shade + "," + (shade - 2) + "," + (shade - 8) + ",0.3)";
+    g.fillRect((i * 17) % S, (i * 31) % S, 2, 2);
+  }
   const tex = new THREE.CanvasTexture(c);
   tex.encoding = THREE.sRGBEncoding;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.anisotropy = 4;
   return tex;
 }
+// The skirt stays in world height. The wall box is centred, so a local
+// soot would paint the middle of the storey.
+function attachElderGrime(mat) {
+  if (!mat || mat.userData.elderGrime) return;
+  mat.userData.elderGrime = 1;
+  const prev = mat.onBeforeCompile;
+  const prevKey = mat.customProgramCacheKey;
+  mat.customProgramCacheKey = function () {
+    return (prevKey ? prevKey.call(this) : "") + "|elderGrime";
+  };
+  mat.onBeforeCompile = function (shader) {
+    if (prev) prev.call(this, shader);
+    if (shader.vertexShader.indexOf("vElderY") >= 0) return;
+    shader.vertexShader = "varying float vElderY;\n" + shader.vertexShader.replace(
+      "#include <project_vertex>",
+      "vec4 elderW = modelMatrix * vec4(transformed, 1.0);\nvElderY = elderW.y;\n#include <project_vertex>"
+    );
+    shader.fragmentShader = "varying float vElderY;\n" + shader.fragmentShader.replace(
+      "#include <map_fragment>",
+      [
+        "#include <map_fragment>",
+        "float elderSkirt = 1.0 - smoothstep(0.12, 1.45, vElderY);",
+        "diffuseColor.rgb *= mix(vec3(1.0), vec3(0.58, 0.54, 0.48), elderSkirt * 0.62);",
+        "diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.7, 0.8, 0.64), elderSkirt * 0.28);"
+      ].join("\n")
+    );
+  };
+}
+function elderPaneMaps() {
+  // A large civic pane, filmed the way the tenement glass is: amber dirt,
+  // sill silt, a wiped patch, and streaks the rain runs through. Dark enough
+  // to sit in this court, light enough that the dirt still reads.
+  const W = 160, H = 256;
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  g.fillStyle = "#b7aa92";
+  g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 14; i++) {
+    const x = (i * 37) % W, y = (i * 53) % H, rad = 18 + (i % 5) * 10;
+    const grd = g.createRadialGradient(x, y, 2, x, y, rad);
+    const k = 70 + (i * 13) % 50;
+    grd.addColorStop(0, "rgba(" + k + "," + (k - 8) + "," + (k - 22) + ",0.55)");
+    grd.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = grd;
+    g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  [[0, 0], [W, 0], [0, H], [W, H]].forEach(function (p, i) {
+    const rad = 40 + (i % 3) * 16;
+    const grd = g.createRadialGradient(p[0], p[1], 2, p[0], p[1], rad);
+    grd.addColorStop(0, "rgba(28,22,14,0.72)");
+    grd.addColorStop(1, "rgba(28,22,14,0)");
+    g.fillStyle = grd;
+    g.fillRect(p[0] - rad, p[1] - rad, rad * 2, rad * 2);
+  });
+  const silt = g.createLinearGradient(0, H * 0.55, 0, H);
+  silt.addColorStop(0, "rgba(0,0,0,0)");
+  silt.addColorStop(1, "rgba(36,28,16,0.72)");
+  g.fillStyle = silt;
+  g.fillRect(0, H * 0.5, W, H * 0.5);
+  g.fillStyle = "rgba(36,64,32,0.38)";
+  g.beginPath();
+  g.ellipse(48, H * 0.82, 28, 16, 0.2, 0, Math.PI * 2);
+  g.fill();
+  g.beginPath();
+  g.ellipse(118, H * 0.9, 22, 12, -0.3, 0, Math.PI * 2);
+  g.fill();
+  for (let i = 0; i < 9; i++) {
+    const x = 8 + (i * 17) % (W - 16);
+    const w = 3 + (i % 3) * 2;
+    const len = H * (0.35 + (i % 4) * 0.14);
+    const grd = g.createLinearGradient(x, 0, x, len);
+    grd.addColorStop(0, "rgba(42,32,18,0.78)");
+    grd.addColorStop(1, "rgba(42,32,18,0)");
+    g.fillStyle = grd;
+    g.fillRect(x, 0, w, len);
+  }
+  const wipe = g.createRadialGradient(96, 100, 4, 96, 100, 46);
+  wipe.addColorStop(0, "rgba(214,206,186,0.42)");
+  wipe.addColorStop(1, "rgba(214,206,186,0)");
+  g.fillStyle = wipe;
+  g.fillRect(50, 54, 92, 92);
+  const src = g.getImageData(0, 0, W, H).data;
+  const rc = document.createElement("canvas");
+  rc.width = W; rc.height = H;
+  const img = rc.getContext("2d").createImageData(W, H);
+  const o = img.data;
+  for (let i = 0; i < src.length; i += 4) {
+    const lum = (src[i] * 0.3 + src[i + 1] * 0.5 + src[i + 2] * 0.2) / 255;
+    const roughV = Math.max(0, Math.min(255, (0.55 + (1 - lum) * 0.42) * 255));
+    o[i] = o[i + 1] = o[i + 2] = roughV;
+    o[i + 3] = 255;
+  }
+  rc.getContext("2d").putImageData(img, 0, 0);
+  const map = meshMips(c);
+  map.encoding = THREE.sRGBEncoding;
+  const rough = meshMips(rc);
+  return { map: map, rough: rough };
+}
 function centreSign(words) {
   const c = document.createElement("canvas");
   c.width = 512;
   c.height = 128;
   const g = c.getContext("2d");
-  g.fillStyle = "#e7e0d4";
+  g.fillStyle = "#b7ab98";
   g.fillRect(0, 0, 512, 128);
-  g.strokeStyle = "#8d8476";
+  g.fillStyle = "rgba(62,52,40,0.28)";
+  g.fillRect(0, 96, 512, 32);
+  for (let i = 0; i < 8; i++) {
+    g.fillStyle = "rgba(48,40,32," + (0.18 + (i % 3) * 0.08) + ")";
+    g.fillRect(24 + i * 58, 8, 3, 112);
+  }
+  g.strokeStyle = "#6a6256";
   g.lineWidth = 8;
   g.strokeRect(8, 8, 496, 112);
-  g.fillStyle = "#2a2622";
+  g.fillStyle = "#241e1a";
   g.font = "700 72px " + SHOP_FONT;
   g.textAlign = "center";
   g.textBaseline = "middle";
   g.fillText(words, 256, 66);
   const tex = new THREE.CanvasTexture(c);
   tex.encoding = THREE.sRGBEncoding;
-  return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.86, metalness: 0, clippingPlanes: clips });
+  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.92, metalness: 0, clippingPlanes: clips });
+  attachElderGrime(mat);
+  attachWetWall(mat);
+  return mat;
 }
 // 1979 old people’s centre. The premises were about three times a 1,600 sq ft
 // offer, so about 4,800 sq ft. A 1992 rooftop photograph shows the block as
 // two storeys, at a right angle to the youth centre. 12.4 × 18.0 m is one
-// floor; two floors are about 446 m². Painted cement render, regular barred
-// windows, a flat roof. The tenement stain — board seams, 2.5 m joints,
-// street soot, drip bands — stays off this wall. Rain only darkens the paint.
+// floor, 223 m²; two floors are about 446 m². Storey 3.15 m, wall 6.3 m,
+// parapet to about 6.9 m. Painted cement, not a tong lau, so the board seams
+// stay off. The coat is rain-stained, and the wall takes the same running
+// wet as the tenements. The pane is the filmed glass, with the street in the drops.
 function elderCentre() {
   const x = 107.4, z = 57.4, w = 12.4, d = 18.0;
   const storey = 3.15;
   const wallH = storey * 2;
   const name = "老人中心";
-  const paint = mappedMat(elderPaintMap(), 0.92, 2.2);
-  attachWetFilm(paint);
-  const bandMat = paint.clone();
-  bandMat.color.setRGB(0.76, 0.72, 0.66);
-  const baseMat = paint.clone();
-  baseMat.color.setRGB(0.55, 0.52, 0.47);
+  const paintMap = elderPaintMap();
+  function wallMat(r, g, b) {
+    const mat = mappedMat(paintMap, 0.94, 2.2);
+    mat.color.setRGB(r, g, b);
+    attachElderGrime(mat);
+    attachWetWall(mat);
+    return mat;
+  }
+  const paint = wallMat(1, 0.98, 0.94);
+  const bandMat = wallMat(0.9, 0.87, 0.82);
+  const baseMat = wallMat(0.72, 0.68, 0.62);
+  const pane = elderPaneMaps();
   const glassMat = new THREE.MeshStandardMaterial({
-    color: 0x101416, roughness: 0.24, metalness: 0.08,
-    emissive: 0xf0e2c4, emissiveIntensity: 0.015, clippingPlanes: clips
+    map: pane.map, roughnessMap: pane.rough, color: 0xffffff,
+    roughness: 1, metalness: 0.05,
+    emissive: 0xc4b090, emissiveIntensity: 0.012, clippingPlanes: clips
   });
   attachWetFilm(glassMat);
-  shopGlow.push({ mat: glassMat, day: 0.015, night: 0.26 });
+  shopGlow.push({ mat: glassMat, day: 0.012, night: 0.2 });
+  const paneRainMat = new THREE.MeshStandardMaterial({
+    color: 0xd5e2e8, roughness: 0.14, metalness: 0.02,
+    transparent: true, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    clippingPlanes: clips
+  });
+  attachPaneRain(paneRainMat, 1, true);
   const barMat = new THREE.MeshStandardMaterial({
-    color: 0x242a2c, roughness: 0.38, metalness: 0.58, clippingPlanes: clips
+    color: 0x3a342e, roughness: 0.72, metalness: 0.22, clippingPlanes: clips
   });
   attachWetFilm(barMat);
   const frameMat = new THREE.MeshStandardMaterial({
-    color: 0x343c3e, roughness: 0.46, metalness: 0.42, clippingPlanes: clips
+    color: 0x4a433c, roughness: 0.78, metalness: 0.16, clippingPlanes: clips
   });
   attachWetFilm(frameMat);
   const data = { zone: "yamen", street: "衙門", name, floors: 2, hall: true, w, d, x, z };
@@ -8617,8 +8827,8 @@ function elderCentre() {
   addBox(bandMat, w + 0.18, 0.16, 0.14, x + w / 2, by, z + d + 0.02);
   addBox(bandMat, 0.14, 0.16, d, x - 0.02, by, z + d / 2);
   addBox(bandMat, 0.14, 0.16, d, x + w + 0.02, by, z + d / 2);
-  const deck = mappedMat(concreteRoofMap(), 0.93, 1.4);
-  deck.color.setHex(0xb3ab9f);
+  const deck = mappedMat(concreteRoofMap(), 0.96, 1.4);
+  deck.color.setHex(0xd2cdc4);
   attachWetRoof(deck);
   addBox(deck, w - 0.42, 0.08, d - 0.42, x + w / 2, wallH + 0.04, z + d / 2);
   const ph = 0.64, pt = 0.16, py = wallH + ph / 2;
@@ -8640,6 +8850,16 @@ function elderCentre() {
       city.add(mesh);
     }
     piece(glassMat, wide ? ww - 0.1 : 0.03, hh - 0.1, wide ? 0.03 : ww - 0.1, cx, cy, cz);
+    const rain = new THREE.Mesh(new THREE.PlaneGeometry(ww - 0.16, hh - 0.16), paneRainMat);
+    rain.position.set(
+      face === "e" ? cx + 0.03 : face === "w" ? cx - 0.03 : cx,
+      cy,
+      face === "s" ? cz + 0.03 : face === "n" ? cz - 0.03 : cz
+    );
+    rain.rotation.y = face === "n" ? Math.PI : face === "e" ? Math.PI / 2 : face === "w" ? -Math.PI / 2 : 0;
+    rain.renderOrder = 4;
+    rain.castShadow = false;
+    city.add(rain);
     piece(frameMat, wide ? ww + 0.06 : deep, t, wide ? deep : ww + 0.06, cx, cy + hh / 2, cz);
     piece(frameMat, wide ? ww + 0.06 : deep, t, wide ? deep : ww + 0.06, cx, cy - hh / 2, cz);
     piece(frameMat, wide ? t : deep, hh, wide ? deep : t, cx + (wide ? -ww / 2 : 0), cy, cz + (wide ? 0 : -ww / 2));
@@ -8678,18 +8898,28 @@ function elderCentre() {
   addBox(frameMat, 0.08, doorH, 0.06, dx, doorH / 2, dz + doorW / 2);
   addBox(glassMat, 0.03, doorH - 0.14, doorW * 0.44, dx, (doorH - 0.14) / 2 + 0.02, dz - doorW * 0.24);
   addBox(glassMat, 0.03, doorH - 0.14, doorW * 0.44, dx, (doorH - 0.14) / 2 + 0.02, dz + doorW * 0.24);
+  [dz - doorW * 0.24, dz + doorW * 0.24].forEach(function (gz) {
+    const leaf = new THREE.Mesh(new THREE.PlaneGeometry(doorW * 0.38, doorH - 0.28), paneRainMat);
+    leaf.position.set(dx - 0.03, (doorH - 0.14) / 2 + 0.02, gz);
+    leaf.rotation.y = -Math.PI / 2;
+    leaf.renderOrder = 4;
+    leaf.castShadow = false;
+    city.add(leaf);
+  });
   addBox(barMat, 0.045, doorH - 0.12, 0.04, dx - 0.03, doorH / 2, dz);
   addBox(bandMat, 1.2, 0.11, 3.15, x - 0.52, 2.66, dz);
   const plate = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.56, 3.4), centreSign(name));
   plate.position.set(x - 0.09, 3.58, dz);
   city.add(plate);
   const stepMat = mappedMat(graniteStepMap(), 0.96, 1.2);
+  attachWetWall(stepMat);
   addBox(stepMat, 0.5, 0.12, 2.25, x - 0.24, 0.18, dz);
   addBox(stepMat, 0.72, 0.12, 2.55, x - 0.7, 0.06, dz);
   const pipeMat = new THREE.MeshStandardMaterial({
-    color: 0x8a928f, roughness: 0.48, metalness: 0.4, clippingPlanes: clips
+    map: pipeStainMap(), color: 0x6a6860, roughness: 0.78, metalness: 0.12, clippingPlanes: clips
   });
-  attachWetFilm(pipeMat);
+  attachBoxTile(pipeMat, 0.36, 0.008, 0);
+  attachWetWall(pipeMat);
   addBox(pipeMat, 0.07, wallH + 0.45, 0.07, x + w + 0.015, (wallH + 0.45) / 2, z + 17.55);
   addAnchor(x, z, w, d, squareAnchor);
   walkSolids.push({ x, z, x2: x + w, z2: z + d });
@@ -10967,7 +11197,9 @@ const zoneViews = {
   lane:   { pos: [48, 48, 110], tgt: [33, 6, 90.75], stand: [34, 90.75], yaw: Math.PI / 2 },
   chun:   { pos: [142, 50, 78], tgt: [158, 7, 95.25], stand: [120, 95.25], yaw: -Math.PI / 2 },
   tsun:   { pos: [55, 50, 88], tgt: [42, 5, 108.75], stand: [46, 108.75], yaw: -Math.PI / 2 },
-  yamen:  { pos: [118, 46, 86], tgt: [94.5, 4, 56], stand: [112, 72], yaw: -Math.PI / 2 }
+  // On the paving west of the elderly centre, looking south down the open
+  // yard. The old stand was inside that block and faced its wall.
+  yamen:  { pos: [118, 46, 86], tgt: [94.5, 4, 56], stand: [105.8, 66], yaw: Math.PI }
 };
 // No place chosen. Both screens open on the north pavement by the clinic,
 // with Tung Tau Tsuen Road to the right. A tall screen looks along the dental
@@ -12307,17 +12539,9 @@ pickables.forEach(mesh => {
 // Outer walls, from photographs of about 1987 (Girard’s Tung Tau Tsuen Road facade,
 // Suddaby from the same road). Window units, cage grilles, bamboo poles and downpipes
 // sit on the perimeter, where there was air. The dark core does not grow them.
-// One bay grid for every lit face. The cage, the glass, the night light and
-// the window unit all use it, so the mesh sits on the opening it belongs to.
+// Each floor keeps its own bay grid. The cage, the glass, the night light
+// and the window unit all use that floor's openings.
 const OPEN_YC = 1.28;
-function openingGrid(span) {
-  if (span < 1.7) return null;
-  // Household bays sit close, the way the cages nearly meet across a pier.
-  const margin = Math.min(0.18, Math.max(0.06, span * 0.025));
-  const usable = span - margin * 2;
-  const bays = Math.max(1, Math.floor(usable / 1.12 + 0.42));
-  return { margin, bays, step: usable / bays };
-}
 // One slot per window. The pitch belongs to the building: 1.12 m is the
 // narrow opening, a wider pitch is the broad metal window on that block.
 // Neighbouring cages meet at the slot edge and do not share a window.
@@ -12336,10 +12560,93 @@ function windowSlots(span, pitch) {
   }
   return slots;
 }
-function openingSize(hi, faceCode, b) {
+function blockPitch(x, z) {
+  const rhythmRoll = roofRand(x, z, 0x571D)();
+  if (rhythmRoll < 0.46) return 1.12;
+  if (rhythmRoll < 0.7) return 1.55;
+  if (rhythmRoll < 0.88) return 1.82;
+  return 2.08;
+}
+function mergeWindowPairs(slots, x, z, floor) {
+  if (slots.length < 3) return slots;
+  const start = roofRand(x, z, 0x0F13 + floor)() < 0.5 ? 0 : 1;
+  const out = [];
+  let i = 0;
+  while (i < slots.length) {
+    const merge = i % 2 === start && i + 1 < slots.length && roofRand(x, z, 0x0F14 + floor * 3 + i)() < 0.72;
+    if (merge) {
+      const a = slots[i], b = slots[i + 1];
+      out.push({ a0: a.a0, a1: b.a1, mid: (a.a0 + b.a1) / 2, bay: 0 });
+      i += 2;
+    } else {
+      out.push(slots[i]);
+      i++;
+    }
+  }
+  return out;
+}
+// The first floors share the concrete piers. A storey added later keeps
+// those piers, knocks two bays into one, or shifts the opening. A steady
+// face (the north street wall, below the joint) keeps every bay.
+function floorSlots(span, pitch, floor, x, z, steady) {
+  const joint = 4 + Math.floor(roofRand(x, z, 0x0F10)() * 4);
+  let slots;
+  if (floor >= joint) {
+    const roll = roofRand(x, z, 0x0F11 + floor)();
+    if (roll < 0.42) slots = mergeWindowPairs(windowSlots(span, pitch), x, z, floor);
+    else if (roll < 0.74) {
+      const wider = pitch < 1.4 ? 1.68 : pitch < 1.9 ? 1.26 : 1.52;
+      slots = windowSlots(span, wider);
+    } else slots = windowSlots(span, pitch);
+    if (roll >= 0.42 && slots.length) {
+      const shift = (roofRand(x, z, 0x0F12 + floor)() - 0.5) * Math.min(0.36, pitch * 0.22);
+      const lead = slots[0].a0;
+      const tail = span - slots[slots.length - 1].a1;
+      const room = Math.min(lead, tail) - 0.02;
+      const s = Math.max(-room, Math.min(room, shift));
+      if (Math.abs(s) > 0.02) {
+        for (let i = 0; i < slots.length; i++) {
+          slots[i] = { a0: slots[i].a0 + s, a1: slots[i].a1 + s, mid: slots[i].mid + s, bay: 0 };
+        }
+      }
+    }
+  } else slots = windowSlots(span, pitch);
+  if (!steady && slots.length >= 3 && roofRand(x, z, 0x0F20 + floor)() < 0.34) {
+    if (roofRand(x, z, 0x0F21 + floor)() < 0.5) slots = slots.slice(1);
+    else slots = slots.slice(0, slots.length - 1);
+  }
+  return slots;
+}
+function faceStorey(u, face, floor, pitch) {
+  const ns = face === "n" || face === "s";
+  let span = ns ? u.w : u.d;
+  let along0 = ns ? u.x : u.z;
+  let wall = face === "n" ? u.z : face === "s" ? u.z + u.d : face === "w" ? u.x : u.x + u.w;
+  const step = u.step;
+  if (step && floor >= step.from) {
+    if (ns) {
+      along0 += step.w;
+      span -= step.w + step.e;
+      if (face === "n") wall += step.n;
+      else wall -= step.s;
+    } else {
+      along0 += step.n;
+      span -= step.n + step.s;
+      if (face === "w") wall += step.w;
+      else wall -= step.e;
+    }
+  }
+  const joint = 4 + Math.floor(roofRand(u.x, u.z, 0x0F10)() * 4);
+  const steady = face === "n" && u.z < 7 && floor < joint;
+  return { span: span, along0: along0, wall: wall, slots: floorSlots(span, pitch, floor, u.x, u.z, steady) };
+}
+function openingSize(hi, faceCode, b, f) {
+  const fl = f || 0;
+  const tall = u01(b + fl * 5, hi + faceCode + 19);
+  const h = u01(fl + b, hi + faceCode + 23) < 0.22 ? 0.72 + tall * 0.16 : 0.9 + tall * 0.24;
   return {
     w: 0.56 + u01(b + 4, hi + faceCode + 17) * 0.12,
-    h: 0.96 + u01(b + 8, hi + faceCode + 19) * 0.1
+    h: h
   };
 }
 function dressPerimeter() {
@@ -12565,16 +12872,23 @@ function dressPerimeter() {
       const wall = face === "n" ? u.z : face === "s" ? u.z + u.d : face === "w" ? u.x : u.x + u.w;
       const dir = outward(face);
       const proud = (u.floors * FLOOR_H > 15) ? 0.3 : 0.05;
-      const grid = openingGrid(span);
+      const pitch = blockPitch(u.x, u.z);
+      const piers = floorSlots(span, pitch, 1, u.x, u.z, true);
+      let pipeTop = u.floors * FLOOR_H - 0.3;
+      if (u.step) {
+        const pull = face === "n" ? u.step.n : face === "s" ? u.step.s : face === "w" ? u.step.w : u.step.e;
+        if (pull > 0.15) pipeTop = Math.min(pipeTop, u.step.from * FLOOR_H - 0.2);
+      }
       const nPipe = span > 6.5 ? 2 : 1;
       for (let p = 0; p < nPipe; p++) {
         let along;
-        if (!grid || grid.bays <= 1) along = along0 + span * (p === 0 ? 0.14 : 0.86);
+        if (piers.length <= 1) along = along0 + span * (p === 0 ? 0.14 : 0.86);
         else {
-          const k = nPipe === 1 ? Math.ceil(grid.bays / 2) : (p === 0 ? 1 : grid.bays - 1);
-          along = along0 + grid.margin + grid.step * Math.min(grid.bays - 1, Math.max(1, k));
+          const k = nPipe === 1 ? Math.ceil(piers.length / 2) : (p === 0 ? 1 : piers.length - 1);
+          const pier = Math.min(piers.length - 1, Math.max(0, k));
+          along = along0 + piers[pier].a0;
         }
-        const pipeH = Math.max(4, u.floors * FLOOR_H - 0.3);
+        const pipeH = Math.max(3.2, pipeTop);
         pipeQ.push({
           x: (face === "n" || face === "s") ? along : wall + dir[0] * (proud + 0.1),
           y: pipeH / 2,
@@ -12583,14 +12897,16 @@ function dressPerimeter() {
           rust: rng() > 0.5
         });
       }
-      if (rng() > 0.42 && grid) {
+      if (rng() > 0.42) {
         [3, 7, 11].forEach((f, fi) => {
           if (f >= u.floors || rng() < 0.4) return;
-          const bay = Math.min(grid.bays - 1, Math.floor(rng() * grid.bays));
+          const laid = faceStorey(u, face, f, pitch);
+          if (!laid.slots.length) return;
+          const bay = Math.min(laid.slots.length - 1, Math.floor(rng() * laid.slots.length));
           const y = f * FLOOR_H + OPEN_YC + 0.15;
-          const along = along0 + grid.margin + grid.step * (bay + 0.5);
-          const x = (face === "n" || face === "s") ? along : wall;
-          const z = (face === "e" || face === "w") ? along : wall;
+          const along = laid.along0 + laid.slots[bay].mid;
+          const x = (face === "n" || face === "s") ? along : laid.wall;
+          const z = (face === "e" || face === "w") ? along : laid.wall;
           const len = 1.25;
           const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, len, 5), bamboo);
           if (face === "n" || face === "s") pole.rotation.x = Math.PI / 2;
@@ -13501,22 +13817,17 @@ function dressCages() {
     const hx = u.x + u.w * 0.5, hz = u.z + u.d * 0.5;
     pinAz = u.street ? streetAz(hx, hz) : anchorNear(hx, hz);
     if (pinAz == null) pinAz = hz;
-    // One carpenter per block, so every floor of that block shares a rhythm.
-    // About half keep the narrow window. The rest open a wider bay.
-    const rhythmRoll = roofRand(u.x, u.z, 0x571D)();
-    const pitch = rhythmRoll < 0.46 ? 1.12
-      : rhythmRoll < 0.7 ? 1.55
-      : rhythmRoll < 0.88 ? 1.82
-      : 2.08;
+    // The lower floors share one carpenter. A storey added later does not
+    // repeat that grid: the opening widens, shifts, or drops an end bay.
+    const pitch = blockPitch(u.x, u.z);
     ["n", "s", "e", "w"].forEach(face => {
       if (!faceOpen(u, face)) return;
       const ns = face === "n" || face === "s";
       const span = ns ? u.w : u.d;
-      const slots = windowSlots(span, pitch);
-      if (!slots.length) return;
-      const grid = { bays: slots.length, slots };
-      const along0 = ns ? u.x : u.z;
-      const wall = face === "n" ? u.z : face === "s" ? u.z + u.d : face === "w" ? u.x : u.x + u.w;
+      if (span < 1.7) return;
+      let grid = { bays: 0, slots: [] };
+      let along0 = ns ? u.x : u.z;
+      let wall = face === "n" ? u.z : face === "s" ? u.z + u.d : face === "w" ? u.x : u.x + u.w;
       const dir = face === "n" ? [0, -1] : face === "s" ? [0, 1] : face === "w" ? [-1, 0] : [1, 0];
       const outer = (face === "n" && u.z < 7) || (face === "s" && u.z + u.d > SITE_D - 7)
         || (face === "w" && u.x < 7) || (face === "e" && u.x + u.w > SITE_W - 7);
@@ -13584,7 +13895,13 @@ function dressCages() {
         list.push(it);
       }
       for (let f = 1; f < floors; f++) {
+        const laid = faceStorey(u, face, f, pitch);
+        if (!laid.slots.length) continue;
+        along0 = laid.along0;
+        wall = laid.wall;
+        grid = { bays: laid.slots.length, slots: laid.slots };
         // The back of the cage meets the plaster, just outside the glass.
+        // A set-back storey moves that plaster in with the wall.
         const shell = -plaster + 0.02;
         let salt = 1;
         const rnd = () => u01(salt++, hi * 19 + faceCode * 7 + f * 5);
@@ -13641,33 +13958,6 @@ function dressCages() {
           const y = f * FLOOR_H + OPEN_YC;
           // The bowed flower cage is built with the run below. A separate basket
           // stretched into a box and read as another iron balcony.
-          const useBasket = false;
-          if (useBasket) {
-            const size = openingSize(hi, faceCode, i0);
-            const along = along0 + grid.slots[i0].mid;
-            const deep = Math.min(0.42, cap) * (0.94 + rnd() * 0.08);
-            const p = point(along, shell);
-            const basketTint = [0.72 + rnd() * 0.14, 0.74 + rnd() * 0.12, 0.66 + rnd() * 0.1];
-            const it = {
-              x: p.x, y, z: p.z, yaw,
-              sx: size.w * 1.06 / flower.nom.w,
-              sy: size.h * 1.08 / flower.nom.h,
-              sz: deep / flower.nom.d
-            };
-            const aged = {
-              x: it.x, y: it.y, z: it.z, yaw, sx: it.sx, sy: it.sy, sz: it.sz, tint: basketTint
-            };
-            buckets.flowerMesh.push(aged);
-            buckets.flowerFrame.push(aged);
-            buckets.flowerTray.push(aged);
-            buckets.flowerPot.push(it);
-            buckets.flowerLeaf.push(it);
-            covered[i0] = { y, deep, kind, rise: size.h, span0: along - size.w * 0.5, span1: along + size.w * 0.5 };
-            made++;
-            runCount++;
-            spanSum += 1;
-            if (deep > maxDeep) maxDeep = deep;
-          } else {
             const a0 = along0 + grid.slots[i0].a0 + 0.01;
             const a1 = along0 + grid.slots[i1].a1 - 0.01;
             const spanW = a1 - a0;
@@ -14017,11 +14307,10 @@ function dressCages() {
             if (len >= 2) multiWins += len;
             if (deep > maxDeep) maxDeep = deep;
             if (north) { northN += len; northSum += deep * len; }
-          }
           b += len;
         }
         for (let bay = 0; bay < grid.bays; bay++) {
-          const size = openingSize(hi, faceCode, bay);
+          const size = openingSize(hi, faceCode, bay, f);
           const slot = grid.slots[bay];
           const along = along0 + slot.mid;
           const slotW = slot.a1 - slot.a0;
