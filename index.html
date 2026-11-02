@@ -230,6 +230,16 @@
   #card .close { position: absolute; top: 8px; right: 8px; min-width: 28px; min-height: 28px; padding: 0; }
   #card-meta:empty, #card-kicker:empty { display: none; }
   #legend.open, #card.open { display: block; }
+  #card.open { display: flex; flex-direction: column; }
+  #card .card-scroll {
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  #card-walk { flex: none; }
   #legend.open { width: min(320px, calc(100vw - 32px)); max-width: min(320px, calc(100vw - 32px)); }
   #dock-wrap {
     grid-area: dock; justify-self: center;
@@ -507,7 +517,7 @@
     /* Title, tools, pad, and dock keep their height. Open sheets are the
        pieces that shrink, so the sliders stay on screen. */
     header.panel, #tools, #walk-pad, #dock-wrap, #controls { flex: 0 0 auto; }
-    /* One sheet at a time. Each keeps its full text and is scaled to the screen. */
+    /* One sheet at a time. The place sheet stops at the screen and scrolls. */
     #legend.open, #card.open {
       order: 3; align-self: stretch; width: auto; max-width: none;
       flex: 0 0 auto; height: auto; max-height: none; overflow: visible;
@@ -706,53 +716,36 @@
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    width: min(280px, calc(100vw - 2 * var(--frame)));
+    width: min(140px, calc(100vw - 2 * var(--frame)));
     text-align: right;
   }
   #boot .boot-line {
-    margin: 0 0 10px;
+    margin: 0 0 5px;
     max-width: 100%;
     font-family: "PingFang HK", "Heiti TC", "Hiragino Sans GB", sans-serif;
-    font-size: clamp(11px, 1.5vw, 13px);
+    font-size: clamp(5.5px, 0.75vw, 6.5px);
     letter-spacing: 0.14em;
     line-height: 1.45;
     color: #f3efe6;
-    text-shadow:
-      0 0 1px #fffaf2,
-      0 0 5px #f3efe6,
-      0 0 12px rgba(232, 206, 160, 0.9);
   }
   #boot .boot-track {
     width: 100%;
-    height: 14px;
+    height: 7px;
     border-radius: 0;
     overflow: hidden;
-    background: #000;
-    border: 2px solid #3dff88;
-    box-shadow:
-      0 0 1px #eafff2,
-      0 0 8px #3dff88,
-      0 0 16px rgba(61, 255, 136, 0.7),
-      inset 0 0 6px rgba(61, 255, 136, 0.28);
+    background: #1a1a1a;
+    border: 1px solid rgba(243, 239, 230, 0.55);
   }
   #boot .boot-track i {
     display: block; height: 100%; width: 38%;
-    background: #ff4a38;
-    box-shadow:
-      0 0 1px #ffd4cc,
-      0 0 6px #ff4a38,
-      0 0 12px #ff2418;
+    background: #f3efe6;
     animation: boot-slide 1.15s ease-in-out infinite;
   }
   #boot.done .boot-track i {
     animation: none; width: 100%; transition: width 0.25s ease;
-    background: #ff4a38;
-    box-shadow:
-      0 0 1px #ffd4cc,
-      0 0 6px #ff4a38,
-      0 0 12px #ff2418;
+    background: #f3efe6;
   }
-  #boot.fail .boot-track i { animation: none; width: 100%; background: rgba(255, 74, 56, 0.35); box-shadow: none; }
+  #boot.fail .boot-track i { animation: none; width: 100%; background: #ff4a38; }
   @keyframes boot-slide {
     0% { transform: translateX(-130%); }
     100% { transform: translateX(340%); }
@@ -919,6 +912,7 @@ applyBoot();
   </div>
   <aside class="panel" id="card">
     <button type="button" class="close" id="close-card" aria-label="Close">×</button>
+    <div class="card-scroll">
     <div class="kicker" id="card-kicker" data-i18n="cardKicker"></div>
     <h2 id="card-title" data-i18n="cardTitle"></h2>
     <p id="card-body" data-i18n="cardBody"></p>
@@ -930,6 +924,7 @@ applyBoot();
     <div class="stat"><span data-i18n="statCap"></span><b data-i18n="statCapVal"></b></div>
     <div class="stat"><span data-i18n="statLifts"></span><b data-i18n="statLiftsVal"></b></div>
     <div class="stat"><span id="count-label" data-i18n="statMass"></span><b id="count">—</b></div>
+    </div>
     <button type="button" id="card-walk" hidden>
       <span class="mode-walk" aria-hidden="true"></span>
       <span data-i18n="walkBtn"></span>
@@ -11004,6 +10999,8 @@ function closeCard() {
   const card = document.getElementById("card");
   card.classList.remove("open");
   card.style.zoom = "";
+  card.style.height = "";
+  card.style.maxHeight = "";
   syncCardWalk();
 }
 function cardPlace() {
@@ -11020,11 +11017,18 @@ function syncCardWalk() {
   btn.hidden = !(open && cardPlace());
 }
 function sheetRoom(panel) {
-  const dock = document.getElementById("controls");
   const box = panel.getBoundingClientRect();
-  const dockTop = dock.getBoundingClientRect().top;
-  const parked = window.innerHeight - dock.offsetHeight - 8;
-  return Math.min(dockTop, parked) - 8 - box.top;
+  const ui = document.getElementById("ui");
+  const uiBox = ui.getBoundingClientRect();
+  const padBottom = parseFloat(getComputedStyle(ui).paddingBottom) || 0;
+  let limit = uiBox.bottom - padBottom;
+  const mode = document.getElementById("mode");
+  if (mode) {
+    const mark = mode.getBoundingClientRect();
+    const across = box.right > mark.left + 1 && box.left < mark.right - 1;
+    if (across && mark.height > 0) limit = Math.min(limit, mark.top - 12);
+  }
+  return limit - box.top;
 }
 let fitCardGen = 0;
 function fitCard() {
@@ -11032,14 +11036,27 @@ function fitCard() {
   const gen = ++fitCardGen;
   if (!card.classList.contains("open")) {
     card.style.zoom = "";
+    card.style.height = "";
+    card.style.maxHeight = "";
     return;
   }
-  card.style.zoom = "1";
+  // The cut board is hidden, so the sheet stops at the screen, above the mode
+  // button. The note scrolls inside; the close and walk controls stay put.
+  card.style.zoom = "";
+  card.style.height = "";
+  card.style.maxHeight = "none";
   requestAnimationFrame(() => {
     if (gen !== fitCardGen || !card.classList.contains("open")) return;
     const box = card.getBoundingClientRect();
     const room = sheetRoom(card);
-    card.style.zoom = box.height > room + 1 && room >= 80 ? String(Math.min(1, room / box.height)) : "";
+    if (!(room > 48) || box.height <= room + 1) {
+      card.style.height = "";
+      card.style.maxHeight = "";
+      return;
+    }
+    const cap = Math.floor(room);
+    card.style.maxHeight = cap + "px";
+    card.style.height = cap + "px";
   });
 }
 function fitLegend() {
@@ -14558,7 +14575,7 @@ toothMat.userData.streetGrade = "figure";
 const lipDeep = clothMat(0x7a403c, 0.5);
 const nostrilMat = clothMat(0x5c382c, 0.7);
 const buckleMat = clothMat(0xd9d3c6, 0.35);
-const apronMat = clothMat(0x3e5966, 1, "cloth");
+const apronMat = clothMat(0xcbbfa8, 1, "cloth");
 const bambooMat = clothMat(0x3a2c20, 0.96);
 const ropeMat = clothMat(0x6a5844, 0.92);
 const capMat = clothMat(0x2a3136, 0.78);
@@ -14582,41 +14599,58 @@ const bagMats = [0xb7c8c0, 0x9a1816, 0x244e62, 0xc8c4b4].map(color => {
   mat.userData.streetGrade = "figure";
   return mat;
 });
-(function stripeShirt() {
+// One tile is 12.5 cm of cloth (the shirt UVs are eight per metre).
+// A 1987 lane shirt, not a costume print: a washed knit stripe, and a
+// large cotton check. Both are dull on purpose.
+function wearTex(paint) {
   const c = document.createElement("canvas");
   c.width = 64; c.height = 64;
   const g = c.getContext("2d");
-  g.fillStyle = "#e6e1d4";
-  g.fillRect(0, 0, 64, 64);
-  g.fillStyle = "#1c3658";
-  for (let y = 0; y < 64; y += 8) g.fillRect(0, y, 64, 3);
-  const tex = new THREE.CanvasTexture(c);
-  tex.encoding = THREE.sRGBEncoding;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  figCloth.stripe = new THREE.MeshStandardMaterial({
-    map: tex, color: 0xffffff, roughness: 1, metalness: 0, clippingPlanes: clips,
-  });
-  figCloth.stripe.userData.streetGrade = "figure";
-})();
-(function checkShirt() {
-  const c = document.createElement("canvas");
-  c.width = 64; c.height = 64;
-  const g = c.getContext("2d");
-  g.fillStyle = "#d9d3c4";
-  g.fillRect(0, 0, 64, 64);
-  g.fillStyle = "#6a4038";
-  for (let i = 0; i < 64; i += 8) {
-    g.fillRect(i, 0, 3, 64);
-    g.fillRect(0, i, 64, 3);
+  paint(g);
+  let n = 23;
+  for (let y = 0; y < 64; y += 2) {
+    for (let x = 0; x < 64; x += 3) {
+      n = (n * 17 + x + y * 3) & 255;
+      if (n < 48) {
+        g.fillStyle = n % 2 ? "rgba(40,28,16,0.07)" : "rgba(255,250,242,0.12)";
+        g.fillRect(x, y, 1, 1);
+      }
+    }
   }
   const tex = new THREE.CanvasTexture(c);
   tex.encoding = THREE.sRGBEncoding;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  figCloth.check = new THREE.MeshStandardMaterial({
-    map: tex, color: 0xffffff, roughness: 1, metalness: 0, clippingPlanes: clips,
+  tex.anisotropy = 4;
+  const mat = new THREE.MeshStandardMaterial({
+    map: tex, color: 0xffffff, roughness: 0.96, metalness: 0, clippingPlanes: clips
   });
-  figCloth.check.userData.streetGrade = "figure";
-})();
+  mat.userData.streetGrade = "figure";
+  return mat;
+}
+figCloth.stripe = wearTex(function (g) {
+  g.fillStyle = "#e2dbd0";
+  g.fillRect(0, 0, 64, 64);
+  g.fillStyle = "#6a7b88";
+  g.fillRect(0, 4, 64, 12);
+  g.fillRect(0, 36, 64, 12);
+  g.fillStyle = "rgba(28,36,44,0.16)";
+  g.fillRect(0, 4, 64, 1);
+  g.fillRect(0, 15, 64, 1);
+  g.fillRect(0, 36, 64, 1);
+  g.fillRect(0, 47, 64, 1);
+});
+figCloth.check = wearTex(function (g) {
+  g.fillStyle = "#e6dfd2";
+  g.fillRect(0, 0, 64, 64);
+  g.fillStyle = "#c5cdd0";
+  g.fillRect(32, 0, 32, 32);
+  g.fillRect(0, 32, 32, 32);
+  g.fillStyle = "#3c4a58";
+  g.fillRect(0, 0, 64, 2);
+  g.fillRect(0, 0, 2, 64);
+  g.fillRect(0, 30, 64, 3);
+  g.fillRect(30, 0, 3, 64);
+});
 (function rwbBag() {
   const c = document.createElement("canvas");
   c.width = 64; c.height = 64;
@@ -14694,14 +14728,17 @@ function blockMesh(solid, dims, origin, cell) {
           const base = pos.length / 3;
           for (let t = 0; t < 4; t++) {
             const su = order[t][0], sv = order[t][1];
-            pos.push(
-              (x[0] + du[0] * su + dv[0] * sv) * cell + origin[0],
-              (x[1] + du[1] * su + dv[1] * sv) * cell + origin[1],
-              (x[2] + du[2] * su + dv[2] * sv) * cell + origin[2]
-            );
+            const px = (x[0] + du[0] * su + dv[0] * sv) * cell + origin[0];
+            const py = (x[1] + du[1] * su + dv[1] * sv) * cell + origin[1];
+            const pz = (x[2] + du[2] * su + dv[2] * sv) * cell + origin[2];
+            pos.push(px, py, pz);
             const nn = [0, 0, 0]; nn[d] = sign;
             nrm.push(nn[0], nn[1], nn[2]);
-            uv.push(su * w * cell * 8, sv * h * cell * 8);
+            // A cloth print follows the hem. V is up on every wall, so a
+            // stripe stays horizontal when it turns a corner of the shirt.
+            const cu = d === 1 ? px : d === 0 ? pz : px;
+            const cv = d === 1 ? pz : py;
+            uv.push(cu * 8, cv * 8);
           }
           idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
           for (let l = 0; l < h; ++l) for (let k = 0; k < w; ++k) slice[n + k + l * dims[u]] = 0;
@@ -14899,10 +14936,11 @@ const parts = {
   basket: part(basketRecipe, true),
   bucket: part(bucketRecipe, true),
   eyeWhite: new THREE.BoxGeometry(0.05, 0.03, 0.012),
-  pupil: new THREE.BoxGeometry(0.016, 0.016, 0.01),
-  brow: new THREE.BoxGeometry(0.048, 0.01, 0.01),
-  grin: new THREE.BoxGeometry(0.088, 0.028, 0.012),
-  teeth: new THREE.BoxGeometry(0.072, 0.013, 0.01)
+  pupil: new THREE.BoxGeometry(0.015, 0.015, 0.01),
+  brow: new THREE.BoxGeometry(0.044, 0.009, 0.01),
+  grin: new THREE.BoxGeometry(0.07, 0.018, 0.012),
+  teeth: new THREE.BoxGeometry(0.058, 0.011, 0.01),
+  smile: new THREE.BoxGeometry(0.028, 0.011, 0.01)
 };
 figGeo.canopy = parts.canopy;
 figGeo.sack = parts.sack;
@@ -14920,13 +14958,18 @@ function dressHead(head, spec, matOf) {
   }
   place(parts.skull, skin, 0, 0, 0);
   [-1, 1].forEach(function (side) {
-    place(parts.eyeWhite, wrap(eyeWhite), side * 0.052, 0.008, 0.08);
-    place(parts.pupil, wrap(pupilMat), side * 0.044, 0.004, 0.09);
-    const brow = place(parts.brow, hairMat, side * 0.05, 0.038, 0.082);
-    brow.rotation.z = side * -0.18;
+    place(parts.eyeWhite, wrap(eyeWhite), side * 0.05, 0.012, 0.08);
+    place(parts.pupil, wrap(pupilMat), side * 0.048, 0.016, 0.09);
+    const brow = place(parts.brow, hairMat, side * 0.048, 0.046, 0.082);
+    // A slight outer lift, like the steppy brow. Steeper than this scowls.
+    brow.rotation.z = side * 0.1;
   });
-  place(parts.grin, wrap(mouthDark), 0, -0.056, 0.08);
-  place(parts.teeth, wrap(toothMat), 0, -0.049, 0.096);
+  place(parts.grin, wrap(mouthDark), 0, -0.048, 0.08);
+  place(parts.teeth, wrap(toothMat), 0, -0.045, 0.096);
+  [-1, 1].forEach(function (side) {
+    const corner = place(parts.smile, wrap(mouthDark), side * 0.044, -0.038, 0.086);
+    corner.rotation.z = side * 0.7;
+  });
   if (spec.cap) {
     place(parts.cap, wrap(capMat), 0, 0, 0);
     place(parts.burns, hairMat, 0, 0, 0);
@@ -15030,6 +15073,11 @@ function makeCitizen(spec) {
   const skin = skinMats[spec.skin];
   const hairMat = hairMats[spec.hair];
   const topMat = spec.top === "stripe" ? figCloth.stripe : spec.top === "check" ? figCloth.check : clothMat(spec.top, 1, "cloth");
+  // Collar, cuff and pocket are plain boxes. The print would squash into
+  // their 0–1 unwrap, so the binding is the cloth colour without the repeat.
+  const trimMat = spec.top === "stripe" ? clothMat(0xe2dbd0, 1, "cloth")
+    : spec.top === "check" ? clothMat(0xe6dfd2, 1, "cloth")
+    : topMat;
   const pantsMat = clothMat(spec.pants, 1, "cloth");
   const shoeMat = clothMat(spec.shoes, 1, "leather");
   const sleeveMat = spec.sleeve === "skin" ? skin : topMat;
@@ -15057,17 +15105,17 @@ function makeCitizen(spec) {
   if (spec.gait === "slow" && !skirted) torso.scale.set(1.06, 0.98, 1.02);
   hip.add(torso);
   if (spec.sleeve !== "skin") {
-    const band = figMesh(collarGeo, topMat);
+    const band = figMesh(collarGeo, trimMat);
     band.position.set(0, 0.5, 0.02);
     band.scale.set(1.22, 0.48, 1.05);
     hip.add(band);
-    const pocket = figMesh(figGeo.pocket, spec.top === "stripe" ? clothMat(0xd5d0c4, 0.9) : topMat);
+    const pocket = figMesh(figGeo.pocket, spec.top === "stripe" || spec.top === "check" ? clothMat(0xd4cfc2, 0.94, "cloth") : topMat);
     pocket.position.set(0.06, 0.24, 0.082);
     pocket.scale.set(0.9, 0.85, 0.7);
     hip.add(pocket);
   }
   if (spec.sleeve === "skin") {
-    const neckline = figMesh(collarGeo, topMat);
+    const neckline = figMesh(collarGeo, trimMat);
     neckline.position.set(0, 0.49, 0.022);
     neckline.scale.set(1.05, 0.42, 0.95);
     hip.add(neckline);
@@ -15157,7 +15205,7 @@ function makeCitizen(spec) {
     elbow.position.y = -UPPER_L;
     pivot.add(elbow);
     if (spec.sleeve === "short") {
-      const cuff = figMesh(cuffGeo, topMat);
+      const cuff = figMesh(cuffGeo, trimMat);
       cuff.scale.set(0.86, 0.6, 0.86);
       elbow.add(cuff);
     }
@@ -15166,7 +15214,7 @@ function makeCitizen(spec) {
     fore.scale.set(1.15, 1, 1.15);
     elbow.add(fore);
     if (spec.sleeve === "long") {
-      const cuff = figMesh(cuffGeo, topMat);
+      const cuff = figMesh(cuffGeo, trimMat);
       cuff.position.y = -FORE_L + 0.012;
       cuff.scale.set(0.82, 0.55, 0.82);
       elbow.add(cuff);
@@ -15857,22 +15905,22 @@ const streetPaths = gatherStreetPaths();
 // red-white-blue bag, paper fans, a cigarette. Not a later street fashion.
 const outfits = [
   { top: 0xe6e0d2, sleeve: "skin", pants: 0x22201e, hair: "short", skin: 0, prop: "bag", bag: 0, shoes: 0x1a1816, gait: "walk", brolly: 0x1a3058, towel: true },
-  { top: 0x6f9eb4, sleeve: "short", pants: 0x243044, hair: "bob", skin: 1, prop: "basket", shoes: 0x1a1816, gait: "walk", scale: 0.96, brolly: 0x1f4a38, fan: 0xe7dcc8 },
+  { top: 0x8a949a, sleeve: "short", pants: 0x243044, hair: "bob", skin: 1, prop: "basket", shoes: 0x1a1816, gait: "walk", scale: 0.96, brolly: 0x1f4a38, fan: 0xe7dcc8 },
   { top: 0x8d7b62, sleeve: "long", pants: 0x3a3632, hair: "grey", skin: 3, shoes: 0x2a241c, gait: "slow", scale: 0.94, brolly: 0x2c241c, habit: "smoke" },
-  { top: 0xd07a78, sleeve: "short", pants: 0x2a2826, hair: "bun", skin: 4, shoes: 0x7a3030, gait: "walk", scale: 0.74, brolly: 0xd8d2c4 },
-  { top: 0xddd6c8, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 2, prop: "pole", shoes: 0x1a1816, gait: "load", cap: true, straps: 0x6a3030 },
+  { top: 0xc4b59a, sleeve: "short", pants: 0x2a2826, hair: "bun", skin: 4, shoes: 0x1a1816, gait: "walk", scale: 0.74, brolly: 0xd8d2c4 },
+  { top: 0xddd6c8, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 2, prop: "pole", shoes: 0x1a1816, gait: "load", cap: true, straps: 0x3a342c },
   { top: "stripe", sleeve: "short", pants: 0x2c3344, hair: "bob", skin: 1, prop: "bag", bag: 1, shoes: 0x1a1816, gait: "walk", brolly: 0x3a4554 },
-  { top: 0xd9d3c6, sleeve: "skin", pants: 0x2a2826, hair: "short", skin: 0, apron: true, straps: 0x6a3030, shoes: 0x1a1816, gait: "walk", brolly: 0x4a3038, shorts: true },
-  { top: 0xe8e2d4, sleeve: "skin", pants: 0x4a4034, hair: "short", skin: 2, shoes: 0x1e3a5c, gait: "walk", brolly: 0x1a1c20, shorts: true, towel: true },
-  { top: 0xc4a46a, sleeve: "short", pants: 0x2a2826, hair: "bun", skin: 4, prop: "basket", shoes: 0x7a3030, gait: "walk", brolly: 0x1a2744, fan: 0x8a3030 },
+  { top: 0xd9d3c6, sleeve: "skin", pants: 0x2a2826, hair: "short", skin: 0, apron: true, straps: 0x4a4038, shoes: 0x1a1816, gait: "walk", brolly: 0x4a3038, shorts: true },
+  { top: 0xe8e2d4, sleeve: "skin", pants: 0x4a4034, hair: "short", skin: 2, shoes: 0x1a1816, gait: "walk", brolly: 0x1a1c20, shorts: true, towel: true },
+  { top: 0xb89a72, sleeve: "short", pants: 0x2a2826, hair: "bun", skin: 4, prop: "basket", shoes: 0x7a3030, gait: "walk", brolly: 0x1a2744, fan: 0x8a3030 },
   { top: 0xd5d0c4, sleeve: "short", pants: 0x243044, hair: "grey", skin: 3, prop: "bag", bag: 4, shoes: 0x1a1816, gait: "slow", scale: 0.92, brolly: 0x1e4632 },
-  { top: 0x7a9a86, sleeve: "short", pants: 0x1e1c1a, hair: "bob", skin: 1, shoes: 0x1a1816, gait: "walk", brolly: 0x8a3038, scale: 0.97, fan: 0xf0e6d4 },
+  { top: 0x6d7870, sleeve: "short", pants: 0x1e1c1a, hair: "bob", skin: 1, shoes: 0x1a1816, gait: "walk", brolly: 0x8a3038, scale: 0.97, fan: 0xf0e6d4 },
   { top: 0xe4ddd0, sleeve: "skin", pants: 0x2a3340, hair: "short", skin: 0, prop: "pole", shoes: 0x1a1816, gait: "load" },
   { top: "check", sleeve: "short", pants: 0x3a342c, hair: "short", skin: 2, shoes: 0x1a1816, gait: "walk", habit: "smoke", brolly: 0x2a241c },
-  { top: 0xc4564a, sleeve: "short", pants: 0x241c1c, hair: "bob", skin: 1, shoes: 0x7a3030, gait: "walk", scale: 0.95, fan: 0x8a3030, brolly: 0xd8d2c4 },
+  { top: 0x9a5348, sleeve: "short", pants: 0x241c1c, hair: "bob", skin: 1, shoes: 0x7a3030, gait: "walk", scale: 0.95, fan: 0x8a3030, brolly: 0xd8d2c4 },
   { top: 0x6a5344, sleeve: "long", pants: 0x2c2824, hair: "grey", skin: 3, shoes: 0x2a241c, gait: "slow", scale: 0.93, habit: "smoke", brolly: 0x1e4632 },
   { top: 0xe7e2d6, sleeve: "skin", pants: 0x2a2622, hair: "short", skin: 0, shorts: true, towel: true, shoes: 0x1a1816, gait: "walk", fan: 0xe4d7c4, brolly: 0x1a3058 },
-  { top: 0x24506a, sleeve: "short", pants: 0x1c1a18, hair: "short", skin: 4, prop: "bag", bag: 4, shoes: 0x1a1816, gait: "walk", brolly: 0x1a1c20 },
+  { top: 0x3c5160, sleeve: "short", pants: 0x1c1a18, hair: "short", skin: 4, prop: "bag", bag: 4, shoes: 0x1a1816, gait: "walk", brolly: 0x1a1c20 },
   { top: 0xd7c2b0, sleeve: "short", pants: 0x3a3632, hair: "bun", skin: 1, shoes: 0x1a1816, gait: "walk", scale: 0.98, brolly: 0x4a3038 }
 ];
 function addWalker(path, spec, i, place) {
@@ -18916,7 +18964,10 @@ function renderWetReflection() {
   const align = Math.abs(renderWetReflection.quat.dot(camera.quaternion));
   const resting = drift < 1e-4 && align > 0.999999;
   renderWetReflection.n = (renderWetReflection.n || 0) + 1;
-  const restN = high ? pace.reflRest + 4 : pace.reflRest;
+  // From the roofs the mirror can rest. At street height it keeps the same
+  // pace as a moving eye, so a person walking through a puddle is not left
+  // standing in the last frame.
+  const restN = high ? pace.reflRest + 4 : pace.reflMove;
   if (uWetReflOn.value > 0.5 && ((resting && (renderWetReflection.n % restN) !== 0) || (!resting && pace.reflMove > 1 && (renderWetReflection.n % pace.reflMove) !== 0))) return;
   if (!updateWetReflCamera(Math.min(camera.far, high ? (pace.tier === 0 ? 220 : 420) : (pace.tier === 0 ? 140 : 190)), 0.22)) {
     uWetReflOn.value = 0;
@@ -18949,11 +19000,20 @@ function renderWetReflection() {
   roads.visible = false;
   rain.visible = false;
   splash.visible = false;
-  const hiddenWalkers = [];
-  for (let wi = 0; wi < walkers.length; wi++) {
-    if (!walkers[wi].visible) continue;
-    hiddenWalkers.push(walkers[wi]);
-    walkers[wi].visible = false;
+  // The mirrored lens uses a tilted near plane. A resident is small enough
+  // that the culling test drops the body even though the puddle can see it.
+  if (!renderWetReflection.figs) {
+    const figs = [];
+    for (let wi = 0; wi < walkers.length; wi++) {
+      walkers[wi].traverse(function (obj) { figs.push(obj); });
+    }
+    renderWetReflection.figs = figs;
+  }
+  const figs = renderWetReflection.figs;
+  for (let fi = 0; fi < figs.length; fi++) {
+    const obj = figs[fi];
+    obj.userData.wetCull = obj.frustumCulled;
+    obj.frustumCulled = false;
   }
   const shadows = renderer.shadowMap.needsUpdate;
   renderer.shadowMap.needsUpdate = false;
@@ -18975,6 +19035,7 @@ function renderWetReflection() {
   renderer.clear();
   renderer.render(scene, wetReflCam);
   renderer.setRenderTarget(prev);
+  for (let fi = 0; fi < figs.length; fi++) figs[fi].frustumCulled = figs[fi].userData.wetCull;
   renderer.shadowMap.needsUpdate = shadows;
   sky.position.copy(renderWetReflection.skyPos);
   su.uView.value.set(prevViewX, prevViewY);
@@ -18983,7 +19044,6 @@ function renderWetReflection() {
   roads.visible = showRoads;
   rain.visible = showRain;
   splash.visible = showSplash;
-  for (let wi = 0; wi < hiddenWalkers.length; wi++) hiddenWalkers[wi].visible = true;
   uWetReflOn.value = 1;
   renderWetReflection.anchor.copy(camera.position);
   renderWetReflection.quat.copy(camera.quaternion);
