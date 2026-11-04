@@ -1072,11 +1072,18 @@ function glProfile() {
       if (lose) lose.loseContext();
     }
   } catch (e) {}
-  // 0 software, 1 integrated, 2 a discrete card. Frame time can step down later.
+  // 0 a phone or software, 1 integrated, 2 a discrete card. An iPhone reports
+  // "Apple GPU", the same string as a desktop Mac, so the phone is told apart
+  // by the device, not by the chip name. Frame time can step down later.
   let tier = 2;
-  if (/swiftshader|llvmpipe|softpipe|software|basic render/i.test(name)) tier = 0;
-  else if (/mali|adreno|powervr|videocore/i.test(name) || (/intel/i.test(name) && !/arc/i.test(name))) tier = 1;
-  return { name: name, tier: tier };
+  const ua = navigator.userAgent || "";
+  const phone = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
+  const touch = (navigator.maxTouchPoints || 0) > 1;
+  const shortSide = Math.min(screen.width || 0, screen.height || 0);
+  const handheld = phone || (touch && shortSide > 0 && shortSide <= 900);
+  if (/swiftshader|llvmpipe|softpipe|software|basic render/i.test(name) || handheld) tier = 0;
+  else if (/mali|adreno|powervr|videocore|immortalis/i.test(name) || (/intel/i.test(name) && !/arc/i.test(name))) tier = 1;
+  return { name: name, tier: tier, handheld: handheld };
 }
 const glInfo = glProfile();
 let tier = glInfo.tier;
@@ -1171,8 +1178,8 @@ function holdCameraAboveFloor() {
 scene.add(new THREE.HemisphereLight(0xc4ccc8, 0x3a342c, 0.62));
 const sun = new THREE.DirectionalLight(0xf2e2cc, 0.72);
 sun.position.set(-80, 140, 60);
-sun.castShadow = true;
-sun.shadow.mapSize.set(tier === 0 ? 512 : tier === 1 ? 1024 : 2048, tier === 0 ? 512 : tier === 1 ? 1024 : 2048);
+sun.castShadow = tier > 0;
+sun.shadow.mapSize.set(tier === 0 ? 256 : tier === 1 ? 512 : 2048, tier === 0 ? 256 : tier === 1 ? 512 : 2048);
 sun.shadow.camera.left = -210; sun.shadow.camera.right = 210;
 sun.shadow.camera.top = 170; sun.shadow.camera.bottom = -170;
 sun.shadow.camera.near = 20;
@@ -3976,38 +3983,65 @@ function gateBarMat(tone) {
   if (tone === 2) return solidMat("gateRust", 0x5a382c, 0.8, 0.14);
   return gateIron();
 }
+// One sheet per gate. Nine bars at about an 11 cm pitch on a metre door, three
+// bands of lazy-tong, and the channels. A stack of separate bars was a draw
+// the phone could not carry, and at street distance the sheet is the same gate.
+function collapsibleMat(tone) {
+  return shopMat("scissor:" + (tone || 0), () => {
+    const W = 160, H = 320;
+    const c = document.createElement("canvas");
+    c.width = W;
+    c.height = H;
+    const g = c.getContext("2d");
+    g.clearRect(0, 0, W, H);
+    const iron = tone === 1 ? "#24362e" : tone === 2 ? "#7a4634" : "#9aa098";
+    const hi = tone === 1 ? "#4a5c52" : tone === 2 ? "#b06848" : "#d4d8d0";
+    const n = 9;
+    const inset = 12;
+    const step = (W - inset * 2) / (n - 1);
+    g.lineCap = "butt";
+    g.strokeStyle = iron;
+    g.lineWidth = 14;
+    g.beginPath(); g.moveTo(6, 10); g.lineTo(W - 6, 10); g.stroke();
+    g.beginPath(); g.moveTo(6, H - 10); g.lineTo(W - 6, H - 10); g.stroke();
+    g.lineWidth = 6;
+    for (let i = 0; i < n; i++) {
+      const x = inset + step * i;
+      g.strokeStyle = i % 2 ? hi : iron;
+      g.beginPath();
+      g.moveTo(x, 16);
+      g.lineTo(x, H - 16);
+      g.stroke();
+    }
+    g.strokeStyle = iron;
+    g.lineWidth = 3;
+    const bands = 3;
+    const top = 20;
+    const bandH = (H - 40) / bands;
+    for (let b = 0; b < bands; b++) {
+      const y0 = top + b * bandH;
+      const y1 = y0 + bandH;
+      for (let i = 0; i < n - 1; i++) {
+        const x0 = inset + step * i;
+        const x1 = x0 + step;
+        g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+        g.beginPath(); g.moveTo(x1, y0); g.lineTo(x0, y1); g.stroke();
+      }
+    }
+    const tex = meshMips(c);
+    tex.encoding = THREE.sRGBEncoding;
+    return new THREE.MeshStandardMaterial({
+      map: tex, color: 0xffffff, alphaTest: 0.45, roughness: 0.82, metalness: 0.12,
+      side: THREE.DoubleSide, clippingPlanes: clips
+    });
+  });
+}
 function putCollapsible(put, span, alongCenter, width, y0, y1, tone, outBase) {
   const h = y1 - y0;
   if (!(h > 0.5) || !(width > 0.4) || !(span > 0.2)) return;
-  const n = Math.max(4, Math.round(width / 0.11));
-  const step = width / (n - 1);
   const y = (y0 + y1) * 0.5;
-  const origin = alongCenter * span - width * 0.5;
-  const iron = gateBarMat(tone || 0);
   const out = outBase == null ? -0.05 : outBase;
-  for (let i = 0; i < n; i++) {
-    const along = (origin + step * i) / span;
-    const thick = i === 0 || i === n - 1 ? 0.02 : 0.012;
-    put(shopGeo.box, iron, along, out, y, thick, h, 0.014);
-  }
-  put(shopGeo.box, iron, alongCenter, out, y1 - 0.016, width, 0.032, 0.026);
-  put(shopGeo.box, iron, alongCenter, out, y0 + 0.016, width, 0.032, 0.026);
-  const bands = 3;
-  const bandH = (h - 0.06) / bands;
-  const ang = Math.atan2(step, bandH);
-  const len = Math.hypot(step, bandH);
-  for (let b = 0; b < bands; b++) {
-    const midY = y0 + 0.03 + bandH * (b + 0.5);
-    for (let i = 0; i < n - 1; i++) {
-      const along = (origin + step * (i + 0.5)) / span;
-      addShopMesh.spin = ang;
-      put(shopGeo.box, iron, along, out + 0.006, midY, 0.008, len, 0.008);
-      addShopMesh.spin = -ang;
-      put(shopGeo.box, iron, along, out - 0.006, midY, 0.008, len, 0.008);
-      addShopMesh.spin = 0;
-    }
-  }
-  addShopMesh.spin = 0;
+  put(shopGeo.plane, collapsibleMat(tone || 0), alongCenter, out, y, width, h, 1);
 }
 // Folded to the jamb, the same bars pack into a bundle about 15 cm wide.
 function putCollapsedGate(put, span, alongCenter, y0, y1, tone, outBase) {
@@ -4029,15 +4063,19 @@ function putCollapsedGate(put, span, alongCenter, y0, y1, tone, outBase) {
 // of medallions. A hinge knuckle stands in the gap, proud of the sheet, and
 // neighbouring plates sit 16 mm apart in depth.
 function putFoldingGate(put, span, alongCenter, width, y0, y1, variant, outBase) {
+  const y = (y0 + y1) * 0.5;
+  const h = y1 - y0;
+  if (!(h > 0.2) || !(span > 0.2)) return;
+  const face = latticeMat(variant || 0);
+  if (tier < 1) {
+    put(shopGeo.plane, face, alongCenter, outBase, y, width, h, 1);
+    return;
+  }
   const leafW = 0.10;
   const n = Math.max(2, Math.round(Math.max(width, leafW) / leafW));
   const pitch = width / n;
   const plateW = Math.max(0.04, pitch - 0.020);
-  const y = (y0 + y1) * 0.5;
-  const h = y1 - y0;
-  if (!(h > 0.2) || !(span > 0.2)) return;
   const origin = alongCenter * span - width * 0.5;
-  const face = latticeMat(variant || 0);
   const iron = gateIron();
   for (let i = 0; i < n; i++) {
     const along = (origin + pitch * (i + 0.5)) / span;
@@ -4047,9 +4085,7 @@ function putFoldingGate(put, span, alongCenter, width, y0, y1, variant, outBase)
   const knuckleOut = outBase + 0.014;
   for (let i = 0; i <= n; i++) {
     const along = (origin + pitch * i) / span;
-    for (let k = 0; k < 3; k++) {
-      put(shopGeo.knuckle, iron, along, knuckleOut, y0 + h * (0.22 + k * 0.28), 1, 1, 1);
-    }
+    put(shopGeo.knuckle, iron, along, knuckleOut, y, 1, 1, 1);
   }
 }
 // Folded to the jamb, the same plates pack into a 16 cm bundle. Each one is
@@ -21104,8 +21140,13 @@ function renderRoofReflection() {
 // Resampling it through an offscreen pass picked the wrong texture level, so a
 // wall read as a flat mask until the camera came close.
 function renderFrame() {
-  renderWetReflection();
-  renderRoofReflection();
+  if (pace.tier > 0) {
+    renderWetReflection();
+    renderRoofReflection();
+  } else {
+    uWetReflOn.value = 0;
+    uRoofReflOn.value = 0;
+  }
   renderer.setRenderTarget(null);
   renderer.render(scene, camera);
 }
@@ -21565,6 +21606,7 @@ markQuiet(scene);
 lamps.forEach(function (lamp) { lamp.layers.set(1); });
 function syncPace() {
   const t = pace.tier;
+  sun.castShadow = t > 0;
   pace.reflScaleHi = t === 0 ? 0.18 : t === 1 ? 0.24 : 0.28;
   pace.reflScaleLo = t === 0 ? 0.24 : t === 1 ? 0.32 : 0.38;
   pace.reflMax = t === 0 ? 300 : t === 1 ? 400 : 480;
