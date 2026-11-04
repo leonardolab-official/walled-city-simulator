@@ -1729,7 +1729,7 @@ const ROOF_GLINT = [
       "  gl_FragColor.rgb = mix(lit, refl, clamp(cover, 0.0, 0.84));",
       "}"
 ].join("\n");
-ground.material.onBeforeCompile = shader => {
+if (tier > 0) ground.material.onBeforeCompile = shader => {
   shader.uniforms.uWet = uWet;
   shader.uniforms.uWetCol = uWetCol;
   shader.uniforms.uWetTime = uWetTime;
@@ -1760,10 +1760,11 @@ ground.material.onBeforeCompile = shader => {
     "#endif"
   ].join("\n"));
 };
-ground.material.customProgramCacheKey = function () { return "groundWet"; };
+if (tier > 0) ground.material.customProgramCacheKey = function () { return "groundWet"; };
 // Alley pours are their own maps, laid on top of the outer ground. Without this
 // they stay dry while the earth around them puddles.
 function attachWetFloor(mat) {
+  if (tier < 1) return;
   if (!mat || mat.userData.wetFloor) return;
   mat.userData.wetFloor = 1;
   const prev = mat.onBeforeCompile;
@@ -2097,6 +2098,7 @@ function attachWetRoof(mat) {
 // and tank walls then stretched the same image. Project each face in metres.
 // Call this before a wet-surface compile so that compile keeps the chain.
 function attachBoxTile(mat, tile, rim, wear, phase) {
+  if (tier < 1) return;
   if (!mat || mat.userData.boxTile) return;
   mat.userData.boxTile = 1;
   const t = tile > 0 ? tile : 0.38;
@@ -2167,6 +2169,7 @@ function attachBoxTile(mat, tile, rim, wear, phase) {
 // darker, so the iron reads as one piece. sheetAxis says which local axis
 // runs along the facade: the waves are spaced that way and run out from the wall.
 function attachSheetSoffit(mat) {
+  if (tier < 1) return;
   if (!mat || mat.userData.sheetSoffit) return;
   mat.userData.sheetSoffit = 1;
   const prev = mat.onBeforeCompile;
@@ -2198,6 +2201,7 @@ function attachSheetSoffit(mat) {
 // Boxes and cylinders share this map. Three taps, in the object's own metres,
 // so a round tank and a rectangular one keep the same flake size.
 function attachTriTile(mat, tile) {
+  if (tier < 1) return;
   if (!mat || mat.userData.triTile || mat.userData.boxTile) return;
   mat.userData.triTile = 1;
   const t = tile > 0 ? tile : 0.4;
@@ -2245,6 +2249,7 @@ function attachTriTile(mat, tile) {
 // unwrapped in metres. The lid stays one disc, so a lip does not stripe it.
 // The dark lip and the foot are each about 8 mm.
 function attachPotClay(mat) {
+  if (tier < 1) return;
   if (!mat || mat.userData.potClay) return;
   mat.userData.potClay = 1;
   const prev = mat.onBeforeCompile;
@@ -2281,6 +2286,7 @@ function attachPotClay(mat) {
 }
 // Cylinder unwrap is already the right layout. Only the length was 0–1.
 function attachCylTile(mat, tile, radius, height) {
+  if (tier < 1) return;
   if (!mat || mat.userData.cylTile) return;
   mat.userData.cylTile = 1;
   const t = tile > 0 ? tile : 0.4;
@@ -2321,6 +2327,7 @@ function attachCylTile(mat, tile, radius, height) {
 // edge colour instead of squashing the characters. mode 1 holds the full height
 // and only redistributes the width, so a fascia stays at the top of the bay.
 function attachPlaneAspect(mat, texAspect, mode) {
+  if (tier < 1) return;
   if (!mat || mat.userData.planeAspect || !(texAspect > 0)) return;
   mat.userData.planeAspect = 1;
   const aspect = texAspect;
@@ -2379,6 +2386,7 @@ function attachPlaneAspect(mat, texAspect, mode) {
 }
 // The metal frame is a constant band around the glass, not a percentage of the pane.
 function attachFrameRim(mat) {
+  if (tier < 1) return;
   if (!mat || mat.userData.frameRim) return;
   mat.userData.frameRim = 1;
   const prev = mat.onBeforeCompile;
@@ -3676,6 +3684,7 @@ function signHash(x, y, s) {
 // Enamel and plastic shop boards: nicotine fade, rain soot, rust from the
 // fasteners, and chips through to the undercoat. The trade word stays readable.
 function signWeather(g, w, h, seed) {
+  if (tier < 1) return;
   const img = g.getImageData(0, 0, w, h);
   const d = img.data;
   const s = seed || 1;
@@ -3767,7 +3776,7 @@ function bladeLayout(text, horizontal) {
   return { w: cell, h: cell * n, n, cell, glyph: 136 };
 }
 function bladeTex(text, bg, ink, flip) {
-  const key = "blade:" + text + ":" + bg + ":" + ink + ":" + (flip ? "b" : "f");
+  const key = "blade:" + (tier < 1 ? bg + ":" + ink : text + ":" + bg + ":" + ink) + ":" + (flip ? "b" : "f");
   if (shopCache[key]) return shopCache[key];
   const lay = bladeLayout(text, false);
   const chars = Array.from(text);
@@ -3796,7 +3805,7 @@ function bladeTex(text, bg, ink, flip) {
   return tex;
 }
 function plasticTex(text, bg, ink, flip) {
-  const key = "plastic:" + text + ":" + bg + ":" + ink + ":" + (flip ? "b" : "f");
+  const key = "plastic:" + (tier < 1 ? bg + ":" + ink : text + ":" + bg + ":" + ink) + ":" + (flip ? "b" : "f");
   if (shopCache[key]) return shopCache[key];
   const lay = bladeLayout(text, true);
   const chars = Array.from(text);
@@ -3828,7 +3837,7 @@ function plasticTex(text, bg, ink, flip) {
 }
 function alleySignMat(text, bg, ink, nightI, horizontal, flip) {
   const glow = nightI == null ? 0.4 : nightI;
-  const key = "asign:" + text + ":" + bg + ":" + ink + ":" + (horizontal ? 1 : 0) + ":" + (flip ? 1 : 0) + ":" + glow;
+  const key = "asign:" + (tier < 1 ? bg + ":" + ink : text + ":" + bg + ":" + ink) + ":" + (horizontal ? 1 : 0) + ":" + (flip ? 1 : 0) + ":" + glow;
   return shopMat(key, () => {
     const map = horizontal ? plasticTex(text, bg, ink, !!flip) : bladeTex(text, bg, ink, !!flip);
     const mat = new THREE.MeshStandardMaterial({
@@ -3909,7 +3918,7 @@ function paintTiles(g, x, y, w, h, grout, face) {
 // A trade board keeps the painting's own proportions. The mesh is sized from
 // this aspect, so a wide bay does not stretch the characters.
 function shopBoard(text, bg, ink) {
-  const key = "sboard:" + text + ":" + bg + ":" + ink;
+  const key = "sboard:" + (tier < 1 ? bg + ":" + ink : text + ":" + bg + ":" + ink);
   if (shopCache[key]) return shopCache[key];
   const n = Math.max(1, String(text || "").length);
   const H = 128;
@@ -4082,6 +4091,10 @@ function putCollapsedGate(put, span, alongCenter, y0, y1, tone, outBase) {
   const origin = alongCenter * span - pack * 0.5;
   const iron = gateBarMat(tone || 0);
   const out = outBase == null ? -0.05 : outBase;
+  if (tier < 1) {
+    put(shopGeo.box, iron, alongCenter, out, y, pack, h, 0.04);
+    return;
+  }
   for (let i = 0; i < n; i++) {
     const along = (origin + pitch * (i + 0.5)) / span;
     put(shopGeo.box, iron, along, out + (i % 2 ? 0.01 : -0.01), y, pitch * 0.55, h, 0.02);
@@ -4128,6 +4141,10 @@ function putFoldedStack(put, span, alongCenter, y0, y1, variant) {
   const origin = alongCenter * span - pack * 0.5;
   const face = latticeMat(variant || 0);
   const iron = gateIron();
+  if (tier < 1) {
+    put(shopGeo.box, face, alongCenter, -0.05, y, pack, h, 0.055);
+    return;
+  }
   for (let i = 0; i < n; i++) {
     const along = (origin + pitch * (i + 0.5)) / span;
     const zig = i % 2 ? 0.012 : -0.012;
@@ -4138,7 +4155,7 @@ function putFoldedStack(put, span, alongCenter, y0, y1, variant) {
 // uses that same ratio, and the glyphs stay square in the middle of it.
 function fasciaBoard(text, bg, ink, aspect) {
   const a = Math.max(1.4, aspect || 2);
-  const key = "fascia:" + text + ":" + bg + ":" + ink + ":" + a.toFixed(2);
+  const key = "fascia:" + (tier < 1 ? bg + ":" + ink : text + ":" + bg + ":" + ink + ":" + a.toFixed(2));
   if (shopCache[key]) return shopCache[key];
   const H = 160;
   const W = Math.max(H, Math.round(H * a));
@@ -4168,7 +4185,7 @@ function fasciaBoard(text, bg, ink, aspect) {
 function glyphBoard(text, ink) {
   const chars = Array.from(String(text || ""));
   const n = Math.max(1, chars.length);
-  const key = "glyph:" + text + ":" + ink;
+  const key = "glyph:" + (tier < 1 ? ink : text + ":" + ink);
   if (shopCache[key]) return shopCache[key];
   const H = 128;
   const W = Math.round(H * n * 0.96);
@@ -4454,6 +4471,7 @@ function flushShops() {
   Object.keys(groups).forEach(key => {
     const g = groups[key];
     const mesh = new THREE.InstancedMesh(g.geo, g.mat, g.items.length);
+    mesh.userData.tag = "shop";
     mesh.frustumCulled = false;
     mesh.castShadow = false;
     mesh.receiveShadow = false;
@@ -4893,6 +4911,9 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   const stepFront = -0.02;
   const stepBot = Math.max(streetFoot, floorTop - 0.15);
   put(shopGeo.box, shopFinish.concrete, 0.5, stepFront - stepDepth * 0.5, (floorTop + stepBot) * 0.5, Math.min(roomW, openW * 0.98), floorTop - stepBot, stepDepth);
+  // The room behind the mouth is a stack of boxes. From a phone it is the
+  // same dark opening, and those boxes were a large share of the shop batch.
+  if (tier > 0) {
   const bodyFront = -0.14;
   const bodyD = Math.max(0.12, bodyFront - floorBack);
   const bodyBot = Math.min(0.06, streetFoot);
@@ -4914,6 +4935,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     put(shopGeo.box, shopFinish.plaster, 0.5 + half, sideOut, 1.24, 0.06, 1.82, sideD);
   }
   put(shopGeo.box, clinic ? shopFinish.shopTile : shopFinish.plaster, 0.5, backFace - 0.025, 1.24, roomW * 0.98, 1.82, 0.05);
+  }
   // Girard’s Tung Tau Tsuen Road facade and the 1987 alley pictures: a tong lau
   // bay, not a glass wall. The fascia is the full opening and 36 cm tall.
   // A clinic has a door and a framed window. A workshop keeps an open mouth
@@ -4924,6 +4946,10 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   const wordIndex = variant === "shut" || variant === 1 || !words.length ? 0 : (variant % words.length);
   const word = words[wordIndex] || words[0] || "";
   function roller(y0, y1, width, along) {
+    if (tier < 1) {
+      put(shopGeo.box, shopFinish.metal, along, -0.05, (y0 + y1) * 0.5, width, Math.max(0.2, y1 - y0), 0.022);
+      return;
+    }
     const pitch = 0.05;
     const n = Math.max(2, Math.floor((y1 - y0) / pitch));
     for (let i = 0; i < n; i++) put(shopGeo.box, shopFinish.metal, along, -0.05, y0 + pitch * (i + 0.5), width, 0.045, 0.022);
@@ -5025,7 +5051,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     putFoldedStack(put, span, inset + fold / (2 * span), 0.36, 1.9, gateV);
     if (spec.half && variant === 1) roller(0.36, 1.05, mouth * 0.96, inset + mouth / (2 * span));
   }
-  if (open && kind !== "mahjong" && kind !== "paikau") {
+  if (tier > 0 && open && kind !== "mahjong" && kind !== "paikau") {
     const cw = Math.min(1.15, Math.max(0.55, openW * 0.42));
     putIn(shopGeo.box, shopFinish.timber, 0.62, -0.42, 0.86, cw, 0.04, 0.42);
     putIn(shopGeo.box, shopFinish.timber, 0.62, -0.23, 0.60, cw, 0.48, 0.03);
@@ -5124,7 +5150,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     const lp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.22, -0.36, 1.85);
     addShopMesh(shopGeo.box, lamp, lp.x, lp.y, lp.z, 0, 0.08, 0.08, 0.06);
   }
-  fitOpenShop(kind, putIn, openW, span, bay, face);
+  if (tier > 0) fitOpenShop(kind, putIn, openW, span, bay, face);
   addShopMesh.pinX = addShopMesh.pinZ = null;
 }
 // Girard, Suddaby, City of Darkness: the stair is a slot about 0.8 m beside the
@@ -6617,7 +6643,9 @@ function blockQuad(x, z) {
 }
 function fillInst(geo, mat, items, place) {
   if (!items.length) return null;
-  if (items.length > 160 && !fillInst.split) {
+  // Quadrant splits multiply draw calls. On a phone the opening view sees
+  // every quadrant, so one batch per material is the cheaper city.
+  if (tier > 0 && items.length > 160 && !fillInst.split) {
     const probe = new THREE.Object3D();
     const bins = [[], [], [], []];
     for (let i = 0; i < items.length; i++) {
@@ -6649,6 +6677,7 @@ function fillInst(geo, mat, items, place) {
     drawGeo.setAttribute("sheetAxis", new THREE.InstancedBufferAttribute(ax, 1));
   }
   const mesh = new THREE.InstancedMesh(drawGeo, mat, items.length);
+  mesh.userData.tag = fillInst.tag || "fill";
   if (fillInst.goods) mesh.userData.goods = 1;
   mesh.frustumCulled = false;
   mesh.castShadow = false;
@@ -6768,6 +6797,7 @@ function buildRoof() {
     o.position.set(it.x, it.y, it.z);
     o.rotation.y = it.yaw || 0;
   };
+  if (tier < 1) roofQ.yagi = [];
   tagKit(fillInst(makeYagi(), aerial, roofQ.yagi, (o, it) => {
     o.position.set(it.x, it.y, it.z);
     o.rotation.set(it.lean, it.yaw, it.lean * 0.35);
@@ -6796,7 +6826,7 @@ function buildRoof() {
     return mat;
   });
   const clothGeo = new THREE.BoxGeometry(0.4, 0.62, 0.05);
-  roofQ.line.forEach(it => {
+  if (tier > 0) roofQ.line.forEach(it => {
     const wire = new THREE.Mesh(new THREE.BoxGeometry(it.len, 0.02, 0.02), aerial);
     wire.position.set(it.x + it.len / 2, it.y, it.z);
     wire.castShadow = false;
@@ -6824,6 +6854,7 @@ function alleyConcrete() {
   return wornFloorTexture("alley");
 }
 function dressAlleys() {
+  fillInst.tag = "alley";
   // Wet concrete, a channel along one wall, and the low ceiling of a metre lane.
   // The photographs are a sagging loom of cables, stained concrete down the
   // middle, iron gates, and pipes, posters, bags and drums against the plaster.
@@ -8156,6 +8187,25 @@ function dressAlleys() {
   }
   [bits.grate, bits.board, bits.puddle, bits.scrap, bits.damp, goods.bucket, goods.sack, goods.bag, goods.crate, goods.sheet, goods.drum, goods.rag, gates, seatedDrains, pipes.galv, pipes.pvc].forEach(dropToEarth);
   const unit = new THREE.BoxGeometry(1, 1, 1);
+  function phoneSlice(list, frac) {
+    if (tier > 0 || !list || list.length < 40) return list;
+    const n = Math.max(24, Math.floor(list.length * frac));
+    const step = list.length / n;
+    const out = new Array(n);
+    for (let i = 0; i < n; i++) out[i] = list[(i * step) | 0];
+    return out;
+  }
+  if (tier < 1) {
+    ["galv", "pvc", "cable", "tube", "warm"].forEach(k => { pipes[k] = phoneSlice(pipes[k], 0.22); });
+    cross.loom = phoneSlice(cross.loom, 0.22);
+    cross.cord = phoneSlice(cross.cord, 0.22);
+    cross.green = phoneSlice(cross.green, 0.35);
+    cross.plank = phoneSlice(cross.plank, 0.35);
+    cross.zinc = phoneSlice(cross.zinc, 0.35);
+    ["grate", "puddle", "damp", "plate", "paper", "board", "scrap"].forEach(k => { bits[k] = phoneSlice(bits[k], 0.28); });
+    ["bucket", "sack", "bag", "crate", "sheet", "rag", "drum"].forEach(k => { goods[k] = phoneSlice(goods[k], 0.35); });
+  }
+  const drainsPhone = tier < 1 ? phoneSlice(seatedDrains, 0.3) : seatedDrains;
   function fillGoods(geo, mat, items) {
     fillInst.goods = true;
     const mesh = fillInst(geo, mat, items, placeBox);
@@ -8176,7 +8226,7 @@ function dressAlleys() {
     fillInst(unit, tubeMat, pipes.tube, placeBox),
     fillInst(unit, warmTube, pipes.warm, placeBox),
     fillInst(unit, greenTube, cross.green, placeBox),
-    fillInst(unit, drainMat, seatedDrains, placeBox),
+    fillInst(unit, drainMat, drainsPhone, placeBox),
     fillInst(unit, plankMat, cross.plank, placeBox),
     fillInst(unit, zincMat, cross.zinc, placeBox),
     fillInst(unit, plateMat, bits.grate, placeBox),
@@ -9873,6 +9923,7 @@ function elderPaintMap() {
 // The skirt stays in world height. The wall box is centred, so a local
 // soot would paint the middle of the storey.
 function attachElderGrime(mat) {
+  if (tier < 1) return;
   if (!mat || mat.userData.elderGrime) return;
   mat.userData.elderGrime = 1;
   const prev = mat.onBeforeCompile;
@@ -12262,7 +12313,32 @@ const traffic = [];
   const carPaints = [carWhite, ivory, carBlue, carMaroon];
   const bikeShirts = [shirtA, shirtB, shirtC, shirtB];
   let taxiN = 0, carN = 0, vanN = 0, lorryN = 0;
+  function phoneRide(type) {
+    const root = new THREE.Group();
+    const shell = new THREE.Group();
+    root.add(shell);
+    const bus = type === "bus";
+    const mini = type === "minibus";
+    const lorry = type === "lorry";
+    const van = type === "van";
+    const len = bus ? 10.4 : lorry ? 7.2 : mini ? 6.1 : van ? 4.8 : 4.3;
+    const h = bus ? 4.15 : lorry ? 2.5 : mini ? 2.35 : 1.55;
+    const wid = bus || lorry ? 2.35 : 1.85;
+    const paint = type === "taxi" ? taxiRed : bus ? lorryGreen : lorry ? lorryBlue : van ? vanCream : carWhite;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(len, h, wid), paint);
+    body.position.y = h * 0.5 + 0.32;
+    shell.add(body);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(Math.min(1.4, len * 0.22), h * 0.32, wid * 0.9), traffic.head || paint);
+    cab.position.set(len * 0.36, h * 0.62 + 0.32, 0);
+    shell.add(cab);
+    const ride = {
+      len: len, axle: 0.32, shell: shell, wheels: [], riders: [], tails: [],
+      cruise: bus ? 7.2 : 9.4, amp: 0.02, weave: 0.15, lean: 0.08, yaw: 0, accel: 0
+    };
+    return { root: root, ride: ride };
+  }
   function makeVehicle(type) {
+    if (tier < 1) return phoneRide(type);
     if (type === "minibus") return minibus();
     if (type === "bus") return bus();
     if (type === "taxi") return sedan(taxiRed, { taxi: true, forHire: (taxiN++ % 2) === 0 });
@@ -12302,11 +12378,14 @@ const traffic = [];
   fleet.forEach((lane, li) => {
     const group = [];
     traffic.lanes.push(group);
-    const step = (x1 - x0 - 30) / lane.row.length;
-    lane.row.forEach((type, i) => {
+    // One vehicle a lane. A full row, plus the bicycles, is a few hundred
+    // live meshes on the first frame, which is where a phone tab dies.
+    const row = tier < 1 ? lane.row.slice(0, 1) : lane.row;
+    const step = (x1 - x0 - 30) / row.length;
+    row.forEach((type, i) => {
       park(makeVehicle(type), lane.z, x0 + 16 + i * step + (li % 2) * 7, lane.dir, group, false);
     });
-    park(bike(bikeShirts[li]), lane.bikeZ, x0 + 16 + step * 0.48 + li * 4, lane.dir, null, true);
+    if (tier > 0) park(bike(bikeShirts[li]), lane.bikeZ, x0 + 16 + step * 0.48 + li * 4, lane.dir, null, true);
   });
   traffic.fadeSolid = fadeSolid;
   traffic.beams = new Array(ROAD_BEAMS);
@@ -14017,6 +14096,7 @@ function openingSize(hi, faceCode, b, f) {
   };
 }
 function dressPerimeter() {
+  fillInst.tag = "perim";
   function acTexture() {
     const c = document.createElement("canvas");
     c.width = 64; c.height = 32;
@@ -14264,7 +14344,7 @@ function dressPerimeter() {
           rust: rng() > 0.5
         });
       }
-      if (rng() > 0.42) {
+      if (tier > 0 && rng() > 0.42) {
         [3, 7, 11].forEach((f, fi) => {
           if (f >= u.floors || rng() < 0.4) return;
           const laid = faceStorey(u, face, f, pitch);
@@ -14309,6 +14389,10 @@ dressPerimeter();
 // Each bay is remembered so a cage on that patch can be taken down. The window stays.
 const scaffoldFaces = [];
 function dressScaffold() {
+  // A few repair frames. On a phone they are another instanced material
+  // on the first frame, and the bay reads without them.
+  if (tier < 1) return;
+  fillInst.tag = "scaff";
   const bamboo = new THREE.MeshStandardMaterial({ map: bambooWearMap(), color: 0xffffff, roughness: 0.96, metalness: 0, clippingPlanes: clips });
   const boardMat = new THREE.MeshStandardMaterial({ map: woodGrainMap(), color: 0x7a6854, roughness: 0.96, clippingPlanes: clips });
   attachCylTile(bamboo, 0.42, 0.028, 1);
@@ -14466,6 +14550,7 @@ function slabOpen(x0, x1, z0, z1) {
 // lane only gets a short projection, so the two sides leave the walking line.
 // The dark core has none.
 function dressCages() {
+  fillInst.tag = "cage";
   dressCages.sheets = [];
   function wireTexture() {
     const S = 256;
@@ -15310,7 +15395,11 @@ function dressCages() {
         const covered = new Array(grid.bays);
         // A bare floor, or a bare bay, is a household that never built a cage.
         // Neighbouring cages still run up to a thin joint, not a full empty bay.
-        const floorBare = rnd() < (north ? 0.03 : narrow ? 0.1 : outer ? 0.045 : 0.06);
+        // Upper cages are a wall of instances from the opening view. A phone
+        // keeps the street floors, where the wire is actually in front of you.
+        // The wire on every window is a few hundred thousand triangles, all of
+        // them in the opening view. A phone keeps the lit pane and skips the cage.
+        const floorBare = tier < 1 || rnd() < (north ? 0.03 : narrow ? 0.1 : outer ? 0.045 : 0.06);
         let b = 0;
         while (!floorBare && b < grid.bays) {
           let room = 1;
@@ -15753,43 +15842,53 @@ function dressCages() {
     o.position.set(it.x, it.y, it.z);
     o.scale.set(it.sx || 1, it.sy || 1, it.sz || 1);
   }
-  fillInst(flower.mesh, steelWire, buckets.flowerMesh, placeCage);
+  fillInst.tag = "cage";
+  // A phone keeps the wire sheet and the lid. The bars, posts and flower
+  // frames are the same cage at this distance, and they were most of the
+  // triangles on the opening view.
+  function cageSolid(geo, mat, items, place) {
+    if (tier < 1) return null;
+    return fillInst(geo, mat, items, place);
+  }
+  // The flower basket is a merged sheet of panels. On a phone the front
+  // plane is the cage; the basket was most of the opening-view triangles.
+  if (tier > 0) fillInst(flower.mesh, steelWire, buckets.flowerMesh, placeCage);
   fillInst.detail = true;
-  fillInst(flower.frame, steelBar, buckets.flowerFrame, placeCage);
-  fillInst(flower.tray, steelTray, buckets.flowerTray, placeCage);
-  fillInst(flower.pot, potMat, buckets.flowerPot, placeCage);
-  fillInst(flower.leaf, leafSolid, buckets.flowerLeaf, placeCage);
+  cageSolid(flower.frame, steelBar, buckets.flowerFrame, placeCage);
+  cageSolid(flower.tray, steelTray, buckets.flowerTray, placeCage);
+  cageSolid(flower.pot, potMat, buckets.flowerPot, placeCage);
+  cageSolid(flower.leaf, leafSolid, buckets.flowerLeaf, placeCage);
   fillInst.detail = false;
   fillInst(frontGeo, steelWire, buckets.frontSteel, placeCage);
   fillInst(sideGeo, steelWire, buckets.sideSteel, placeCage);
   fillInst.detail = true;
-  fillInst(new THREE.BoxGeometry(1, 1, 1), steelBar, buckets.barSteel, placeBox);
-  fillInst(new THREE.BoxGeometry(1, 1, 1), steelBar, buckets.postSteel, placeBox);
-  fillInst(new THREE.BoxGeometry(1, 1, 1), steelTray, buckets.deckSteel, placeBox);
+  cageSolid(new THREE.BoxGeometry(1, 1, 1), steelBar, buckets.barSteel, placeBox);
+  cageSolid(new THREE.BoxGeometry(1, 1, 1), steelBar, buckets.postSteel, placeBox);
+  cageSolid(new THREE.BoxGeometry(1, 1, 1), steelTray, buckets.deckSteel, placeBox);
   fillInst.detail = false;
   fillInst(flatGeo, steelWire, buckets.roofSteel, placeFlat);
   fillInst(frontGeo, mintWire, buckets.frontMint, placeCage);
   fillInst(sideGeo, mintWire, buckets.sideMint, placeCage);
   fillInst.detail = true;
-  fillInst(new THREE.BoxGeometry(1, 1, 1), mintBar, buckets.barMint, placeBox);
-  fillInst(new THREE.BoxGeometry(1, 1, 1), mintBar, buckets.postMint, placeBox);
-  fillInst(new THREE.BoxGeometry(1, 1, 1), mintTray, buckets.deckMint, placeBox);
+  cageSolid(new THREE.BoxGeometry(1, 1, 1), mintBar, buckets.barMint, placeBox);
+  cageSolid(new THREE.BoxGeometry(1, 1, 1), mintBar, buckets.postMint, placeBox);
+  cageSolid(new THREE.BoxGeometry(1, 1, 1), mintTray, buckets.deckMint, placeBox);
   fillInst.detail = false;
   fillInst(flatGeo, mintWire, buckets.roofMint, placeFlat);
   fillInst(frontGeo, rustWire, buckets.frontRust, placeCage);
   fillInst(sideGeo, rustWire, buckets.sideRust, placeCage);
   fillInst.detail = true;
-  fillInst(new THREE.BoxGeometry(1, 1, 1), rustBar, buckets.barRust, placeBox);
-  fillInst(new THREE.BoxGeometry(1, 1, 1), rustBar, buckets.postRust, placeBox);
-  fillInst(new THREE.BoxGeometry(1, 1, 1), rustTray, buckets.deckRust, placeBox);
+  cageSolid(new THREE.BoxGeometry(1, 1, 1), rustBar, buckets.barRust, placeBox);
+  cageSolid(new THREE.BoxGeometry(1, 1, 1), rustBar, buckets.postRust, placeBox);
+  cageSolid(new THREE.BoxGeometry(1, 1, 1), rustTray, buckets.deckRust, placeBox);
   fillInst.detail = false;
   fillInst(flatGeo, rustWire, buckets.roofRust, placeFlat);
   fillInst(frontGeo, chalkWire, buckets.frontChalk, placeCage);
   fillInst(sideGeo, chalkWire, buckets.sideChalk, placeCage);
   fillInst.detail = true;
-  fillInst(new THREE.BoxGeometry(1, 1, 1), chalkBar, buckets.barChalk, placeBox);
-  fillInst(new THREE.BoxGeometry(1, 1, 1), chalkBar, buckets.postChalk, placeBox);
-  fillInst(new THREE.BoxGeometry(1, 1, 1), chalkTray, buckets.deckChalk, placeBox);
+  cageSolid(new THREE.BoxGeometry(1, 1, 1), chalkBar, buckets.barChalk, placeBox);
+  cageSolid(new THREE.BoxGeometry(1, 1, 1), chalkBar, buckets.postChalk, placeBox);
+  cageSolid(new THREE.BoxGeometry(1, 1, 1), chalkTray, buckets.deckChalk, placeBox);
   fillInst.detail = false;
   fillInst(flatGeo, chalkWire, buckets.roofChalk, placeFlat);
   function cageBoardMap(rust) {
@@ -15994,12 +16093,12 @@ dressCages.openings.forEach(op => {
   const x = ns ? along : wall + dir[0] * (seat + 0.02);
   const z = ns ? wall + dir[1] * (seat + 0.02) : along;
   const yaw = yawOf[face];
-  frameQ.push({
+  if (tier > 0) frameQ.push({
     x: ns ? along : wall + dir[0] * (seat + 0.008),
     y, z: ns ? wall + dir[1] * (seat + 0.008) : along,
     sx: w + 0.12, sy: h + 0.12, yaw, az: op.az
   });
-  if (w > 1.15) {
+  if (tier > 0 && w > 1.15) {
     const panes = Math.max(2, Math.round(w / 0.7));
     const mullion = seat + 0.03;
     for (let m = 1; m < panes; m++) {
@@ -16020,7 +16119,7 @@ dressCages.openings.forEach(op => {
   const variant = (u01(salt, 91) * 6) | 0;
   const warm = u01(salt, 92);
   const soil = 0.88 + u01(salt, 93) * 0.22;
-  glassQ.push({
+  if (tier > 0) glassQ.push({
     x, y, z, sx: w, sy: h, yaw, az: op.az, variant,
     tint: [
       soil * (0.96 + warm * 0.18),
@@ -16073,7 +16172,7 @@ dressCages.openings.forEach(op => {
     winMood.push(mood);
     winAz.push(op.az);
   }
-  if (outer && sharedAcMat && u01(b + 11, hi + faceCode) < (north ? 0.48 : 0.28) && u01(b * 5 + f, hi + 70) < 0.55) {
+  if (tier > 0 && outer && sharedAcMat && u01(b + 11, hi + faceCode) < (north ? 0.48 : 0.28) && u01(b * 5 + f, hi + 70) < 0.55) {
     const side = u01(b + f, hi + 21) < 0.5 ? -1 : 1;
     const acOut = seat + 0.1;
     acQ.push({
@@ -16091,7 +16190,7 @@ dressCages.openings.forEach(op => {
   const guardP = outer ? 1 : 0.9;
   // Upper-floor bars are a few pixels from the opening view. Keep the street
   // floors, where the iron is actually read, and skip the rest on a phone.
-  if (sharedGrilleMats && (tier > 0 || f <= 2) && u01(b * 9 + f, hi + faceCode + 27) < guardP) {
+  if (tier > 0 && sharedGrilleMats && u01(b * 9 + f, hi + faceCode + 27) < guardP) {
     const fr = u01(hi, 41);
     let fam = fr < 0.36 ? 0 : fr < 0.52 ? 1 : fr < 0.66 ? 2 : fr < 0.78 ? 3 : fr < 0.90 ? 4 : 5;
     if (fam === 0 && f <= 2 && u01(b + f, hi + faceCode + 53) < 0.62) fam = 3;
@@ -16235,6 +16334,7 @@ function agedPaneMaps(seed) {
   rough.minFilter = THREE.LinearMipmapLinearFilter;
   return { map, rough };
 }
+fillInst.tag = "win";
 const paneBins = [[], [], [], [], [], []];
 glassQ.forEach(it => { paneBins[it.variant] && paneBins[it.variant].push(it); });
 paneBins.forEach((bin, v) => {
@@ -16260,6 +16360,7 @@ if (rainQ.length) {
   });
   if (rainMesh) rainMesh.renderOrder = 4;
 }
+if (frameQ.length) {
 const frameMat = new THREE.MeshStandardMaterial({
   map: (function () {
     const S = 64;
@@ -16286,7 +16387,8 @@ const frameMat = new THREE.MeshStandardMaterial({
 attachFrameRim(frameMat);
 attachWetFilm(frameMat);
 fillInst(dayPlane, frameMat, frameQ, placeOpening);
-if (sharedAcMat) {
+}
+if (acQ.length && sharedAcMat) {
   const acGeo = new THREE.BoxGeometry(0.42, 0.28, 0.16);
   const acPos = acGeo.attributes.position;
   const acNrm = acGeo.attributes.normal;
@@ -17931,7 +18033,7 @@ function addWalker(path, spec, i, place) {
 const roster = [];
 // One resident on each of the longer lanes. The list is already longest-first.
 streetPaths.forEach(p => {
-  if (p.b - p.a >= 11 && roster.length < (tier === 0 ? 6 : 34)) roster.push({ path: p, slot: 0 });
+  if (p.b - p.a >= 11 && roster.length < (tier === 0 ? 3 : 34)) roster.push({ path: p, slot: 0 });
 });
 // Someone coming the other way, so a lane is not a single figure.
 // A phone keeps the first passer on the long lanes. The extra crossings
@@ -17954,6 +18056,7 @@ roster.forEach((entry, i) => {
   });
 });
 (function dressRiderHeads() {
+  if (tier < 1) return;
   const cache = new Map();
   function fadeOf(src) {
     let mat = cache.get(src);
@@ -19418,7 +19521,7 @@ seatPavement();
   const south = { axis: "x", c: 121.55, a: 4, b: 200, keep: 0.4, thick: 2.4, world: true };
   const east = { axis: "z", c: 211.5, a: 8, b: 110, y: 0.32, keep: 0.26, thick: 2.2, world: true };
   const knots = [[north, 0], [north, 1], [north, 4], [north, 6], [north, 8], [south, 2], [south, 3], [south, 5], [south, 7], [south, 9], [east, 1], [east, 6]];
-  (tier === 0 ? knots.slice(0, 3) : knots).forEach(([path, outfit], i) => {
+  (tier === 0 ? [] : knots).forEach(([path, outfit], i) => {
     addWalker(path, outfits[outfit], 40 + i);
   });
   // The first knot stays at the west end. These cover the middle of the pavements,
@@ -19445,6 +19548,7 @@ seatPavement();
 // front of the gate, south of the steps. The light wells stay inside the
 // centre's solid.
 (function crowdAtYamen() {
+  if (tier < 1) return;
   const shift = SHEAR_K * YAMEN_AZ;
   function track(plan) {
     const path = {
@@ -20072,12 +20176,16 @@ function packStatic() {
     const g = obj.geometry;
     const mat = obj.material;
     if (!g || !g.attributes.position || !g.attributes.normal || !mat || Array.isArray(mat)) return;
-    if (mat.transparent || mat.isShaderMaterial) return;
+    if (mat.isShaderMaterial || (mat.transparent && tier > 0)) return;
     const wp = new THREE.Vector3();
     obj.getWorldPosition(wp);
-    const key = mat.uuid + ":" + (obj.castShadow ? 1 : 0) + (obj.receiveShadow ? 1 : 0) + ":" + blockQuad(wp.x, wp.z);
+    const fancy = !!(mat.normalMap || mat.roughnessMap || mat.alphaMap || (mat.emissiveIntensity > 0.08));
+    const phoneKey = fancy
+      ? mat.uuid
+      : ((mat.map ? mat.map.uuid : "flat") + ":" + (mat.transparent ? 1 : 0) + ":" + (mat.alphaTest || 0) + ":" + (mat.side || 0));
+    const key = (tier < 1 ? phoneKey : mat.uuid) + ":" + (obj.castShadow ? 1 : 0) + (obj.receiveShadow ? 1 : 0) + ":" + (tier < 1 ? 0 : blockQuad(wp.x, wp.z));
     let bucket = buckets.get(key);
-    if (!bucket) buckets.set(key, bucket = { mat, cast: !!obj.castShadow, receive: !!obj.receiveShadow, list: [] });
+    if (!bucket) buckets.set(key, bucket = { mat, cast: !!obj.castShadow, receive: !!obj.receiveShadow, list: [], tint: tier < 1 && !fancy });
     bucket.list.push(obj);
   });
   const pack = new THREE.Group();
@@ -20099,6 +20207,7 @@ function packStatic() {
     const pos = new Float32Array(nv * 3);
     const nrm = new Float32Array(nv * 3);
     const uv = new Float32Array(nv * 2);
+    const col = bucket.tint ? new Float32Array(nv * 3) : null;
     const idx = new Uint32Array(ni);
     let vOff = 0, iOff = 0;
     bucket.list.forEach(mesh => {
@@ -20108,6 +20217,7 @@ function packStatic() {
       const ua = g.attributes.uv && g.attributes.uv.array;
       const ia = g.index && g.index.array;
       const n = g.attributes.position.count;
+      const tint = mesh.material.color;
       nm.getNormalMatrix(mesh.matrixWorld);
       for (let p = 0; p < n; p++) {
         v.fromArray(pa, p * 3).applyMatrix4(mesh.matrixWorld);
@@ -20118,6 +20228,11 @@ function packStatic() {
         nrm[(vOff + p) * 3] = v.x;
         nrm[(vOff + p) * 3 + 1] = v.y;
         nrm[(vOff + p) * 3 + 2] = v.z;
+        if (col) {
+          col[(vOff + p) * 3] = tint.r;
+          col[(vOff + p) * 3 + 1] = tint.g;
+          col[(vOff + p) * 3 + 2] = tint.b;
+        }
         if (ua) {
           uv[(vOff + p) * 2] = ua[p * 2];
           uv[(vOff + p) * 2 + 1] = ua[p * 2 + 1];
@@ -20136,10 +20251,24 @@ function packStatic() {
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     geo.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
     geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    if (col) geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
     geo.setIndex(new THREE.Uint32BufferAttribute(idx, 1));
     geo.computeBoundingSphere();
     if (geo.boundingSphere) geo.boundingSphere.radius += 2;
-    const merged = new THREE.Mesh(geo, bucket.mat);
+    let drawMat = bucket.mat;
+    if (bucket.tint) {
+      const sig = (bucket.mat.map ? bucket.mat.map.uuid : "flat") + ":" + (bucket.mat.transparent ? 1 : 0) + ":" + (bucket.mat.alphaTest || 0) + ":" + (bucket.mat.side || 0);
+      if (!packStatic.look) packStatic.look = new Map();
+      let shared = packStatic.look.get(sig);
+      if (!shared) {
+        shared = bucket.mat.clone();
+        shared.vertexColors = true;
+        shared.color.set(0xffffff);
+        packStatic.look.set(sig, shared);
+      }
+      drawMat = shared;
+    }
+    const merged = new THREE.Mesh(geo, drawMat);
     merged.userData.packed = 1;
     merged.castShadow = bucket.cast;
     merged.receiveShadow = bucket.receive;
@@ -21213,6 +21342,111 @@ function renderFrame() {
   renderer.setRenderTarget(null);
   renderer.render(scene, camera);
 }
+function foldRide(root) {
+  const ride = root.userData.ride;
+  const shell = ride && ride.shell;
+  if (!shell) return;
+  const skip = new Set();
+  function mark(node) {
+    if (!node) return;
+    if (node.traverse) node.traverse(function (o) { skip.add(o); });
+    else skip.add(node);
+  }
+  const wheels = ride.wheels || [];
+  for (let i = 0; i < wheels.length; i++) mark(wheels[i]);
+  const riders = ride.riders || [];
+  for (let i = 0; i < riders.length; i++) mark(riders[i]);
+  const tails = ride.tails || [];
+  for (let i = 0; i < tails.length; i++) mark(tails[i]);
+  if (ride.fare) mark(ride.fare);
+  if (ride.signMesh) mark(ride.signMesh);
+  shell.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(shell.matrixWorld).invert();
+  const buckets = new Map();
+  shell.traverse(function (obj) {
+    if (!obj.isMesh || skip.has(obj) || obj.userData.folded) return;
+    const mat = obj.material;
+    if (!mat || Array.isArray(mat) || mat.transparent || !obj.geometry || !obj.geometry.attributes.position) return;
+    let p = obj.parent;
+    while (p && p !== shell) {
+      if (skip.has(p)) return;
+      p = p.parent;
+    }
+    let list = buckets.get(mat);
+    if (!list) buckets.set(mat, list = []);
+    list.push(obj);
+  });
+  const v = new THREE.Vector3();
+  const nm = new THREE.Matrix3();
+  const m = new THREE.Matrix4();
+  const doomed = [];
+  buckets.forEach(function (list, mat) {
+    if (list.length < 2) return;
+    let nv = 0, ni = 0;
+    for (let i = 0; i < list.length; i++) {
+      const g = list[i].geometry;
+      nv += g.attributes.position.count;
+      ni += g.index ? g.index.count : g.attributes.position.count;
+    }
+    const pos = new Float32Array(nv * 3);
+    const nrm = new Float32Array(nv * 3);
+    const uv = new Float32Array(nv * 2);
+    const idx = new Uint32Array(ni);
+    let vOff = 0, iOff = 0;
+    for (let i = 0; i < list.length; i++) {
+      const mesh = list[i];
+      const g = mesh.geometry;
+      m.copy(inv).multiply(mesh.matrixWorld);
+      nm.getNormalMatrix(m);
+      const pa = g.attributes.position;
+      const na = g.attributes.normal;
+      const ua = g.attributes.uv;
+      const n = pa.count;
+      for (let p = 0; p < n; p++) {
+        v.fromBufferAttribute(pa, p).applyMatrix4(m);
+        pos[(vOff + p) * 3] = v.x;
+        pos[(vOff + p) * 3 + 1] = v.y;
+        pos[(vOff + p) * 3 + 2] = v.z;
+        if (na) v.fromBufferAttribute(na, p).applyMatrix3(nm).normalize();
+        else v.set(0, 1, 0);
+        nrm[(vOff + p) * 3] = v.x;
+        nrm[(vOff + p) * 3 + 1] = v.y;
+        nrm[(vOff + p) * 3 + 2] = v.z;
+        if (ua) {
+          uv[(vOff + p) * 2] = ua.getX(p);
+          uv[(vOff + p) * 2 + 1] = ua.getY(p);
+        }
+      }
+      if (g.index) {
+        const ia = g.index.array;
+        for (let p = 0; p < ia.length; p++) idx[iOff + p] = ia[p] + vOff;
+        iOff += ia.length;
+      } else {
+        for (let p = 0; p < n; p++) idx[iOff + p] = vOff + p;
+        iOff += n;
+      }
+      vOff += n;
+      doomed.push(mesh);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
+    geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    const merged = new THREE.Mesh(geo, mat);
+    merged.userData.folded = 1;
+    merged.castShadow = false;
+    merged.frustumCulled = false;
+    shell.add(merged);
+  });
+  const gone = new Set();
+  for (let i = 0; i < doomed.length; i++) {
+    const mesh = doomed[i];
+    const g = mesh.geometry;
+    if (mesh.parent) mesh.parent.remove(mesh);
+    if (g && !gone.has(g)) { gone.add(g); g.dispose(); }
+  }
+}
 function bakeFleet() {
   for (let i = 0; i < traffic.length; i++) {
     const ride = traffic[i].userData.ride;
@@ -21239,6 +21473,7 @@ function bakeFleet() {
     const skip = new Set(ride.tails.concat(ride.riders));
     if (ride.signMesh) skip.add(ride.signMesh);
     bakeDirect(shell, skip);
+    if (tier < 1) foldRide(traffic[i]);
   }
 }
 
@@ -21719,6 +21954,26 @@ function syncPace() {
   }
 }
 syncPace();
+const phoneReveal = [];
+if (tier < 1) {
+  // The first picture is the shells, the ground and the lit windows.
+  // Shops, alleys and the few vehicles arrive over the next frames, so a
+  // phone compiles a handful of programs at a time instead of all of them
+  // inside one long frame.
+  city.traverse(function (obj) {
+    if (!obj.isInstancedMesh || !obj.visible || !obj.count) return;
+    obj.visible = false;
+    phoneReveal.push(obj);
+  });
+  traffic.forEach(function (root) {
+    root.visible = false;
+    phoneReveal.push(root);
+  });
+  walkers.forEach(function (fig) {
+    fig.visible = false;
+    phoneReveal.push(fig);
+  });
+}
 (function tick() {
   requestAnimationFrame(tick);
   const now = performance.now() * 0.001;
@@ -21905,6 +22160,10 @@ syncPace();
   su.uView.value.set(renderer.domElement.width, renderer.domElement.height);
   su.uInvVP.value.multiplyMatrices(camera.matrixWorld, camera.projectionMatrixInverse);
   renderFrame();
+  if (phoneReveal.length && tick.ready > 1) {
+    const n = tick.ready < 8 ? 6 : 18;
+    for (let i = 0; i < n && phoneReveal.length; i++) phoneReveal.pop().visible = true;
+  }
 })();
   requestAnimationFrame(dismissBoot);
 }
