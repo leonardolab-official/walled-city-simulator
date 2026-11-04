@@ -1074,13 +1074,15 @@ function glProfile() {
   } catch (e) {}
   // 0 a phone or software, 1 integrated, 2 a discrete card. An iPhone reports
   // "Apple GPU", the same string as a desktop Mac, so the phone is told apart
-  // by the device, not by the chip name. Frame time can step down later.
+  // by the device, not by the chip name. iPadOS 13+ reports a desktop Mac
+  // and only gives itself away with a touch screen. Frame time can step down later.
   let tier = 2;
   const ua = navigator.userAgent || "";
   const phone = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
   const touch = (navigator.maxTouchPoints || 0) > 1;
   const shortSide = Math.min(screen.width || 0, screen.height || 0);
-  const handheld = phone || (touch && shortSide > 0 && shortSide <= 900);
+  const ipad = touch && /Macintosh/i.test(ua);
+  const handheld = phone || ipad || (touch && shortSide > 0 && shortSide <= 1180);
   if (/swiftshader|llvmpipe|softpipe|software|basic render/i.test(name) || handheld) tier = 0;
   else if (/mali|adreno|powervr|videocore|immortalis/i.test(name) || (/intel/i.test(name) && !/arc/i.test(name))) tier = 1;
   return { name: name, tier: tier, handheld: handheld };
@@ -1090,10 +1092,15 @@ let tier = glInfo.tier;
 const renderer = new THREE.WebGLRenderer({
   canvas: document.getElementById("c"),
   antialias: tier > 1,
-  powerPreference: "high-performance"
+  alpha: false,
+  stencil: tier > 0,
+  powerPreference: tier === 0 ? "default" : "high-performance",
+  precision: tier === 0 ? "mediump" : "highp"
 });
 // An 1980s television frame is about 720 by 480. Anything finer reads as a
 // modern panel under the scanlines, so the buffer never grows past that.
+// A phone uses the same tube. A smaller one only pixelates the city; the
+// cost that drops the tab is the shader list and the unpacked shells.
 const CRT_W = 720;
 const CRT_H = 480;
 function crtSize(cssW, cssH) {
@@ -1123,7 +1130,7 @@ const pace = {
   const firstBuf = crtSize(innerWidth, innerHeight);
   renderer.setSize(firstBuf.w, firstBuf.h, false);
 }
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = tier > 0;
 renderer.shadowMap.autoUpdate = false;
 let shadowWarm = 2;
 renderer.localClippingEnabled = true;
@@ -1139,15 +1146,18 @@ renderer.toneMappingExposure = 0.84;
 // Ease it off once one repeat of the map covers fewer than about fourteen pixels.
 const MAP_LOD_BIAS = -1.6;
 function lodBiasExpr(uv) {
+  if (tier < 1) return "0.0";
   return "(" + MAP_LOD_BIAS.toFixed(1) + " * smoothstep(4.0, 14.0, 1.0 / max(length(dFdx(" + uv + ")) + length(dFdy(" + uv + ")), 0.00001)))";
 }
-THREE.ShaderChunk.map_fragment = [
-  "#ifdef USE_MAP",
-  "	vec4 texelColor = texture2D( map, vUv, " + lodBiasExpr("vUv") + " );",
-  "	texelColor = mapTexelToLinear( texelColor );",
-  "	diffuseColor *= texelColor;",
-  "#endif"
-].join("\n");
+if (tier > 0) {
+  THREE.ShaderChunk.map_fragment = [
+    "#ifdef USE_MAP",
+    "	vec4 texelColor = texture2D( map, vUv, " + lodBiasExpr("vUv") + " );",
+    "	texelColor = mapTexelToLinear( texelColor );",
+    "	diffuseColor *= texelColor;",
+    "#endif"
+  ].join("\n");
+}
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8b9094);
@@ -1206,6 +1216,17 @@ const clips = [sectionPlane, floorPlane];
 // kept texel at full alpha instead of blending it with the next level into a
 // value alphaTest rejects.
 function meshMips(canvas) {
+  // A phone cannot afford a hand-built mip chain for every cage and sign.
+  // One canvas, sampled as-is, is enough at the coarser tube size.
+  if (tier < 1) {
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.LinearFilter;
+    const pot = canvas.width > 0 && (canvas.width & (canvas.width - 1)) === 0
+      && canvas.height > 0 && (canvas.height & (canvas.height - 1)) === 0;
+    tex.generateMipmaps = pot;
+    tex.minFilter = pot ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
+    return tex;
+  }
   function pot(n) { return n > 0 && (n & (n - 1)) === 0; }
   const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
   function cover(x, y, av) {
@@ -1478,7 +1499,7 @@ const uStreetOn = { value: 0 };
 const uBeamGain = { value: 1.15 };
 const uWetRes = { value: new THREE.Vector2(1, 1) };
 const uWetReflOn = { value: 0 };
-const wetReflect = new THREE.WebGLRenderTarget(640, 360, {
+const wetReflect = new THREE.WebGLRenderTarget(tier === 0 ? 4 : 640, tier === 0 ? 4 : 360, {
   minFilter: THREE.LinearFilter,
   magFilter: THREE.LinearFilter,
   format: THREE.RGBFormat,
@@ -1493,7 +1514,7 @@ const uWetMatrix = { value: new THREE.Matrix4() };
 const uRoofReflOn = { value: 0 };
 const uRoofPlane = { value: 12 };
 const uRoofMatrix = { value: new THREE.Matrix4() };
-const roofReflect = new THREE.WebGLRenderTarget(480, 270, {
+const roofReflect = new THREE.WebGLRenderTarget(tier === 0 ? 4 : 480, tier === 0 ? 4 : 270, {
   minFilter: THREE.LinearFilter,
   magFilter: THREE.LinearFilter,
   format: THREE.RGBFormat,
@@ -1865,6 +1886,7 @@ const DRIP_VERT = [
   "vWetV = cameraPosition - wetWorld.xyz;"
 ].join("\n");
 function attachWetWall(mat) {
+  if (tier < 1) return;
   if (!mat || mat.userData.wetWall || mat.userData.wetFloor) return;
   mat.userData.wetWall = 1;
   const prev = mat.onBeforeCompile;
@@ -1958,6 +1980,7 @@ const WALL_FLOW_SHEEN = [
   "}"
 ].join("\n");
 function attachWallFlow(mat) {
+  if (tier < 1) return;
   if (!mat || mat.userData.wetWall || mat.userData.wetFloor || mat.userData.wetRoof) return;
   mat.userData.wetWall = 1;
   const prev = mat.onBeforeCompile;
@@ -1988,6 +2011,7 @@ function attachWallFlow(mat) {
 // carry their own drops, or they are too small for a running bead.
 // A cage's metal sheet is a roof, so it takes puddles instead of this film.
 function attachWetFilm(mat) {
+  if (tier < 1) return;
   if (!mat || mat.userData.wetFilm || mat.userData.wetWall || mat.userData.wetFloor || mat.userData.wetRoof || mat.userData.paneRain) return;
   mat.userData.wetFilm = 1;
   const prev = mat.onBeforeCompile;
@@ -2018,6 +2042,7 @@ function attachWetFilm(mat) {
 // off. The boxes are instanced, and a vertical lip on the same material only
 // darkens: the puddle runs on faces that point up.
 function attachWetRoof(mat) {
+  if (tier < 1) return;
   if (!mat || mat.userData.wetRoof || mat.userData.wetFloor || mat.userData.wetWall) return;
   mat.userData.wetRoof = 1;
   const prev = mat.onBeforeCompile;
@@ -2394,6 +2419,7 @@ function attachFrameRim(mat) {
 // once on the wall, not once per tile. The joint is the storey course, 2.5 m,
 // not a board every 12 cm. The soot sits in the bottom 1.6 m.
 function attachFacadeStain(mat) {
+  if (tier < 1) return;
   if (!mat || mat.userData.facadeStain) return;
   mat.userData.facadeStain = 1;
   const prev = mat.onBeforeCompile;
@@ -2477,6 +2503,7 @@ function attachFacadeStain(mat) {
 }
 // Street soot stays in the bottom metre and a half, whatever the storey count.
 function attachStreetSoot(mat) {
+  if (tier < 1) return;
   if (!mat || mat.userData.streetSoot) return;
   mat.userData.streetSoot = 1;
   const prev = mat.onBeforeCompile;
@@ -2510,6 +2537,7 @@ function attachStreetSoot(mat) {
 // and speeds up, and the water it has crossed stays as a trail. The drop bends
 // the street in the pane. A sign keeps that film, with a weaker mirror.
 function attachPaneRain(mat, reflect, overlay) {
+  if (tier < 1) return;
   if (!mat || mat.userData.paneRain || mat.userData.wetWall || mat.userData.wetFloor) return;
   const gain = reflect > 0.6 ? "1.00" : "0.30";
   const skin = overlay ? "1" : "0";
@@ -12419,6 +12447,7 @@ scene.add(cutHelper);
 
 const roomGeo = new THREE.BoxGeometry(2.4, 2.2, 2.4);
 const roomMeshes = {};
+const roomCap = tier === 0 ? 600 : 20000;
 Object.keys(USES).forEach(k => {
   const m = new THREE.InstancedMesh(
     roomGeo,
@@ -12426,7 +12455,7 @@ Object.keys(USES).forEach(k => {
       color: USES[k].color, roughness: 0.8, clippingPlanes: clips,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8
     }),
-    20000
+    roomCap
   );
   m.count = 0;
   m.visible = false;
@@ -12447,7 +12476,7 @@ function rebuildRooms() {
     u.rooms.forEach(room => {
       const key = room.use;
       const inst = roomMeshes[key];
-      if (!inst || counts[key] >= 20000) return;
+      if (!inst || counts[key] >= roomCap) return;
       const rw = (u.w - 0.8) / room.cols;
       const rd = (u.d - 0.8) / room.rows;
       dummy.position.set(
@@ -13460,7 +13489,7 @@ function u01(i, salt) {
 // the camera because the city is larger than one alley. The rings on the
 // ground do not: each one is a fixed place in the street, and the field
 // only recycles a ring once it has left the box.
-const rainN = 5600;
+const rainN = tier === 0 ? 420 : 5600;
 const rainSeed = new Float32Array(rainN * 4);
 for (let i = 0; i < rainN; i++) {
   rainSeed[i * 4] = u01(i, 1);
@@ -13569,7 +13598,7 @@ rain.frustumCulled = false;
 rain.renderOrder = 3;
 rain.visible = false;
 vfx.add(rain);
-const splashN = 1800;
+const splashN = tier === 0 ? 100 : 1800;
 const splashSeed = new Float32Array(splashN * 4);
 for (let i = 0; i < splashN; i++) {
   splashSeed[i * 4] = u01(i, 5);
@@ -16000,7 +16029,9 @@ dressCages.openings.forEach(op => {
     ]
   });
   // Outside the night light, so a drop still sits on the pane when the room is lit.
-  rainQ.push({
+  // A phone already draws the glass. A second transparent sheet on every
+  // window is the fill that drops the first frame.
+  if (tier > 0) rainQ.push({
     x: x + (ns ? 0 : dir[0] * 0.055),
     y, z: z + (ns ? dir[1] * 0.055 : 0),
     sx: w, sy: h, yaw, az: op.az
@@ -16058,7 +16089,9 @@ dressCages.openings.forEach(op => {
   // skirt. Street floors of a plain block often gained the skirt later.
   // A replaced window can rust, or keep the other hand of the same pattern.
   const guardP = outer ? 1 : 0.9;
-  if (sharedGrilleMats && u01(b * 9 + f, hi + faceCode + 27) < guardP) {
+  // Upper-floor bars are a few pixels from the opening view. Keep the street
+  // floors, where the iron is actually read, and skip the rest on a phone.
+  if (sharedGrilleMats && (tier > 0 || f <= 2) && u01(b * 9 + f, hi + faceCode + 27) < guardP) {
     const fr = u01(hi, 41);
     let fam = fr < 0.36 ? 0 : fr < 0.52 ? 1 : fr < 0.66 ? 2 : fr < 0.78 ? 3 : fr < 0.90 ? 4 : 5;
     if (fam === 0 && f <= 2 && u01(b + f, hi + faceCode + 53) < 0.62) fam = 3;
@@ -17898,15 +17931,19 @@ function addWalker(path, spec, i, place) {
 const roster = [];
 // One resident on each of the longer lanes. The list is already longest-first.
 streetPaths.forEach(p => {
-  if (p.b - p.a >= 11 && roster.length < 34) roster.push({ path: p, slot: 0 });
+  if (p.b - p.a >= 11 && roster.length < (tier === 0 ? 6 : 34)) roster.push({ path: p, slot: 0 });
 });
 // Someone coming the other way, so a lane is not a single figure.
-streetPaths.forEach(p => {
-  if (p.b - p.a >= 18) roster.push({ path: p, slot: 1 });
-});
-streetPaths.forEach(p => {
-  if (p.b - p.a >= 28) roster.push({ path: p, slot: 2 });
-});
+// A phone keeps the first passer on the long lanes. The extra crossings
+// are the same walk, drawn again, and each figure is a full rig.
+if (tier > 0) {
+  streetPaths.forEach(p => {
+    if (p.b - p.a >= 18) roster.push({ path: p, slot: 1 });
+  });
+  streetPaths.forEach(p => {
+    if (p.b - p.a >= 28) roster.push({ path: p, slot: 2 });
+  });
+}
 roster.forEach((entry, i) => {
   const span = entry.path.b - entry.path.a;
   const frac = entry.slot === 0 ? 0.2 : entry.slot === 1 ? 0.68 : 0.44;
@@ -19380,12 +19417,14 @@ seatPavement();
   const north = { axis: "x", c: -2.16, a: 6, b: 204, keep: 0.24, thick: 2.4, world: true };
   const south = { axis: "x", c: 121.55, a: 4, b: 200, keep: 0.4, thick: 2.4, world: true };
   const east = { axis: "z", c: 211.5, a: 8, b: 110, y: 0.32, keep: 0.26, thick: 2.2, world: true };
-  [[north, 0], [north, 1], [north, 4], [north, 6], [north, 8], [south, 2], [south, 3], [south, 5], [south, 7], [south, 9], [east, 1], [east, 6]].forEach(([path, outfit], i) => {
+  const knots = [[north, 0], [north, 1], [north, 4], [north, 6], [north, 8], [south, 2], [south, 3], [south, 5], [south, 7], [south, 9], [east, 1], [east, 6]];
+  (tier === 0 ? knots.slice(0, 3) : knots).forEach(([path, outfit], i) => {
     addWalker(path, outfits[outfit], 40 + i);
   });
   // The first knot stays at the west end. These cover the middle of the pavements,
   // including the stretch the walk opens on.
   function spread(path, count, salt) {
+    if (tier < 1) return;
     const span = path.b - path.a;
     for (let s = 0; s < count; s++) {
       const along = span * (0.34 + 0.62 * ((s + 0.5) / count));
@@ -19830,8 +19869,31 @@ function squareMovers() {
   for (let i = 0; i < drips.length; i++) applySquare(drips[i], false);
 }
 // Tenement shells share a facade texture. Bake each block's tint and UV
-// shift into one mesh per quadrant so the walls are a handful of draws,
-// and keep the original meshes only for the click test.
+// shift into one mesh per quadrant so the walls are a handful of draws.
+// The source shell stays only as a box for the click test. Keeping the
+// full wall beside the packed copy doubled the city in memory, which is
+// what a phone tab dies on before the first picture.
+function releasePackedGeometry(mesh, g) {
+  const kind = g.userData && g.userData.pack;
+  if (kind === 1) {
+    if (!g.boundingBox) g.computeBoundingBox();
+    const bb = g.boundingBox;
+    const box = new THREE.BoxGeometry(
+      Math.max(0.2, bb.max.x - bb.min.x),
+      Math.max(0.2, bb.max.y - bb.min.y),
+      Math.max(0.2, bb.max.z - bb.min.z)
+    );
+    box.translate(
+      (bb.min.x + bb.max.x) * 0.5,
+      (bb.min.y + bb.max.y) * 0.5,
+      (bb.min.z + bb.max.z) * 0.5
+    );
+    mesh.geometry = box;
+  } else {
+    mesh.geometry = null;
+  }
+  g.dispose();
+}
 function packMasses() {
   scene.updateMatrixWorld(true);
   const buckets = new Map();
@@ -19901,6 +19963,7 @@ function packMasses() {
       for (let p = 0; p < ia.length; p++) idx[iOff + p] = ia[p] + vOff;
       iOff += ia.length;
       vOff += n;
+      releasePackedGeometry(mesh, g);
     });
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
@@ -19932,8 +19995,8 @@ function packMasses() {
     const merged = new THREE.Mesh(geo, mat);
     merged.userData.packed = 1;
     if (bucket.kind === 2) merged.userData.roof = 1;
-    merged.castShadow = bucket.kind === 1;
-    merged.receiveShadow = bucket.kind === 1;
+    merged.castShadow = bucket.kind === 1 && tier > 0;
+    merged.receiveShadow = bucket.kind === 1 && tier > 0;
     merged.matrixAutoUpdate = false;
     merged.updateMatrix();
     pack.add(merged);
@@ -21235,6 +21298,11 @@ const BODY_LIGHT_SOFT = bodyLightChunk(0.4, 0.6, 0);
 const BODY_LIGHT_FORM = bodyLightChunk(0.88, 0.14, 0.1);
 const QUIET_LIGHTS = "GeometricContext geometry;\n\ngeometry.position = - vViewPosition;\ngeometry.normal = normal;\ngeometry.viewDir = ( isOrthographic ) ? vec3( 0, 0, 1 ) : normalize( vViewPosition );\n\n#ifdef CLEARCOAT\n\n\tgeometry.clearcoatNormal = clearcoatNormal;\n\n#endif\n\nIncidentLight directLight;\n\n\n#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )\n\n\tDirectionalLight directionalLight;\n\t#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0\n\tDirectionalLightShadow directionalLightShadow;\n\t#endif\n\n\t#pragma unroll_loop_start\n\tfor ( int i = 0; i < NUM_DIR_LIGHTS; i ++ ) {\n\n\t\tdirectionalLight = directionalLights[ i ];\n\n\t\tgetDirectionalDirectLightIrradiance( directionalLight, geometry, directLight );\n\n\t\t#if defined( USE_SHADOWMAP ) && ( UNROLLED_LOOP_INDEX < NUM_DIR_LIGHT_SHADOWS )\n\t\tdirectionalLightShadow = directionalLightShadows[ i ];\n\t\tdirectLight.color *= all( bvec2( directLight.visible, receiveShadow ) ) ? getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] ) : 1.0;\n\t\t#endif\n\n\t\tRE_Direct( directLight, geometry, material, reflectedLight );\n\n\t}\n\t#pragma unroll_loop_end\n\n#endif\n\n#if ( NUM_RECT_AREA_LIGHTS > 0 ) && defined( RE_Direct_RectArea )\n\n\tRectAreaLight rectAreaLight;\n\n\t#pragma unroll_loop_start\n\tfor ( int i = 0; i < NUM_RECT_AREA_LIGHTS; i ++ ) {\n\n\t\trectAreaLight = rectAreaLights[ i ];\n\t\tRE_Direct_RectArea( rectAreaLight, geometry, material, reflectedLight );\n\n\t}\n\t#pragma unroll_loop_end\n\n#endif\n\n#if defined( RE_IndirectDiffuse )\n\n\tvec3 iblIrradiance = vec3( 0.0 );\n\n\tvec3 irradiance = getAmbientLightIrradiance( ambientLightColor );\n\n\tirradiance += getLightProbeIrradiance( lightProbe, geometry );\n\n\t#if ( NUM_HEMI_LIGHTS > 0 )\n\n\t\t#pragma unroll_loop_start\n\t\tfor ( int i = 0; i < NUM_HEMI_LIGHTS; i ++ ) {\n\n\t\t\tirradiance += getHemisphereLightIrradiance( hemisphereLights[ i ], geometry );\n\n\t\t}\n\t\t#pragma unroll_loop_end\n\n\t#endif\n\n#endif\n\n#if defined( RE_IndirectSpecular )\n\n\tvec3 radiance = vec3( 0.0 );\n\tvec3 clearcoatRadiance = vec3( 0.0 );\n\n#endif";
 function quietLightShader(shader, shaped) {
+  // The six-lamp wrap is spliced into every wall, person and sign. On a
+  // phone that is dozens of long programs compiled on the first frame,
+  // which is the usual way Safari kills the tab. Hemisphere and the sun
+  // carry the picture there.
+  if (tier < 1) return;
   shader.uniforms.uBodyPos = bodyLight.posU;
   shader.uniforms.uBodyCol = bodyLight.colU;
   shader.uniforms.uBodyReach = bodyLight.reachU;
@@ -21492,6 +21560,7 @@ function streetGradeShader(shader, kind) {
   shader.fragmentShader = frag;
 }
 function quietBodyLight(mat) {
+  if (tier < 1) return;
   if (!mat || !mat.isMeshStandardMaterial || mat.userData.quietBody) return;
   mat.userData.quietBody = 1;
   const prev = mat.onBeforeCompile;
@@ -21560,7 +21629,7 @@ function markQuiet(root) {
   });
 }
 bakeFleet();
-if (addMass.roofMat) {
+if (addMass.roofMat && tier > 0) {
   const roofMat = addMass.roofMat;
   roofMat.customProgramCacheKey = function () { return "roofWet"; };
   roofMat.onBeforeCompile = function (shader) {
@@ -21607,6 +21676,7 @@ lamps.forEach(function (lamp) { lamp.layers.set(1); });
 function syncPace() {
   const t = pace.tier;
   sun.castShadow = t > 0;
+  renderer.shadowMap.enabled = t > 0;
   pace.reflScaleHi = t === 0 ? 0.18 : t === 1 ? 0.24 : 0.28;
   pace.reflScaleLo = t === 0 ? 0.24 : t === 1 ? 0.32 : 0.38;
   pace.reflMax = t === 0 ? 300 : t === 1 ? 400 : 480;
@@ -21616,8 +21686,8 @@ function syncPace() {
   pace.roofScale = t === 0 ? 0.18 : t === 1 ? 0.26 : 0.34;
   pace.roofMax = t === 0 ? 240 : t === 1 ? 340 : 420;
   pace.roofMove = t === 0 ? 3 : t === 1 ? 2 : 1;
-  rainGeo.instanceCount = t === 0 ? 2200 : t === 1 ? 3800 : 5600;
-  splashGeo.instanceCount = t === 0 ? 600 : t === 1 ? 1100 : 1800;
+  rainGeo.instanceCount = Math.min(rainGeo.attributes.aSeed.count, t === 0 ? 420 : t === 1 ? 3800 : 5600);
+  splashGeo.instanceCount = Math.min(splashGeo.attributes.aSeed.count, t === 0 ? 100 : t === 1 ? 1100 : 1800);
   if (pace.anisoTier !== t && t < 2) {
     pace.anisoTier = t;
     const max = t === 0 ? 1 : 2;
@@ -21638,8 +21708,8 @@ function syncPace() {
       }
     });
   }
-  const side = t === 0 ? 512 : t === 1 ? 1024 : 2048;
-  if (sun.shadow.mapSize.x !== side) {
+  const side = t === 0 ? 256 : t === 1 ? 1024 : 2048;
+  if (t > 0 && sun.shadow.mapSize.x !== side) {
     sun.shadow.mapSize.set(side, side);
     if (sun.shadow.map) {
       sun.shadow.map.dispose();
