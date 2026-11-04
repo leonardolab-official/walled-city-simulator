@@ -1026,7 +1026,7 @@ applyBoot();
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js" onerror="bootFail()"></script>
 <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js" onerror="bootFail()"></script>
 <script>
-function raiseCity() {
+async function raiseCity() {
 const SITE_W = 210, SITE_D = 120, FLOOR_H = 2.5, MAX_F = 14, ROOF_H = 35, CAP_Y = 45;
 // The fort's ground is still the 210 m by 120 m rectangle (Tung Tau Tsuen
 // Road, Tung Tsing Road, Carpenter Road). The Kai Fong sheet's built edge
@@ -1072,18 +1072,29 @@ function glProfile() {
       if (lose) lose.loseContext();
     }
   } catch (e) {}
-  // 0 software, 1 integrated, 2 a discrete card. Frame time can step down later.
+  // 0 a phone or software, 1 integrated, 2 a discrete card. An iPhone reports
+  // "Apple GPU", the same string as a desktop Mac, so the user agent and the
+  // touch screen decide. Frame time can step down later.
   let tier = 2;
-  if (/swiftshader|llvmpipe|softpipe|software|basic render/i.test(name)) tier = 0;
+  const ua = navigator.userAgent || "";
+  const shortSide = Math.min(screen.width || 0, screen.height || 0);
+  const touch = (navigator.maxTouchPoints || 0) > 0;
+  const phone = /Mobi|Android|iPhone|iPad|iPod/i.test(ua)
+    || ((navigator.maxTouchPoints || 0) > 1 && /Macintosh/i.test(ua))
+    || (touch && shortSide > 0 && shortSide <= 1180);
+  if (/swiftshader|llvmpipe|softpipe|software|basic render/i.test(name) || phone) tier = 0;
   else if (/mali|adreno|powervr|videocore/i.test(name) || (/intel/i.test(name) && !/arc/i.test(name))) tier = 1;
   return { name: name, tier: tier };
 }
 const glInfo = glProfile();
 let tier = glInfo.tier;
+function breathe() {
+  return new Promise(function (resolve) { setTimeout(resolve, 0); });
+}
 const renderer = new THREE.WebGLRenderer({
   canvas: document.getElementById("c"),
   antialias: tier > 1,
-  powerPreference: "high-performance"
+  powerPreference: tier === 0 ? "default" : "high-performance"
 });
 // An 1980s television frame is about 720 by 480. Anything finer reads as a
 // modern panel under the scanlines, so the buffer never grows past that.
@@ -1471,7 +1482,7 @@ const uStreetOn = { value: 0 };
 const uBeamGain = { value: 1.15 };
 const uWetRes = { value: new THREE.Vector2(1, 1) };
 const uWetReflOn = { value: 0 };
-const wetReflect = new THREE.WebGLRenderTarget(640, 360, {
+const wetReflect = new THREE.WebGLRenderTarget(tier === 0 ? 320 : tier === 1 ? 480 : 640, tier === 0 ? 180 : tier === 1 ? 270 : 360, {
   minFilter: THREE.LinearFilter,
   magFilter: THREE.LinearFilter,
   format: THREE.RGBFormat,
@@ -1486,7 +1497,7 @@ const uWetMatrix = { value: new THREE.Matrix4() };
 const uRoofReflOn = { value: 0 };
 const uRoofPlane = { value: 12 };
 const uRoofMatrix = { value: new THREE.Matrix4() };
-const roofReflect = new THREE.WebGLRenderTarget(480, 270, {
+const roofReflect = new THREE.WebGLRenderTarget(tier === 0 ? 240 : tier === 1 ? 360 : 480, tier === 0 ? 135 : tier === 1 ? 200 : 270, {
   minFilter: THREE.LinearFilter,
   magFilter: THREE.LinearFilter,
   format: THREE.RGBFormat,
@@ -6553,7 +6564,9 @@ function blockQuad(x, z) {
 }
 function fillInst(geo, mat, items, place) {
   if (!items.length) return null;
-  if (items.length > 160 && !fillInst.split) {
+  // A phone sees every quadrant from the opening view, so the split is four
+  // draws of the same cages and gates. One batch keeps every instance.
+  if (tier > 0 && items.length > 160 && !fillInst.split) {
     const probe = new THREE.Object3D();
     const bins = [[], [], [], []];
     for (let i = 0; i < items.length; i++) {
@@ -8788,13 +8801,14 @@ function fillUntracedParcels() {
 // Every parcel from the sheet, plus the holes the trace left inside the wall.
 // Slivers are kept: the old carve dropped anything under about 4.6 m, which
 // is why edge buildings disappeared.
-function placeFootprint() {
+async function placeFootprint() {
   fillUntracedParcels();
   const temple = { x: TEMPLE_X, z: TEMPLE_Z, x2: TEMPLE_X + TEMPLE_W, z2: TEMPLE_Z + TEMPLE_D };
-  FOOT_LOTS.forEach(L => {
+  for (let li = 0; li < FOOT_LOTS.length; li++) {
+    const L = FOOT_LOTS[li];
     const x = L[0], z = L[1], w = L[2], d = L[3];
-    if (x < court.x2 && x + w > court.x && z < court.z2 && z + d > court.z) return;
-    if (x < temple.x2 && x + w > temple.x && z < temple.z2 && z + d > temple.z) return;
+    if (x < court.x2 && x + w > court.x && z < court.z2 && z + d > court.z) continue;
+    if (x < temple.x2 && x + w > temple.x && z < temple.z2 && z + d > temple.z) continue;
     const id = lotZone(x, z, w, d);
     const zone = ZONES[id] || ZONES.lane;
     let floors = storeysAt(x, z, w, d);
@@ -8806,7 +8820,8 @@ function placeFootprint() {
       const owns = gap && (gap.across === "z" ? z <= gap.mz : x <= gap.mx);
       if (gap && owns) slitNets.push({ gap, y: 3.05 + lift * 1.7 });
     }
-  });
+    if (tier < 1 && (li % 8) === 7) await breathe();
+  }
 }
 const slitNets = [];
 function placeSlitNets() {
@@ -8830,7 +8845,7 @@ function placeSlitNets() {
   });
   slitNets.length = 0;
 }
-placeFootprint();
+await placeFootprint();
 // Outer roads only. The 1987 photographs (Tung Tau Tsuen Road, and the same
 // kind of front on Tung Tsing Road and Carpenter Road) show blade signs
 // projecting over the pavement: separate boards, different sizes, irregular
@@ -9009,6 +9024,7 @@ function dressOuterBlades() {
 }
 dressOuterBlades();
 flushShops();
+if (tier < 1) await breathe();
 
 const brick = new THREE.MeshStandardMaterial({ map: greyBrickMap(1, 1), color: 0x6a645c, roughness: 0.96, metalness: 0, clippingPlanes: clips });
 attachBoxTile(brick, 1.55, 0, 0);
@@ -10586,6 +10602,7 @@ retargetShopAnchors();
 // settle. Before that, a fitting pinned to its own northing steps off the
 // wall and through the slab.
 dressAlleys();
+if (tier < 1) await breathe();
 placeSlitNets();
 
 (function shrine() {
@@ -14239,6 +14256,7 @@ function dressPerimeter() {
 }
 let sharedAcMat = null, sharedGrilleMat = null, sharedGrilleMats = null;
 dressPerimeter();
+if (tier < 1) await breathe();
 // Bamboo scaffolds on a few alley and outer faces, the repair frames in the 1980s photographs.
 // The bay stays off the walking line. A lane under about two metres is left clear.
 // Each bay is remembered so a cage on that patch can be taken down. The window stays.
@@ -14400,7 +14418,7 @@ function slabOpen(x0, x1, z0, z1) {
 // mesh, posts between the windows, and plants or laundry along the rail. A metre-wide
 // lane only gets a short projection, so the two sides leave the walking line.
 // The dark core has none.
-function dressCages() {
+async function dressCages() {
   dressCages.sheets = [];
   function wireTexture() {
     const S = 256;
@@ -15149,7 +15167,8 @@ function dressCages() {
   dressCages.scaffoldCuts = 0;
   let northN = 0, northSum = 0;
   const toneKey = { steel: "Steel", mint: "Mint", rust: "Rust", chalk: "Chalk" };
-  winHosts.forEach((u, hi) => {
+  for (let hi = 0; hi < winHosts.length; hi++) {
+    const u = winHosts[hi];
     const floors = u.floors | 0;
     const hx = u.x + u.w * 0.5, hz = u.z + u.d * 0.5;
     pinAz = u.street ? streetAz(hx, hz) : anchorNear(hx, hz);
@@ -15674,7 +15693,8 @@ function dressCages() {
         }
       }
     });
-  });
+    if (tier < 1 && (hi % 4) === 3) await breathe();
+  }
   function placeCage(o, it) {
     o.position.set(it.x, it.y, it.z);
     o.rotation.y = it.yaw || 0;
@@ -15808,7 +15828,8 @@ function dressCages() {
   dressCages.maxDeep = maxDeep;
   dressCages.northDeep = northN ? northSum / northN : 0;
 }
-dressCages();
+await dressCages();
+if (tier < 1) await breathe();
 // Any blade that meets a cage is hung on the outside of that cage.
 // Flower baskets bow past their depth; iron balconies are a flat front.
 // The board clears the outer wire. The bracket still starts on the plaster.
@@ -19543,6 +19564,7 @@ function cullFloatingGoods() {
 }
 cullFloatingGoods();
 buildRoof();
+if (tier < 1) await breathe();
 function clipPavement() {
   // A slab is poured a little under the wall beside it. That overlap is one
   // edge. Cutting both axes used to delete the whole bay of an east–west lane.
@@ -19916,6 +19938,7 @@ function packMasses() {
   });
 }
 packMasses();
+if (tier < 1) await breathe();
 function scopeInstances(mesh) {
   const src = mesh.geometry;
   if (!src || !mesh.count) return;
@@ -20059,6 +20082,7 @@ function packStatic() {
   if (made) scene.add(pack);
 }
 packStatic();
+if (tier < 1) await breathe();
 function freezeStatic(obj) {
   if (!obj || (obj.userData && obj.userData.live)) return;
   if (obj.matrixAutoUpdate) {
@@ -21109,6 +21133,111 @@ function renderFrame() {
   renderer.setRenderTarget(null);
   renderer.render(scene, camera);
 }
+function foldRide(root) {
+  const ride = root.userData.ride;
+  const shell = ride && ride.shell;
+  if (!shell) return;
+  const skip = new Set();
+  function mark(node) {
+    if (!node) return;
+    if (node.traverse) node.traverse(function (o) { skip.add(o); });
+    else skip.add(node);
+  }
+  const wheels = ride.wheels || [];
+  for (let i = 0; i < wheels.length; i++) mark(wheels[i]);
+  const riders = ride.riders || [];
+  for (let i = 0; i < riders.length; i++) mark(riders[i]);
+  const tails = ride.tails || [];
+  for (let i = 0; i < tails.length; i++) mark(tails[i]);
+  if (ride.fare) mark(ride.fare);
+  if (ride.signMesh) mark(ride.signMesh);
+  shell.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(shell.matrixWorld).invert();
+  const buckets = new Map();
+  shell.traverse(function (obj) {
+    if (!obj.isMesh || skip.has(obj) || obj.userData.folded) return;
+    const mat = obj.material;
+    if (!mat || Array.isArray(mat) || mat.transparent || !obj.geometry || !obj.geometry.attributes.position) return;
+    let p = obj.parent;
+    while (p && p !== shell) {
+      if (skip.has(p)) return;
+      p = p.parent;
+    }
+    let list = buckets.get(mat);
+    if (!list) buckets.set(mat, list = []);
+    list.push(obj);
+  });
+  const v = new THREE.Vector3();
+  const nm = new THREE.Matrix3();
+  const m = new THREE.Matrix4();
+  const doomed = [];
+  buckets.forEach(function (list, mat) {
+    if (list.length < 2) return;
+    let nv = 0, ni = 0;
+    for (let i = 0; i < list.length; i++) {
+      const g = list[i].geometry;
+      nv += g.attributes.position.count;
+      ni += g.index ? g.index.count : g.attributes.position.count;
+    }
+    const pos = new Float32Array(nv * 3);
+    const nrm = new Float32Array(nv * 3);
+    const uv = new Float32Array(nv * 2);
+    const idx = new Uint32Array(ni);
+    let vOff = 0, iOff = 0;
+    for (let i = 0; i < list.length; i++) {
+      const mesh = list[i];
+      const g = mesh.geometry;
+      m.copy(inv).multiply(mesh.matrixWorld);
+      nm.getNormalMatrix(m);
+      const pa = g.attributes.position;
+      const na = g.attributes.normal;
+      const ua = g.attributes.uv;
+      const n = pa.count;
+      for (let p = 0; p < n; p++) {
+        v.fromBufferAttribute(pa, p).applyMatrix4(m);
+        pos[(vOff + p) * 3] = v.x;
+        pos[(vOff + p) * 3 + 1] = v.y;
+        pos[(vOff + p) * 3 + 2] = v.z;
+        if (na) v.fromBufferAttribute(na, p).applyMatrix3(nm).normalize();
+        else v.set(0, 1, 0);
+        nrm[(vOff + p) * 3] = v.x;
+        nrm[(vOff + p) * 3 + 1] = v.y;
+        nrm[(vOff + p) * 3 + 2] = v.z;
+        if (ua) {
+          uv[(vOff + p) * 2] = ua.getX(p);
+          uv[(vOff + p) * 2 + 1] = ua.getY(p);
+        }
+      }
+      if (g.index) {
+        const ia = g.index.array;
+        for (let p = 0; p < ia.length; p++) idx[iOff + p] = ia[p] + vOff;
+        iOff += ia.length;
+      } else {
+        for (let p = 0; p < n; p++) idx[iOff + p] = vOff + p;
+        iOff += n;
+      }
+      vOff += n;
+      doomed.push(mesh);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
+    geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    const merged = new THREE.Mesh(geo, mat);
+    merged.userData.folded = 1;
+    merged.castShadow = false;
+    merged.frustumCulled = false;
+    shell.add(merged);
+  });
+  const gone = new Set();
+  for (let i = 0; i < doomed.length; i++) {
+    const mesh = doomed[i];
+    const g = mesh.geometry;
+    if (mesh.parent) mesh.parent.remove(mesh);
+    if (g && !gone.has(g)) { gone.add(g); g.dispose(); }
+  }
+}
 function bakeFleet() {
   for (let i = 0; i < traffic.length; i++) {
     const ride = traffic[i].userData.ride;
@@ -21135,6 +21264,7 @@ function bakeFleet() {
     const skip = new Set(ride.tails.concat(ride.riders));
     if (ride.signMesh) skip.add(ride.signMesh);
     bakeDirect(shell, skip);
+    if (tier < 1) foldRide(traffic[i]);
   }
 }
 
@@ -21607,6 +21737,25 @@ function syncPace() {
   }
 }
 syncPace();
+const phoneReveal = [];
+if (tier < 1) {
+  // The shells, the lit windows and the rain draw first. Cages, gates, shops
+  // and the traffic are already built; they come on a few at a time so the
+  // phone compiles a handful of shaders per frame instead of every one at once.
+  city.traverse(function (obj) {
+    if (!obj.isInstancedMesh || !obj.visible || !obj.count) return;
+    obj.visible = false;
+    phoneReveal.push(obj);
+  });
+  traffic.forEach(function (root) {
+    root.visible = false;
+    phoneReveal.push(root);
+  });
+  walkers.forEach(function (fig) {
+    fig.visible = false;
+    phoneReveal.push(fig);
+  });
+}
 (function tick() {
   requestAnimationFrame(tick);
   const now = performance.now() * 0.001;
@@ -21793,6 +21942,10 @@ syncPace();
   su.uView.value.set(renderer.domElement.width, renderer.domElement.height);
   su.uInvVP.value.multiplyMatrices(camera.matrixWorld, camera.projectionMatrixInverse);
   renderFrame();
+  if (phoneReveal.length && tick.ready > 1) {
+    const n = tick.ready < 8 ? 4 : tick.ready < 24 ? 8 : 36;
+    for (let i = 0; i < n && phoneReveal.length; i++) phoneReveal.pop().visible = true;
+  }
 })();
   requestAnimationFrame(dismissBoot);
 }
@@ -21878,8 +22031,7 @@ function dismissBoot() {
 requestAnimationFrame(function () {
   bootStage("raise");
   requestAnimationFrame(function () {
-    try { raiseCity(); }
-    catch (err) { console.error(err); bootFail(); }
+    raiseCity().catch(function (err) { console.error(err); bootFail(); });
   });
 });
 </script>
