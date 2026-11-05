@@ -1026,7 +1026,7 @@ applyBoot();
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js" onerror="bootFail()"></script>
 <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js" onerror="bootFail()"></script>
 <script>
-async function raiseCity() {
+function raiseCity() {
 const SITE_W = 210, SITE_D = 120, FLOOR_H = 2.5, MAX_F = 14, ROOF_H = 35, CAP_Y = 45;
 // The fort's ground is still the 210 m by 120 m rectangle (Tung Tau Tsuen
 // Road, Tung Tsing Road, Carpenter Road). The Kai Fong sheet's built edge
@@ -1072,29 +1072,18 @@ function glProfile() {
       if (lose) lose.loseContext();
     }
   } catch (e) {}
-  // 0 a phone or software, 1 integrated, 2 a discrete card. An iPhone reports
-  // "Apple GPU", the same string as a desktop Mac, so the user agent and the
-  // touch screen decide. Frame time can step down later.
+  // 0 software, 1 integrated, 2 a discrete card. Frame time can step down later.
   let tier = 2;
-  const ua = navigator.userAgent || "";
-  const shortSide = Math.min(screen.width || 0, screen.height || 0);
-  const touch = (navigator.maxTouchPoints || 0) > 0;
-  const phone = /Mobi|Android|iPhone|iPad|iPod/i.test(ua)
-    || ((navigator.maxTouchPoints || 0) > 1 && /Macintosh/i.test(ua))
-    || (touch && shortSide > 0 && shortSide <= 1180);
-  if (/swiftshader|llvmpipe|softpipe|software|basic render/i.test(name) || phone) tier = 0;
+  if (/swiftshader|llvmpipe|softpipe|software|basic render/i.test(name)) tier = 0;
   else if (/mali|adreno|powervr|videocore/i.test(name) || (/intel/i.test(name) && !/arc/i.test(name))) tier = 1;
   return { name: name, tier: tier };
 }
 const glInfo = glProfile();
 let tier = glInfo.tier;
-function breathe() {
-  return new Promise(function (resolve) { setTimeout(resolve, 0); });
-}
 const renderer = new THREE.WebGLRenderer({
   canvas: document.getElementById("c"),
   antialias: tier > 1,
-  powerPreference: tier === 0 ? "default" : "high-performance"
+  powerPreference: "high-performance"
 });
 // An 1980s television frame is about 720 by 480. Anything finer reads as a
 // modern panel under the scanlines, so the buffer never grows past that.
@@ -1482,7 +1471,7 @@ const uStreetOn = { value: 0 };
 const uBeamGain = { value: 1.15 };
 const uWetRes = { value: new THREE.Vector2(1, 1) };
 const uWetReflOn = { value: 0 };
-const wetReflect = new THREE.WebGLRenderTarget(tier === 0 ? 320 : tier === 1 ? 480 : 640, tier === 0 ? 180 : tier === 1 ? 270 : 360, {
+const wetReflect = new THREE.WebGLRenderTarget(640, 360, {
   minFilter: THREE.LinearFilter,
   magFilter: THREE.LinearFilter,
   format: THREE.RGBFormat,
@@ -1497,7 +1486,7 @@ const uWetMatrix = { value: new THREE.Matrix4() };
 const uRoofReflOn = { value: 0 };
 const uRoofPlane = { value: 12 };
 const uRoofMatrix = { value: new THREE.Matrix4() };
-const roofReflect = new THREE.WebGLRenderTarget(tier === 0 ? 240 : tier === 1 ? 360 : 480, tier === 0 ? 135 : tier === 1 ? 200 : 270, {
+const roofReflect = new THREE.WebGLRenderTarget(480, 270, {
   minFilter: THREE.LinearFilter,
   magFilter: THREE.LinearFilter,
   format: THREE.RGBFormat,
@@ -2963,7 +2952,8 @@ function plainWear(w, h, paint) {
   return tex;
 }
 function pipeStainMap() {
-  return plainWear(32, 128, (g, w, h) => {
+  if (pipeStainMap.tex) return pipeStainMap.tex;
+  return pipeStainMap.tex = plainWear(32, 128, (g, w, h) => {
     g.fillStyle = "#5a564c";
     g.fillRect(0, 0, w, h);
     g.fillStyle = "rgba(70,58,42,0.4)";
@@ -2978,9 +2968,10 @@ function pipeStainMap() {
   });
 }
 function bambooWearMap() {
+  if (bambooWearMap.tex) return bambooWearMap.tex;
   // Albedo of the sunlit poles in the reference: honey, a darker node,
   // a pale ridge, and only a thin grey streak. The old map was a stained brown.
-  return plainWear(32, 128, (g, w, h) => {
+  return bambooWearMap.tex = plainWear(32, 128, (g, w, h) => {
     g.fillStyle = "#ffb86a";
     g.fillRect(0, 0, w, h);
     for (let y = 0; y < h; y += 2) {
@@ -3005,7 +2996,8 @@ function bambooWearMap() {
   });
 }
 function clothWearMap() {
-  return plainWear(64, 96, (g, w, h) => {
+  if (clothWearMap.tex) return clothWearMap.tex;
+  return clothWearMap.tex = plainWear(64, 96, (g, w, h) => {
     g.fillStyle = "#7e786c";
     g.fillRect(0, 0, w, h);
     for (let y = 0; y < h; y += 3) {
@@ -3020,6 +3012,7 @@ function clothWearMap() {
   });
 }
 function stoneNoiseMap() {
+  if (stoneNoiseMap.tex) return stoneNoiseMap.tex;
   const tex = plainWear(64, 64, (g, w, h) => {
     g.fillStyle = "#5e5a54";
     g.fillRect(0, 0, w, h);
@@ -3029,10 +3022,11 @@ function stoneNoiseMap() {
       g.fillRect((i * 17) % w, (i * 11) % h, 3 + (i % 5), 2 + (i % 3));
     }
   });
-  return tex;
+  return stoneNoiseMap.tex = tex;
 }
 function woodGrainMap() {
-  return plainWear(64, 128, (g, w, h) => {
+  if (woodGrainMap.tex) return woodGrainMap.tex;
+  return woodGrainMap.tex = plainWear(64, 128, (g, w, h) => {
     g.fillStyle = "#4e382c";
     g.fillRect(0, 0, w, h);
     for (let y = 0; y < h; y += 3) {
@@ -4081,11 +4075,16 @@ function putFoldedStack(put, span, alongCenter, y0, y1, variant) {
     put(shopGeo.box, i % 2 ? iron : face, along, -0.05 + zig, y, pitch * 0.62, h, 0.055);
   }
 }
-// A fascia is the full width of the opening and about 36 cm tall. The canvas
-// uses that same ratio, and the glyphs stay square in the middle of it.
+// A fascia is the full width of the opening and about 36 cm tall. Bays of
+// one trade share a painting: a half step when narrow, a full step from
+// four squares wide, and two squares once the board is eight or wider.
 function fasciaBoard(text, bg, ink, aspect) {
-  const a = Math.max(1.4, aspect || 2);
-  const key = "fascia:" + text + ":" + bg + ":" + ink + ":" + a.toFixed(2);
+  const raw = Math.max(1.4, aspect || 2);
+  // Narrow boards keep a half step. Wider ones share a coarser plate, and the
+  // mesh still fills the opening, so a character moves by a few centimetres.
+  const step = raw >= 8 ? 2 : raw >= 4 ? 1 : 0.5;
+  const a = Math.max(1.5, Math.round(raw / step) * step);
+  const key = "fascia:" + text + ":" + bg + ":" + ink + ":" + a.toFixed(1);
   if (shopCache[key]) return shopCache[key];
   const H = 160;
   const W = Math.max(H, Math.round(H * a));
@@ -4487,7 +4486,53 @@ function fitOpenShop(kind, put, openW, span, bay, face) {
   const shelfW = Math.min(0.7, Math.max(0.36, openW * 0.42));
   const n = openW < 1.35 ? 3 : 5;
   const floorY = 0.332;
-  const counterY = 0.90;
+  // The front counter is built later, at along 0.62. Its top is 0.88 and it is
+  // 0.42 m deep. A good placed at along 0.3 and y 0.90 sits beside that top,
+  // so the whole stack hangs in the room. These helpers put the bottom on the
+  // top, and keep a row inside the top's width.
+  const roomD = Math.max(0.42, Math.min(1.62, (bay && bay.room) || 0.7));
+  const wall = -(roomD - 0.05);
+  const frontTop = 0.88;
+  const frontAlong = 0.62;
+  const frontD = 0.42;
+  let frontOut = -0.42;
+  const frontMin = wall + 0.04 + frontD * 0.5;
+  if (frontOut < frontMin) frontOut = frontMin;
+  const frontW = Math.min(1.15, Math.max(0.55, openW * 0.42));
+  function onBox(top, sy) { return top + sy * 0.5; }
+  function onJar(top, sy) { return top + 0.06 * sy; }
+  function onTin(top, sy) { return top + 0.0225 * sy; }
+  function onPot(top, sy) { return top + 0.14 * sy; }
+  function onBulb(top, sy) { return top + 0.055 * sy; }
+  function wallOut(depth) { return wall + depth * 0.5 - 0.008; }
+  function lay(geo, mat, along, out, y, sx, sy, sz) {
+    (put.raw || put)(geo, mat, along, out, y, sx, sy, sz);
+  }
+  let standAlong = frontAlong;
+  let standOut = frontOut;
+  let standTop = frontTop;
+  let standW = frontW;
+  let showAlong = 0.5;
+  function spread(i, count, pitch) {
+    const usable = Math.max(0.08, standW - 0.06);
+    const p = count > 1 ? Math.min(pitch, usable / (count - 1)) : 0;
+    return standAlong + ((i - (count - 1) * 0.5) * p) / span;
+  }
+  // A board above the counter, with two legs down to the counter top.
+  function counterShelf(sw, sd, rise) {
+    const top = standTop + rise;
+    const w = Math.min(sw, standW - 0.06);
+    const d = Math.min(sd, frontD - 0.08);
+    put(shopGeo.box, wood, standAlong, standOut, top - 0.02, w, 0.04, d);
+    const legH = top - 0.04 - standTop;
+    if (legH > 0.04) {
+      const ly = standTop + legH * 0.5;
+      const ax = Math.max(0.04, w * 0.5 - 0.04) / span;
+      put(shopGeo.box, wood, standAlong - ax, standOut, ly, 0.028, legH, 0.028);
+      put(shopGeo.box, wood, standAlong + ax, standOut, ly, 0.028, legH, 0.028);
+    }
+    return { top: top, w: w };
+  }
   // The bench occupies the right of the opening. Floor goods stay to its left,
   // and in front of the painted wall at the back of the recess.
   const marginM = (span - openW) * 0.5;
@@ -4517,7 +4562,7 @@ function fitOpenShop(kind, put, openW, span, bay, face) {
       if (bay && face && wants.length === 1) {
         const maxCx = hi - ww * 0.5;
         for (let n = 0; n < 5 && cx < maxCx; n++) {
-          const p = facePose(bay.x, bay.z, bay.w, bay.d, face, cx / span, out, 0);
+          const p = facePose(bay.x, bay.z, bay.w, bay.d, face, cx / span, out - SHOP_SEAT, 0);
           let hit = false;
           for (let k = 0; k < shopCheeks.length; k++) {
             const c = shopCheeks[k];
@@ -4541,16 +4586,47 @@ function fitOpenShop(kind, put, openW, span, bay, face) {
       put(shopGeo.box, mat, along + s[0] * ax, out + s[1] * oz, y, 0.032, legH, 0.032);
     });
   }
-  const step = openW < 1.35 ? 0.1 : 0.065;
+  // A wide bay shutters everything past the mouth, and the shared counter sits
+  // at along 0.62, which is behind that shutter. Goods in the opening then
+  // have no top under them. When the counter misses the mouth, stand a table
+  // in the opening and use that.
+  {
+    const kindSpec = SHOP_KIND[kind] || {};
+    const mouthCap = (kindSpec.workshop || kind === "bbq" || kind === "noodle" || kind === "fishball") ? 2.15 : 2.6;
+    let bayMargin = 0.24;
+    if (span - bayMargin * 2 < 0.62) bayMargin = Math.max(0.05, (span - 0.62) / 2);
+    const mouthW = Math.min(openW * 0.96, mouthCap);
+    const mouth0 = bayMargin / span;
+    const mouth1 = mouth0 + mouthW / span;
+    showAlong = (mouth0 + mouth1) * 0.5;
+    const counter0 = frontAlong - frontW * 0.5 / span;
+    const counter1 = frontAlong + frontW * 0.5 / span;
+    const cover = (Math.min(mouth1, counter1) - Math.max(mouth0, counter0)) * span;
+    if (cover < 0.28) {
+      standAlong = (mouth0 + mouth1) * 0.5;
+      standW = Math.min(0.78, Math.max(0.5, mouthW * 0.46));
+      const td = Math.min(0.36, frontD - 0.04);
+      put(shopGeo.box, wood, standAlong, standOut, standTop - 0.02, standW, 0.04, td);
+      legs(wood, standAlong, standOut, standTop - 0.04, standW, td);
+    }
+  }
   if (kind === "pharmacy") {
-    put(shopGeo.box, wood, 0.68, -0.3, 1.02, shelfW, 0.04, 0.2);
-    for (let i = 0; i < n; i++) put(shopGeo.jar, [amber, redG, greenG, white][i % 4], 0.68 - step * (n - 1) / 2 + i * step, -0.28, 1.1, 1, 1, 1);
+    const shelf = counterShelf(shelfW, 0.2, 0.16);
+    const pitch = Math.min(0.11, shelf.w * 0.84 / Math.max(1, n));
+    for (let i = 0; i < n; i++) {
+      put(shopGeo.jar, [amber, redG, greenG, white][i % 4], spread(i, n, pitch), standOut, onJar(shelf.top, 1), 1, 1, 1);
+    }
     const fs = fitFloor([{ w: 0.5, d: 0.15 }])[0];
     put(shopGeo.shelf, shopFinish.shelf, fs.along, fs.out, floorY, fs.w / 0.56, 0.82, fs.d / 0.16);
   } else if (kind === "bonesetter") {
-    put(shopGeo.box, wood, 0.36, -0.3, 1.02, shelfW * 0.8, 0.04, 0.18);
-    for (let i = 0; i < 3; i++) put(shopGeo.box, white, 0.28 + i * 0.08, -0.28, 1.078, 0.09, 0.07, 0.09);
-    for (let i = 0; i < 3; i++) put(shopGeo.jar, i % 2 ? amber : greenG, 0.62 + i * 0.07, -0.28, 1.1, 1, 1, 1);
+    const shelf = counterShelf(Math.max(0.46, shelfW), 0.18, 0.16);
+    const pitch = Math.min(0.1, shelf.w * 0.8 / 5);
+    for (let i = 0; i < 3; i++) {
+      put(shopGeo.box, white, standAlong + (i - 2.5) * pitch / span, standOut, onBox(shelf.top, 0.07), 0.09, 0.07, 0.09);
+    }
+    for (let i = 0; i < 3; i++) {
+      put(shopGeo.jar, i % 2 ? amber : greenG, standAlong + (i + 0.5) * pitch / span, standOut, onJar(shelf.top, 1), 1, 1, 1);
+    }
     const fs = fitFloor([{ w: 0.46, d: 0.15 }])[0];
     put(shopGeo.shelf, shopFinish.shelf, fs.along, fs.out, floorY, fs.w / 0.56, 0.78, fs.d / 0.16);
   } else if (kind === "herbal") {
@@ -4560,50 +4636,87 @@ function fitOpenShop(kind, put, openW, span, bay, face) {
       const sy = xz * (i ? 0.9 : 1);
       put(shopGeo.pot, tin, spot.along, spot.out, floorY + 0.14 * sy, xz, sy, xz);
     });
-    const shelfW = Math.min(openW * 0.34, 0.46);
-    put(shopGeo.shelf, wood, 0.64, -0.36, counterY, shelfW / 0.56, 0.55, 0.62);
+    const herbW = Math.min(openW * 0.34, 0.46);
+    put(shopGeo.shelf, wood, standAlong, standOut, standTop, herbW / 0.56, 0.55, 0.62);
   } else if (kind === "grocery") {
-    const shelfAt = openW >= 1.35 ? 0.7 : 0.36;
     if (openW >= 1.35) {
-      const cream = solidMat("fridgeBody", 0xe7e2d8, 0.55, 0.1);
-      const glow = solidMat("fridgeGlow", 0xd7f0e6, 0.32, 0.04, 0.16, 0.7);
-      const fw = 0.5;
-      const fd = 0.4;
-      const fh = 1.22;
-      const fx = 0.24;
-      const fout = -0.52;
-      put(shopGeo.box, cream, fx, fout, floorY + fh * 0.5, fw, fh, fd);
-      put(shopGeo.box, glow, fx, fout + fd * 0.5 - 0.01, floorY + fh * 0.58, fw * 0.82, fh * 0.52, 0.016);
+      // A solid cream box read as a blank white panel in the mouth. The glass
+      // and the jars were inside that solid. This is a shell against the back
+      // wall, open toward the street.
+      const cream = solidMat("fridgeBody", 0xc4beb2, 0.62, 0.08);
+      const fw = 0.46;
+      const fd = Math.min(0.36, Math.max(0.22, roomD * 0.42));
+      const fh = 1.02;
+      const fx = 0.22;
+      const fout = wall + 0.05 + fd * 0.5;
+      const yb = floorY;
+      put(shopGeo.box, cream, fx, fout - fd * 0.5 + 0.014, yb + fh * 0.5, fw, fh, 0.028);
+      put(shopGeo.box, cream, fx - (fw * 0.5 - 0.014) / span, fout, yb + fh * 0.5, 0.028, fh, fd);
+      put(shopGeo.box, cream, fx + (fw * 0.5 - 0.014) / span, fout, yb + fh * 0.5, 0.028, fh, fd);
+      put(shopGeo.box, cream, fx, fout, yb + fh - 0.014, fw, 0.028, fd);
+      put(shopGeo.box, cream, fx, fout, yb + 0.016, fw, 0.032, fd);
+      put(shopGeo.box, shopFinish.pane, fx, fout + fd * 0.5 - 0.01, yb + fh * 0.56, fw * 0.84, fh * 0.62, 0.01);
+      put(shopGeo.box, cream, fx, fout - 0.02, yb + 0.36, fw * 0.78, 0.018, fd * 0.62);
+      put(shopGeo.box, cream, fx, fout - 0.02, yb + 0.66, fw * 0.78, 0.018, fd * 0.62);
       for (let r = 0; r < 3; r++) {
         for (let i = 0; i < 3; i++) {
-          put(shopGeo.jar, [amber, greenG, redG][i], fx + (i - 1) * 0.1 / span, fout + 0.02, floorY + 0.36 + r * 0.26, 0.7, 1.6, 0.7);
+          put(shopGeo.jar, [amber, greenG, redG][i], fx + (i - 1) * 0.09 / span, fout - 0.02, yb + 0.40 + r * 0.30, 0.42, 0.85, 0.42);
         }
       }
-      put(shopGeo.box, wood, 0.58, -0.95, floorY + 0.16, 0.38, 0.32, 0.3);
+      put(shopGeo.box, wood, 0.58, wall + 0.2, floorY + 0.16, 0.34, 0.32, 0.26);
     }
-    put(shopGeo.box, wood, shelfAt, -0.34, 1.18, shelfW, 0.03, 0.16);
-    put(shopGeo.box, wood, shelfAt, -0.34, 1.5, shelfW, 0.03, 0.16);
+    const rackW = Math.min(shelfW, standW - 0.08);
+    const rackD = 0.16;
+    const rackOut = standOut - 0.06;
+    const lowTop = standTop + 0.28;
+    const highTop = standTop + 0.58;
+    put(shopGeo.box, wood, standAlong, rackOut, lowTop - 0.015, rackW, 0.03, rackD);
+    put(shopGeo.box, wood, standAlong, rackOut, highTop - 0.015, rackW, 0.03, rackD);
+    const rackH = highTop - standTop;
+    const ax = Math.max(0.04, rackW * 0.5 - 0.03) / span;
+    put(shopGeo.box, wood, standAlong - ax, rackOut, standTop + rackH * 0.5, 0.028, rackH, 0.028);
+    put(shopGeo.box, wood, standAlong + ax, rackOut, standTop + rackH * 0.5, 0.028, rackH, 0.028);
+    const pitch = Math.min(0.07, rackW * 0.8 / 3);
     for (let i = 0; i < 4; i++) {
-      const gx = shelfAt + (-0.09 + i * 0.06) / span;
-      put(shopGeo.box, bolt[i], gx, -0.32, 1.26, 0.05, 0.09, 0.05);
-      put(shopGeo.tin, bolt[(i + 1) % 5], gx, -0.32, 1.55, 1, 1, 1);
+      const gx = standAlong + (i - 1.5) * pitch / span;
+      put(shopGeo.box, bolt[i], gx, rackOut, onBox(lowTop, 0.09), 0.05, 0.09, 0.05);
+      put(shopGeo.tin, bolt[(i + 1) % 5], gx, rackOut, onTin(highTop, 1), 1, 1, 1);
     }
-    put(shopGeo.jar, amber, 0.56, -0.4, 0.985, 2.2, 2.1, 2.2);
-    put(shopGeo.jar, greenG, 0.7, -0.4, 0.97, 1.7, 1.8, 1.7);
+    put(shopGeo.jar, amber, spread(0, 2, 0.24), standOut + 0.1, onJar(standTop, 2.1), 2.2, 2.1, 2.2);
+    put(shopGeo.jar, greenG, spread(1, 2, 0.24), standOut + 0.1, onJar(standTop, 1.8), 1.7, 1.8, 1.7);
   } else if (kind === "rice") {
     put(shopGeo.sack, shopFinish.sack, 0.3, -0.26, 0.312, 0.95, 1, 0.95);
     put(shopGeo.sack, shopFinish.sack, 0.46, -0.28, 0.31, 1, 1.05, 1);
     put(shopGeo.box, wood, 0.7, -0.3, 0.582, 0.28, 0.5, 0.16);
   } else if (kind === "cafe") {
-    put(shopGeo.pot, tin, 0.4, -0.32, 0.98, 0.55, 0.6, 0.55);
-    put(shopGeo.jar, white, 0.56, -0.32, 0.96, 0.7, 0.55, 0.7);
-    put(shopGeo.jar, amber, 0.68, -0.32, 0.96, 0.7, 0.55, 0.7);
-    put(shopGeo.box, tin, 0.58, -0.46, 0.868, 0.24, 0.012, 0.16);
-    put(shopGeo.jar, white, 0.54, -0.46, 0.905, 0.8, 0.75, 0.8);
-    put(shopGeo.jar, white, 0.64, -0.46, 0.905, 0.8, 0.75, 0.8);
+    const gap = 0.02;
+    const potW = 0.28;
+    const jarW = 0.08;
+    const trayW = 0.24;
+    const need = potW + jarW + jarW + trayW + gap * 3;
+    const usable = Math.max(0.3, standW - 0.04);
+    const sc = Math.min(1, usable / need);
+    let x = -usable * 0.5;
+    function take(w) {
+      const ww = w * sc;
+      const cx = standAlong + (x + ww * 0.5) / span;
+      x += ww + gap * sc;
+      return cx;
+    }
+    const potA = take(potW);
+    const jarA = take(jarW);
+    const jarB = take(jarW);
+    const trayA = take(trayW);
+    put(shopGeo.pot, tin, potA, standOut, onPot(standTop, 0.6), 0.55 * sc, 0.6, 0.55 * sc);
+    put(shopGeo.jar, white, jarA, standOut, onJar(standTop, 0.55), 0.7, 0.55, 0.7);
+    put(shopGeo.jar, amber, jarB, standOut, onJar(standTop, 0.55), 0.7, 0.55, 0.7);
+    const trayTop = standTop + 0.012;
+    put(shopGeo.box, tin, trayA, standOut, standTop + 0.006, 0.24 * sc, 0.012, 0.16);
+    put(shopGeo.jar, white, trayA - 0.045 * sc / span, standOut, onJar(trayTop, 0.75), 0.8, 0.75, 0.8);
+    put(shopGeo.jar, white, trayA + 0.045 * sc / span, standOut, onJar(trayTop, 0.75), 0.8, 0.75, 0.8);
   } else if (kind === "barber") {
     put(shopGeo.chair, shopFinish.chair, 0.36, -0.24, 0.32, 0.9, 0.9, 0.9);
-    put(shopGeo.box, tin, 0.7, -0.34, 1.28, 0.34, 0.46, 0.02);
+    lay(shopGeo.box, tin, 0.7, wallOut(0.02), 1.28, 0.34, 0.46, 0.02);
   } else if (kind === "electrical") {
     const benchW = Math.min(0.72, Math.max(0.42, openW * 0.42));
     put(shopGeo.box, wood, 0.42, -0.42, floorY + 0.22, benchW, 0.44, 0.03);
@@ -4611,19 +4724,25 @@ function fitOpenShop(kind, put, openW, span, bay, face) {
     [[-0.18, 0.16, 0.1, 0.12], [0, 0.14, 0.08, 0.11], [0.18, 0.18, 0.11, 0.13]].forEach(s => {
       put(shopGeo.box, dark, 0.42 + s[0] / span, -0.36, 0.8 + s[2] * 0.5, s[1], s[2], s[3]);
     });
-    for (let i = 0; i < 3; i++) put(shopGeo.box, white, 0.42 + (i - 1) * 0.12 / span, -0.64, 1.42, 0.09, 0.07, 0.025);
-    const cx = 0.66;
+    const panelD = 0.025;
+    const panelOut = wallOut(panelD);
+    for (let i = 0; i < 3; i++) lay(shopGeo.box, white, showAlong + (i - 1) * 0.14 / span, panelOut, 1.35, 0.1, 0.08, panelD);
+    const cx = showAlong + 0.34 / span;
     const cy = 1.58;
-    const cout = -0.36;
-    put(shopGeo.box, tin, cx, cout, cy, 0.22, 0.012, 0.22);
-    put(shopGeo.box, tin, cx, cout, cy - 0.2, 0.22, 0.012, 0.22);
+    const cout = wallOut(0.22);
+    lay(shopGeo.box, tin, cx, cout, cy, 0.22, 0.012, 0.22);
+    lay(shopGeo.box, tin, cx, cout, cy - 0.2, 0.22, 0.012, 0.22);
     [[-0.1, -0.1], [0.1, -0.1], [-0.1, 0.1], [0.1, 0.1]].forEach(p => {
-      put(shopGeo.box, tin, cx + p[0] / span, cout + p[1], cy - 0.1, 0.012, 0.2, 0.012);
+      lay(shopGeo.box, tin, cx + p[0] / span, cout + p[1], cy - 0.1, 0.012, 0.2, 0.012);
     });
-    put(shopGeo.bulb, amber, cx, cout, cy - 0.1, 0.7, 0.7, 0.7);
+    lay(shopGeo.bulb, amber, cx, cout, cy - 0.1, 0.7, 0.7, 0.7);
   } else if (kind === "hardware") {
-    put(shopGeo.box, dark, 0.4, -0.32, 1.68, Math.min(0.55, openW * 0.4), 0.02, 0.03);
-    for (let i = 0; i < 4; i++) put(shopGeo.box, tin, 0.32 + i * 0.055, -0.3, 1.54, 0.018, 0.26, 0.018);
+    const railW = Math.min(0.55, openW * 0.4);
+    const railD = 0.03;
+    const railOut = wallOut(railD);
+    lay(shopGeo.box, dark, showAlong, railOut, 1.48, railW, 0.04, railD);
+    const toolPitch = Math.min(0.055, railW * 0.8 / 3);
+    for (let i = 0; i < 4; i++) lay(shopGeo.box, tin, showAlong + (i - 1.5) * toolPitch / span, railOut, 1.34, 0.018, 0.28, 0.018);
     const hp = fitFloor([{ w: 0.3, d: 0.3 }])[0];
     const hxz = hp.w / 0.54;
     put(shopGeo.pot, tin, hp.along, hp.out, floorY + 0.14 * (0.6 * hxz / 0.55), hxz, 0.6 * hxz / 0.55, hxz);
@@ -4631,13 +4750,13 @@ function fitOpenShop(kind, put, openW, span, bay, face) {
     const mjW = Math.min(0.72, openW * 0.4);
     put(shopGeo.box, wood, 0.46, -0.28, 0.58, mjW, 0.14, 0.4);
     legs(wood, 0.46, -0.28, 0.51, mjW, 0.4);
-    put(shopGeo.box, felt, 0.46, -0.26, 0.68, Math.min(0.66, openW * 0.36), 0.03, 0.34);
-    for (let i = 0; i < 4; i++) put(shopGeo.box, white, 0.4 + i * 0.035, -0.24, 0.72, 0.028, 0.04, 0.04);
+    put(shopGeo.box, felt, 0.46, -0.26, 0.665, Math.min(0.66, openW * 0.36), 0.03, 0.34);
+    for (let i = 0; i < 4; i++) put(shopGeo.box, white, 0.46 + (i - 1.5) * 0.035 / span, -0.24, 0.70, 0.028, 0.04, 0.04);
   } else if (kind === "paikau") {
     const pkW = Math.min(0.7, openW * 0.38);
     put(shopGeo.box, wood, 0.46, -0.28, 0.58, pkW, 0.14, 0.38);
     legs(wood, 0.46, -0.28, 0.51, pkW, 0.38);
-    put(shopGeo.box, cloth, 0.46, -0.26, 0.68, Math.min(0.64, openW * 0.34), 0.03, 0.32);
+    put(shopGeo.box, cloth, 0.46, -0.26, 0.665, Math.min(0.64, openW * 0.34), 0.03, 0.32);
   } else if (kind === "dogmeat") {
     const spot = fitFloor([{ w: 0.38, d: 0.3 }])[0];
     const bh = 0.26 * spot.s;
@@ -4653,12 +4772,23 @@ function fitOpenShop(kind, put, openW, span, bay, face) {
     for (let i = 0; i < 5; i++) {
       put(shopGeo.box, white, spot.along + ((i % 3) - 1) * 0.07 / span, spot.out + (i < 3 ? -0.04 : 0.05), floorY + 0.08, 0.14, 0.025, 0.05);
     }
-    put(shopGeo.box, wood, 0.64, -0.36, counterY + 0.02, Math.min(0.36, openW * 0.28), 0.04, 0.1);
-    for (let i = 0; i < 4; i++) put(shopGeo.bulb, white, 0.6 + (i % 2) * 0.05, -0.36, counterY + 0.05 + Math.floor(i / 2) * 0.055, 0.48, 0.48, 0.48);
+    const boardW = Math.min(0.36, openW * 0.28, standW - 0.08);
+    const boardTop = standTop + 0.04;
+    put(shopGeo.box, wood, standAlong, standOut, standTop + 0.02, boardW, 0.04, 0.1);
+    const ball = 0.48;
+    for (let i = 0; i < 4; i++) {
+      put(shopGeo.bulb, white, standAlong + ((i % 2) - 0.5) * 0.06 / span, standOut, onBulb(boardTop, ball) + Math.floor(i / 2) * 0.11 * ball, ball, ball, ball);
+    }
   } else if (kind === "noodle") {
-    put(shopGeo.box, flour, 0.4, -0.36, 0.93, Math.min(0.7, openW * 0.4), 0.06, 0.36);
-    put(shopGeo.box, wood, 0.37, -0.3, 1.512, 0.26, 0.02, 0.03);
-    for (let i = 0; i < 6; i++) put(shopGeo.box, flour, 0.28 + i * 0.035, -0.3, 1.32, 0.012, 0.36, 0.012);
+    const slabW = Math.min(0.7, openW * 0.4, standW - 0.04);
+    const slabD = Math.min(0.36, frontD - 0.06);
+    put(shopGeo.box, flour, standAlong, standOut, onBox(standTop, 0.06), slabW, 0.06, slabD);
+    const railW = 0.26;
+    const railD = 0.03;
+    const railOut = wallOut(railD);
+    lay(shopGeo.box, dark, standAlong, railOut, 1.50, railW, 0.04, railD);
+    const strand = Math.min(0.035, railW * 0.85 / 5);
+    for (let i = 0; i < 6; i++) lay(shopGeo.box, flour, standAlong + (i - 2.5) * strand / span, railOut, 1.34, 0.012, 0.36, 0.012);
   } else if (kind === "bbq") {
     const spot = fitFloor([{ w: 0.42, d: 0.28 }])[0];
     const sy = 0.5 * spot.s;
@@ -4667,15 +4797,18 @@ function fitOpenShop(kind, put, openW, span, bay, face) {
     put(shopGeo.pot, tin, spot.along, spot.out, floorY + sy + 0.05, 1.2 * spot.s, 0.32 * spot.s, 1.2 * spot.s);
   } else if (kind === "tofu") {
     for (let r = 0; r < 2; r++) {
-      for (let i = 0; i < 3; i++) put(shopGeo.box, white, 0.28 + i * 0.09, -0.36, counterY + 0.04 + r * 0.07, 0.07, 0.05, 0.07);
+      for (let i = 0; i < 3; i++) put(shopGeo.box, white, spread(i, 3, 0.09), standOut, onBox(standTop, 0.05) + r * 0.05, 0.07, 0.05, 0.07);
     }
     const tp = fitFloor([{ w: 0.34, d: 0.34 }])[0];
     const txz = tp.w / 0.54;
     const tsy = 0.62 * txz / 1.05;
     put(shopGeo.pot, tin, tp.along, tp.out, floorY + 0.14 * tsy, txz, tsy, txz);
   } else if (kind === "candy") {
-    put(shopGeo.box, wood, 0.4, -0.3, 1.05, shelfW, 0.04, 0.18);
-    for (let i = 0; i < n; i++) put(shopGeo.jar, [redG, amber, greenG, white][i % 4], 0.4 - step * (n - 1) / 2 + i * step, -0.28, 1.14, 1, 1.15, 1);
+    const shelf = counterShelf(shelfW, 0.18, 0.19);
+    const pitch = Math.min(0.11, shelf.w * 0.84 / Math.max(1, n));
+    for (let i = 0; i < n; i++) {
+      put(shopGeo.jar, [redG, amber, greenG, white][i % 4], spread(i, n, pitch), standOut, onJar(shelf.top, 1.15), 1, 1.15, 1);
+    }
   } else if (kind === "plastic") {
     const spot = fitFloor([{ w: 0.32, d: 0.32 }])[0];
     const xz = spot.w / 0.54;
@@ -4684,12 +4817,15 @@ function fitOpenShop(kind, put, openW, span, bay, face) {
     const pitch = 0.3125 * sy + 0.012;
     for (let i = 0; i < 3; i++) put(shopGeo.pot, basin[i], spot.along, spot.out, y0 + i * pitch, xz, sy, xz);
   } else if (kind === "textile") {
-    for (let i = 0; i < 5; i++) put(shopGeo.box, bolt[i], 0.34, -0.36, counterY + 0.03 + i * 0.05, Math.min(0.5, openW * 0.34), 0.045, 0.28);
+    const bw = Math.min(0.5, openW * 0.34, standW - 0.06);
+    const bd = Math.min(0.28, frontD - 0.06);
+    const bh = 0.045;
+    for (let i = 0; i < 5; i++) put(shopGeo.box, bolt[i], standAlong, standOut, onBox(standTop, bh) + i * bh, bw, bh, bd);
   } else if (kind === "joss") {
     put(shopGeo.jar, redG, 0.28, -0.28, 0.434, 1.3, 1.7, 1.3);
     put(shopGeo.jar, redG, 0.4, -0.28, 0.407, 1, 1.25, 1);
     put(shopGeo.box, amber, 0.72, -0.28, 0.442, 0.16, 0.22, 0.1);
-    for (let i = 0; i < 5; i++) put(shopGeo.box, amber, 0.27 + i * 0.012, -0.28, 0.66, 0.012, 0.32, 0.012);
+    for (let i = 0; i < 5; i++) put(shopGeo.box, amber, 0.28 + (i - 2) * 0.012 / span, -0.28, 0.66, 0.012, 0.32, 0.012);
   } else if (kind === "water") {
     const spots = fitFloor([{ w: 0.56, d: 0.22 }, { w: 0.34, d: 0.34 }, { w: 0.26, d: 0.26 }]);
     const trough = spots[0];
@@ -4706,9 +4842,10 @@ function fitOpenShop(kind, put, openW, span, bay, face) {
   } else if (kind === "dentist" || kind === "doctor") {
     const cream = solidMat("dental", 0xe6e0d4, 0.58, 0.06);
     const black = solidMat("dentalSeat", 0x16181a, 0.5, 0.06);
-    const doorWm = Math.min(0.84, Math.max(0.62, openW * 0.28));
-    const winWm = Math.min(1.28, Math.max(0.72, openW - doorWm - 0.35));
-    const winCenterM = (span - openW) * 0.5 + doorWm + 0.08 + winWm * 0.5;
+    const front = glassFront(openW);
+    const winCenterM = front.winW > 0
+      ? (span - openW) * 0.5 + front.doorW + front.gap + front.winW * 0.5
+      : (span - openW) * 0.5 + front.doorW * 0.5;
     const ua = Math.max(0.18, Math.min(0.82, winCenterM / span));
     // The stallboard hides anything under 0.84 m. The seat stays at chair
     // height; the headrest and the lamp sit in the pane, where the street sees them.
@@ -4719,12 +4856,20 @@ function fitOpenShop(kind, put, openW, span, bay, face) {
     put(shopGeo.box, black, ua, -0.14, 0.86, 0.4, 0.06, 0.22);
     put(shopGeo.box, black, ua, -0.16, 1.12, 0.36, 0.42, 0.05);
     const lamp = solidMat("dentalLamp", 0xf3efe4, 0.32, 0.04, 0.7, 0.95);
-    put(shopGeo.box, tin, ua, -0.14, 1.52, 0.028, 0.42, 0.028);
-    put(shopGeo.box, tin, ua, -0.14, 1.48, 0.28, 0.04, 0.28);
-    put(shopGeo.bulb, lamp, ua, -0.14, 1.42, 2.4, 0.7, 2.4);
+    // The head stays behind the glass. A stem rises off the chair unit so the arm is not a bar in the air.
+    let lampOut = -0.36;
+    const unitMin = wall + 0.04 + 0.14;
+    if (lampOut < unitMin) lampOut = unitMin;
+    const unitTop = floorY + unitH;
+    const armY = 1.7;
+    const stemH = armY - unitTop;
+    if (stemH > 0.04) put(shopGeo.box, tin, ua, lampOut, unitTop + stemH * 0.5, 0.018, stemH, 0.018);
+    put(shopGeo.box, tin, ua, lampOut, armY, 0.34, 0.016, 0.05);
+    put(shopGeo.bulb, lamp, ua, lampOut, armY - 0.04, 2.0, 0.7, 2.0);
     if (kind === "doctor") {
-      put(shopGeo.box, redG, 0.72, -0.7, 1.35, 0.16, 0.04, 0.02);
-      put(shopGeo.box, redG, 0.72, -0.7, 1.35, 0.04, 0.16, 0.02);
+      const crossOut = wallOut(0.02);
+      lay(shopGeo.box, redG, standAlong, crossOut, 1.35, 0.16, 0.04, 0.02);
+      lay(shopGeo.box, redG, standAlong, crossOut, 1.35, 0.04, 0.16, 0.02);
     }
   }
 }
@@ -4738,6 +4883,26 @@ function noteLaneMouth(bay, face) {
     half: Math.max(0.34, span * 0.34)
   });
 }
+// A clinic front is one bay a person can use: a door near 0.86 m, a display
+// window beside it, and a fascia over that pair. A wider lot is wall. A bay
+// too narrow for both is a glazed door, not a window and a door forced past
+// the jambs.
+function glassFront(openW) {
+  const gap = 0.07;
+  if (openW < 1.45) {
+    const doorW = Math.min(0.92, Math.max(0.62, openW * 0.86));
+    return { doorW: doorW, winW: 0, gap: 0, unit: doorW, glazedDoor: true };
+  }
+  const doorW = Math.min(0.88, Math.max(0.74, openW * 0.28));
+  let winW = openW - doorW - gap;
+  if (winW > 1.7) winW = 1.7;
+  if (winW < 0.7) winW = Math.max(0.55, openW - doorW - gap);
+  return { doorW: doorW, winW: winW, gap: gap, unit: doorW + gap + winW, glazedDoor: false };
+}
+// Open ground walls are inset 0.48 m. The shop used to be built on the lot
+// line, so the whole bay sat in the alley in front of the concrete. Seat
+// every board, gate, step and prop of that bay back by the same amount.
+const SHOP_SEAT = 0.40;
 function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   const guard = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.5, 0.12, 0);
   if (massCovers(guard.x, guard.z, bay.x, bay.z, bay.w, bay.d)) return;
@@ -4759,12 +4924,13 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   if (span - margin * 2 < 0.62) margin = Math.max(0.05, (span - 0.62) / 2);
   const openW = Math.max(0.55, span - margin * 2);
   const inset = (span - openW) / (2 * span);
+  const front = spec.glass ? glassFront(openW) : null;
   function put(geo, mat, along, out, y, sx, sy, sz, pick) {
-    const p = facePose(bay.x, bay.z, bay.w, bay.d, face, along, out, y);
+    const p = facePose(bay.x, bay.z, bay.w, bay.d, face, along, out - SHOP_SEAT, y);
     addShopMesh(geo, mat, p.x, p.y, p.z, p.rot, sx, sy, sz, pick);
   }
   function laneFree(along, out) {
-    const p = facePose(bay.x, bay.z, bay.w, bay.d, face, along, out, 0);
+    const p = facePose(bay.x, bay.z, bay.w, bay.d, face, along, out - SHOP_SEAT, 0);
     return !massCovers(p.x, p.z, bay.x, bay.z, bay.w, bay.d);
   }
   const open = variant !== "shut" && kind !== "door";
@@ -4785,7 +4951,8 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     }
     put(geo, mat, along, o, y, sx, sy, sz, pick);
   }
-  // The pier stops 4 cm inside the lot line and stands in the 0.48 m recess.
+  // The pier's outer face lands 4 cm proud of the ground wall. The rest of
+  // the 0.40 m cheek stands in the notch, not in the alley.
   // On the outer roads the earth is lower than the pour, so the pier and the
   // step continue down to that pavement.
   const returnD = 0.4;
@@ -4802,14 +4969,14 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     put(shopGeo.box, shopFinish.timber, d0, -0.07, 1.24, 0.06, 1.9, 0.07);
     put(shopGeo.box, shopFinish.timber, d1, -0.07, 1.24, 0.06, 1.9, 0.07);
     put(shopGeo.box, shopFinish.timber, dMid, -0.08, 2.2, doorMouth + 0.06, 0.09, 0.08);
-  } else {
+  } else if (!(spec.glass && variant !== "shut")) {
     put(shopGeo.box, shopFinish.timber, inset, -0.07, 1.24, 0.06, 1.9, 0.07);
     put(shopGeo.box, shopFinish.timber, 1 - inset, -0.07, 1.24, 0.06, 1.9, 0.07);
     put(shopGeo.box, shopFinish.timber, 0.5, -0.08, 2.2, openW + 0.06, 0.09, 0.08);
   }
   // A second shop on the same pier used to build another jamb through the first.
   function markCheek(along) {
-    const p = facePose(bay.x, bay.z, bay.w, bay.d, face, along, returnOut, 0);
+    const p = facePose(bay.x, bay.z, bay.w, bay.d, face, along, returnOut - SHOP_SEAT, 0);
     const ns = face === "n" || face === "s";
     const box = ns
       ? { x0: p.x - cheekW * 0.5, x1: p.x + cheekW * 0.5, z0: p.z - returnD * 0.5, z1: p.z + returnD * 0.5 }
@@ -4875,7 +5042,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     const n = Math.max(2, Math.floor((y1 - y0) / pitch));
     for (let i = 0; i < n; i++) put(shopGeo.box, shopFinish.metal, along, -0.05, y0 + pitch * (i + 0.5), width, 0.045, 0.022);
   }
-  if (word && kind !== "door") {
+  if (word && kind !== "door" && !(spec.glass && variant !== "shut")) {
     const fw = Math.min(openW, roomW) * 0.98;
     const fh = 0.36;
     if (fw >= 0.45) {
@@ -4906,13 +5073,8 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     }
     const stairTop = base + rise * 3;
     put(shopGeo.box, lobby, dMid, backFace + 0.05, (stairTop + 1.92) * 0.5, doorMouth * 0.88, Math.max(0.4, 1.92 - stairTop), 0.04);
-    put(shopGeo.box, shopFinish.metal, d1 - 0.08 / span, -0.2, 1.05, 0.018, 0.02, 0.26);
-    put(shopGeo.box, shopFinish.metal, d1 - 0.08 / span, -0.1, 0.78, 0.018, 0.46, 0.018);
-    put(shopGeo.box, shopFinish.metal, d0 + 0.09 / span, -0.2, 1.42, 0.12, 0.16, 0.04);
-    put(shopGeo.box, shopFinish.timber, d0 + 0.18 / span, -0.12, base + rise + 0.03, 0.14, 0.04, 0.07);
-    for (let i = -1; i <= 1; i++) {
-      put(shopGeo.box, shopFinish.metal, dMid + i * 0.13 / span, -0.16, 1.28, 0.1, 0.14, 0.05);
-    }
+    // A pull on the jamb. The old meter plates sat in the opening with nothing behind them.
+    put(shopGeo.box, shopFinish.metal, d1 - 0.04 / span, -0.06, 0.96, 0.016, 0.28, 0.016);
     const v = variant === 1 || variant === 2 ? variant : 0;
     const gateBot = Math.max(floorTop, 0.34);
     const gateTop = 1.96;
@@ -4923,45 +5085,73 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   } else if (variant === "shut") {
     roller(0.36, 1.9, openW * 0.98, 0.5);
   } else if (spec.glass) {
-    const doorW = Math.min(0.84, Math.max(0.62, openW * 0.28));
-    const winW = Math.min(1.28, Math.max(0.72, openW - doorW - 0.35));
-    const gap = 0.08;
+    const doorW = front.doorW;
+    const winW = front.winW;
+    const gap = front.gap;
+    const unit = front.unit;
     const doorAlong = inset + doorW / (2 * span);
-    const winAlong = inset + (doorW + gap + winW / 2) / span;
-    const sill = 0.84;
-    const head = 1.86;
-    const winH = head - sill;
-    put(shopGeo.box, shopFinish.shopTile, winAlong, -0.07, (floorTop + sill) * 0.5, winW, Math.max(0.08, sill - floorTop), 0.06);
-    put(shopGeo.box, shopFinish.timber, winAlong, -0.05, head - 0.02, winW + 0.06, 0.04, 0.045);
-    put(shopGeo.box, shopFinish.timber, winAlong, -0.05, sill + 0.02, winW + 0.06, 0.04, 0.045);
-    put(shopGeo.box, shopFinish.timber, winAlong - winW / (2 * span), -0.05, (sill + head) * 0.5, 0.04, winH, 0.045);
-    put(shopGeo.box, shopFinish.timber, winAlong + winW / (2 * span), -0.05, (sill + head) * 0.5, 0.04, winH, 0.045);
-    put(shopGeo.box, shopFinish.pane, winAlong, -0.06, (sill + head) * 0.5, Math.max(0.3, winW - 0.08), Math.max(0.3, winH - 0.08), 0.01);
+    const unitEnd = inset + unit / span;
+    const unitMid = inset + unit / (2 * span);
+    const sill = 0.78;
+    const head = 1.94;
+    const frameY = (0.34 + head) * 0.5;
+    const frameH = head - 0.34;
+    put(shopGeo.box, shopFinish.timber, inset, -0.07, frameY, 0.05, frameH, 0.06);
+    put(shopGeo.box, shopFinish.timber, unitEnd, -0.07, frameY, 0.05, frameH, 0.06);
+    put(shopGeo.box, shopFinish.timber, unitMid, -0.08, head + 0.04, unit + 0.06, 0.06, 0.06);
     if (word) {
-      const glyphs = glyphBoard(word, spec.inkF || "#9d1c1c");
-      let gh = 0.24;
-      let gw = gh * glyphs.aspect;
-      if (gw > winW * 0.82) { gw = winW * 0.82; gh = gw / glyphs.aspect; }
-      put(shopGeo.plane, glyphs.mat, winAlong, -0.04, (sill + head) * 0.5 + 0.06, gw, gh, 1);
+      const fh = 0.26;
+      const fw = Math.max(0.5, unit * 0.96);
+      const board = fasciaBoard(word, spec.fascia || "#f4f0e6", spec.inkF || "#1a1612", fw / fh);
+      put(shopGeo.plane, board.mat, unitMid, -0.02, head + 0.2, fw, fh, 1);
     }
-    let py = head - 0.2;
-    for (let i = 0; i < words.length && i < 4; i++) {
-      if (!words[i] || words[i] === word) continue;
-      const plaque = shopBoard(words[i], i % 2 ? "#f7f4ee" : "#fffdf8", spec.inkF || "#9d1c1c");
-      const ph = 0.16;
-      const pw = Math.min(ph * plaque.aspect, doorW * 0.92);
-      put(shopGeo.plane, plaque.mat, doorAlong, -0.04, py, pw, ph * (pw / (ph * plaque.aspect)), 1);
-      py -= 0.18;
-      if (py < sill + 0.1) break;
+    if (!front.glazedDoor) {
+      const winAlong = inset + (doorW + gap + winW / 2) / span;
+      const winH = head - sill;
+      put(shopGeo.box, shopFinish.shopTile, winAlong, -0.07, (floorTop + sill) * 0.5, winW, Math.max(0.08, sill - floorTop), 0.06);
+      put(shopGeo.box, shopFinish.timber, winAlong, -0.05, head - 0.025, winW + 0.05, 0.04, 0.045);
+      put(shopGeo.box, shopFinish.timber, winAlong, -0.05, sill + 0.02, winW + 0.05, 0.04, 0.045);
+      put(shopGeo.box, shopFinish.timber, winAlong - winW / (2 * span), -0.05, (sill + head) * 0.5, 0.04, winH, 0.045);
+      put(shopGeo.box, shopFinish.timber, winAlong + winW / (2 * span), -0.05, (sill + head) * 0.5, 0.04, winH, 0.045);
+      put(shopGeo.box, shopFinish.pane, winAlong, -0.06, (sill + head) * 0.5, Math.max(0.3, winW - 0.08), Math.max(0.3, winH - 0.08), 0.01);
+      if (word) {
+        const glyphs = glyphBoard(word, spec.inkF || "#9d1c1c");
+        let gh = 0.2;
+        let gw = gh * glyphs.aspect;
+        if (gw > winW * 0.72) { gw = winW * 0.72; gh = gw / glyphs.aspect; }
+        put(shopGeo.plane, glyphs.mat, winAlong, -0.04, (sill + head) * 0.5, gw, gh, 1);
+      }
+      let py = head - 0.28;
+      for (let i = 0; i < words.length && i < 4; i++) {
+        if (!words[i] || words[i] === word) continue;
+        const plaque = shopBoard(words[i], i % 2 ? "#f7f4ee" : "#fffdf8", spec.inkF || "#9d1c1c");
+        const ph = 0.11;
+        const pw = Math.min(ph * plaque.aspect, doorW * 0.55);
+        put(shopGeo.plane, plaque.mat, doorAlong, -0.045, py, pw, ph * (pw / (ph * plaque.aspect)), 1);
+        py -= 0.135;
+        if (py < sill + 0.12) break;
+      }
+    } else {
+      put(shopGeo.box, shopFinish.shopTile, doorAlong, -0.07, (floorTop + sill) * 0.5, Math.max(0.28, doorW - 0.1), Math.max(0.08, sill - floorTop), 0.06);
+      put(shopGeo.box, shopFinish.pane, doorAlong, -0.06, (sill + head) * 0.5, Math.max(0.28, doorW - 0.12), Math.max(0.3, head - sill - 0.06), 0.01);
+      if (word) {
+        const glyphs = glyphBoard(word, spec.inkF || "#9d1c1c");
+        let gh = 0.18;
+        let gw = gh * glyphs.aspect;
+        if (gw > doorW * 0.76) { gw = doorW * 0.76; gh = gw / glyphs.aspect; }
+        put(shopGeo.plane, glyphs.mat, doorAlong, -0.04, (sill + head) * 0.5, gw, gh, 1);
+      }
     }
-    put(shopGeo.box, shopFinish.timber, doorAlong - doorW / (2 * span), -0.05, 1.16, 0.05, 1.58, 0.05);
-    put(shopGeo.box, shopFinish.timber, doorAlong + doorW / (2 * span), -0.05, 1.16, 0.05, 1.58, 0.05);
-    put(shopGeo.box, shopFinish.timber, doorAlong, -0.05, 1.94, doorW + 0.08, 0.06, 0.05);
-    const fold = 0.16;
-    putFoldedStack(put, span, doorAlong - (doorW * 0.5 - fold * 0.5) / span, 0.38, 1.88, 0);
-    const used = doorW + gap + winW;
-    const rest = openW - used;
-    if (rest > 0.42) roller(0.36, 1.9, Math.max(0.3, rest - 0.08), inset + (used + rest * 0.5) / span);
+    put(shopGeo.box, shopFinish.timber, doorAlong - doorW / (2 * span), -0.05, frameY, 0.045, frameH, 0.05);
+    put(shopGeo.box, shopFinish.timber, doorAlong + doorW / (2 * span), -0.05, frameY, 0.045, frameH, 0.05);
+    put(shopGeo.box, shopFinish.timber, doorAlong, -0.05, head - 0.02, doorW + 0.05, 0.045, 0.05);
+    const fold = 0.14;
+    putFoldedStack(put, span, doorAlong - (doorW * 0.5 - fold * 0.5) / span, 0.38, head - 0.06, 0);
+    const rest = openW - unit;
+    if (rest > 0.16) {
+      const wallAlong = inset + (unit + rest * 0.5) / span;
+      put(shopGeo.box, shopFinish.concrete, wallAlong, -0.1, frameY, Math.max(0.08, rest - 0.06), frameH, 0.12);
+    }
   } else {
     const cap = (spec.workshop || kind === "bbq" || kind === "noodle" || kind === "fishball") ? 2.15 : 2.6;
     const mouth = Math.min(openW * 0.96, cap);
@@ -4992,42 +5182,49 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     const curtain = solidMat(kind === "mahjong" ? "mjCloth" : "pkCloth", kind === "mahjong" ? 0x1c6b3c : 0x1a3058, 0.92, 0);
     put(shopGeo.plane, curtain, 0.22, -0.12, 1.25, Math.min(0.55, openW * 0.36), 1.35, 1);
   }
-  const pose = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.5, 0.2, 1.23);
+  const pose = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.5, 0.2 - SHOP_SEAT, 1.23);
   const hitsTemple = pose.x > TEMPLE_X - 0.3 && pose.x < TEMPLE_X + TEMPLE_W + 0.5 && pose.z > TEMPLE_Z + TEMPLE_D - 0.3 && pose.z < TEMPLE_Z + TEMPLE_D + 1.8;
   const proj = hitsTemple ? 0 : Math.min(wide ? 0.62 : 0.36, Math.max(0, alley * 0.16));
   if (spec.awning && proj >= 0.18 && variant !== "shut" && kind !== "door" && laneFree(0.5, proj)) {
-    const ap = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.5, 0.07 + proj / 2, 2.32);
+    const ap = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.5, 0.07 + proj / 2 - SHOP_SEAT, 2.32);
     addShopMesh(shopGeo.box, awningMat(spec.awning, Math.floor(rng() * 3)), ap.x, ap.y, ap.z, ap.rot, Math.max(0.6, bay.span * 0.86), 0.045, proj);
     [0.28, 0.72].forEach(along => put(shopGeo.box, shopFinish.timber, along, proj * 0.5, 2.28, 0.035, 0.028, Math.max(0.12, proj)));
   }
   if (spec.tube && variant !== "shut" && kind !== "door") {
     // The tube stays inside the opening. One hung at the lot line read as a bar in the lane.
     const tubeMat = solidMat("tube-" + spec.tube.toString(16), spec.tube, 0.35, 0, spec.dim ? 0.22 : 0.48, spec.dim ? 0.55 : 0.95);
-    const len = Math.min(Math.max(0.62, openW * 0.42), 1.15);
-    const out = -0.32;
-    const y = 1.82;
-    const spots = openW > 3.4 ? [0.36, 0.64] : [0.5];
+    const len = front ? Math.min(1.05, Math.max(0.5, front.unit * 0.62)) : Math.min(Math.max(0.62, openW * 0.42), 1.15);
+    const out = front ? -0.48 : -0.32;
+    const y = front ? 2.06 : 1.82;
+    const spots = front ? [inset + front.unit / (2 * span)] : openW > 3.4 ? [0.36, 0.64] : [0.5];
     spots.forEach(along => {
       put(shopGeo.box, shopFinish.metal, along, out, y + 0.022, len + 0.05, 0.014, 0.035);
-      const tp = facePose(bay.x, bay.z, bay.w, bay.d, face, along, out + 0.01, y);
+      const tp = facePose(bay.x, bay.z, bay.w, bay.d, face, along, out + 0.01 - SHOP_SEAT, y);
       addShopMesh(shopGeo.box, tubeMat, tp.x, tp.y, tp.z, tp.rot, len, 0.02, 0.024);
+      const ceilFront = room < 0.8 ? -0.16 : -0.42;
+      const housingTop = y + 0.029;
+      const ceilBottom = 2.16;
+      if (out < ceilFront - 0.02 && ceilBottom > housingTop + 0.015) {
+        const drop = ceilBottom - housingTop;
+        put(shopGeo.box, shopFinish.metal, along, out, housingTop + drop * 0.5, 0.012, drop, 0.012);
+      }
     });
   }
   if (kind === "door" && variant === 0) {
     const bulbMat = solidMat("bulb", 0xffd2a0, 0.4, 0, 0.35, 0.95);
-    const bp = facePose(bay.x, bay.z, bay.w, bay.d, face, dMid, -0.16, 2.02);
+    const bp = facePose(bay.x, bay.z, bay.w, bay.d, face, dMid, -0.16 - SHOP_SEAT, 2.02);
     addShopMesh(shopGeo.bulb, bulbMat, bp.x, bp.y, bp.z, 0, 1, 1, 1);
   }
   if (!hitsTemple && kind === "barber" && variant !== "shut" && alley >= 1.2 && laneFree(0.1, 0.22)) {
-    const pp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.1, 0.06, 0);
+    const pp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.1, 0.06 - SHOP_SEAT, 0);
     addShopMesh(shopGeo.pole, barberPoleMat(), pp.x, sitY(pp.x, pp.z, -0.35), pp.z, 0, 1, 1, 1);
   }
   if (!hitsTemple && kind === "herbal" && variant !== "shut" && alley >= 1.45 && laneFree(0.82, 0.42)) {
-    const hp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.82, 0.22, 0);
+    const hp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.82, 0.22 - SHOP_SEAT, 0);
     addShopMesh(shopGeo.pot, solidMat("urn", 0x444846, 0.78, 0.12), hp.x, sitY(hp.x, hp.z, -0.14, 1.9), hp.z, 0, 1.1, 1.9, 1.1);
   }
   if (!hitsTemple && kind === "water" && alley >= 1.35 && laneFree(0.22, 0.36)) {
-    const bp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.22, 0.18, 0);
+    const bp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.22, 0.18 - SHOP_SEAT, 0);
     addShopMesh(shopGeo.pot, solidMat("wbucket", 0x66726e, 0.82, 0.06), bp.x, sitY(bp.x, bp.z, -0.14, 0.7), bp.z, 0, 0.55, 0.7, 0.55);
   }
   if (variant === "shut" || kind === "door") {
@@ -5040,37 +5237,40 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   const stoolCols = [0xa33a30, 0x24506a, 0x1e4a3a];
   if (spec.hanging && variant !== "shut") {
     const railY = 1.78;
-    put(shopGeo.box, shopFinish.metal, 0.46, -0.36, railY, Math.max(0.5, span * 0.4), 0.02, 0.03);
-    [0.34, 0.58].forEach(along => put(shopGeo.box, shopFinish.metal, along, -0.43, railY, 0.02, 0.02, 0.14));
+    const railD = 0.03;
+    const railOut = backFace + railD * 0.5 - 0.008;
+    put(shopGeo.box, shopFinish.metal, 0.46, railOut, railY, Math.max(0.5, span * 0.4), 0.02, railD);
+    [0.34, 0.58].forEach(along => put(shopGeo.box, shopFinish.metal, along, railOut, railY, 0.02, 0.02, 0.03));
     for (let i = 0; i < 3; i++) {
-      const hp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.34 + i * 0.12, -0.36, 1.56);
+      const hp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.34 + i * 0.12, railOut - SHOP_SEAT, 1.56);
       addShopMesh(shopGeo.duck, duckMat, hp.x, hp.y, hp.z, 0, 0.85, 1.7, 0.75);
     }
   }
   if (spec.workshop && (kind === "fishball" || kind === "noodle" || kind === "tofu") && laneFree(0.62, 0.3)) {
-    const pp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.62, 0.12, 0);
+    const pp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.62, 0.12 - SHOP_SEAT, 0);
     addShopMesh(shopGeo.pot, potMat, pp.x, sitY(pp.x, pp.z, -0.14), pp.z, 0, 1, 1, 1);
   }
   if (spec.crates && alley >= 2.1 && laneFree(0.78, 0.32)) {
-    const cp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.78, Math.min(0.24, alley * 0.1), 0);
+    const cp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.78, Math.min(0.24, alley * 0.1) - SHOP_SEAT, 0);
     addShopMesh(shopGeo.crate, crateAlt ? shopFinish.cratePlastic : shopFinish.crateWood, cp.x, sitY(cp.x, cp.z, -0.48, 0.28), cp.z, 0, 0.42, 0.28, 0.34);
   }
   if (spec.sacks && alley >= 2 && laneFree(0.7, 0.3)) {
-    const sp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.7, Math.min(0.22, alley * 0.1), 0);
+    const sp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.7, Math.min(0.22, alley * 0.1) - SHOP_SEAT, 0);
     addShopMesh(shopGeo.sack, shopFinish.sack, sp.x, sitY(sp.x, sp.z, 0.02), sp.z, 0, 1, 1, 1);
   }
   if (spec.stools && wide && laneFree(0.43, 0.42)) {
     const stoolMat = solidMat("stool" + variant, stoolCols[variant === 1 ? 1 : variant === 2 ? 2 : 0] || stoolCols[0], 0.55, 0.05);
     [0.34, 0.52].forEach(along => {
-      const sp = facePose(bay.x, bay.z, bay.w, bay.d, face, along, Math.min(0.36, alley * 0.11), 0);
+      const sp = facePose(bay.x, bay.z, bay.w, bay.d, face, along, Math.min(0.36, alley * 0.11) - SHOP_SEAT, 0);
       addShopMesh(shopGeo.stool, stoolMat, sp.x, sitY(sp.x, sp.z, 0), sp.z, 0, 1, 1, 1);
     });
   }
   if ((kind === "grocery" || kind === "cafe" || kind === "pharmacy" || kind === "rice") && variant !== "shut") {
     const lamp = solidMat("shrine", 0xc43a32, 0.4, 0, 0.18, 0.42);
-    const lp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.22, -0.36, 1.85);
+    const lp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.22, backFace + 0.022 - SHOP_SEAT, 1.85);
     addShopMesh(shopGeo.box, lamp, lp.x, lp.y, lp.z, 0, 0.08, 0.08, 0.06);
   }
+  putIn.raw = put;
   fitOpenShop(kind, putIn, openW, span, bay, face);
   addShopMesh.pinX = addShopMesh.pinZ = null;
 }
@@ -5120,12 +5320,14 @@ function placeStair(bay, face, data, lotZ, pinX, pinZ, stair) {
   addShopMesh.pinZ = pinZ;
   const span = bay.span;
   function put(geo, mat, along, out, y, sx, sy, sz, pick) {
-    const p = facePose(bay.x, bay.z, bay.w, bay.d, face, along, out, y);
+    const p = facePose(bay.x, bay.z, bay.w, bay.d, face, along, out - SHOP_SEAT, y);
     addShopMesh(geo, mat, p.x, p.y, p.z, p.rot, sx, sy, sz, pick);
   }
   const recess = 0.48;
   const notch = stair.cut && stair.cut.notch > 0.35 ? stair.cut.notch : 0;
-  const back = notch > 0 ? recess + notch : recess - 0.05;
+  // The cut is deeper by SHOP_SEAT so the seated stair still ends inside it.
+  const layoutNotch = Math.max(0, notch - SHOP_SEAT);
+  const back = notch > 0 ? recess + layoutNotch : recess - 0.05;
   const concrete = shopMat("stair-tread", () => {
     const S = 256;
     const c = document.createElement("canvas");
@@ -5146,7 +5348,7 @@ function placeStair(bay, face, data, lotZ, pinX, pinZ, stair) {
     return mat;
   });
   const voidMat = shopMat("stair-void", () => {
-    const mat = new THREE.MeshStandardMaterial({ color: 0x100e0c, roughness: 1, metalness: 0, clippingPlanes: clips });
+    const mat = new THREE.MeshStandardMaterial({ color: 0x060504, roughness: 1, metalness: 0, clippingPlanes: clips });
     mat.name = "stairVoid";
     return mat;
   });
@@ -5164,9 +5366,9 @@ function placeStair(bay, face, data, lotZ, pinX, pinZ, stair) {
   put(shopGeo.box, concrete, 1 - jambAt, -0.26, jambY, 0.08, jambH, 0.4);
   put(shopGeo.box, concrete, 0.5, -0.2, 2.24, span * 0.94, 0.12, 0.22);
   put(shopGeo.plane, voidMat, 0.5, -(back - 0.04), 1.28, openW * 0.96, 2.16, 1, data);
-  if (notch > 0.35) {
-    const sideOut = -(recess + notch * 0.5);
-    const sideD = Math.max(0.2, notch - 0.06);
+  if (layoutNotch > 0.35) {
+    const sideOut = -(recess + layoutNotch * 0.5);
+    const sideD = Math.max(0.2, layoutNotch - 0.06);
     put(shopGeo.box, voidMat, edge + 0.02, sideOut, 1.22, 0.04, 2.05, sideD);
     put(shopGeo.box, voidMat, 1 - edge - 0.02, sideOut, 1.22, 0.04, 2.05, sideD);
   }
@@ -5204,7 +5406,7 @@ function placeStair(bay, face, data, lotZ, pinX, pinZ, stair) {
   const railD = Math.max(0.36, Math.min(0.7, back * 0.5));
   put(shopGeo.box, shopFinish.metal, edge + 0.06, -0.1 - railD * 0.5, 1.02, 0.028, 0.028, railD);
   put(shopGeo.box, shopFinish.metal, edge + 0.06, -0.16, 0.72, 0.028, 0.7, 0.028);
-  const bulbOut = notch > 0.35 ? Math.min(-0.55, -(recess + 0.08)) : -0.22;
+  const bulbOut = layoutNotch > 0.35 ? Math.min(-0.55, -(recess + 0.08)) : -0.22;
   const bulbMat = solidMat("bulb", 0xffd2a0, 0.4, 0, 0.35, 0.95);
   put(shopGeo.bulb, bulbMat, 0.58, bulbOut, 2.02, 1, 1, 1);
   put(shopGeo.box, shopFinish.metal, 0.58, bulbOut, 2.14, 0.012, 0.2, 0.012);
@@ -5458,12 +5660,24 @@ function shopRoomCuts(x, z, w, d, facePlans, openFaces) {
     const face = fp.face;
     const spanDepth = (face === "n" || face === "s") ? d : w;
     const shell = spanDepth - inset(face) - inset(opp[face]);
-    let notch = Math.min(1.05, shell - 0.62);
+    let notch = Math.min(1.05 + SHOP_SEAT, shell - 0.62);
     if (notch < 0.4) notch = 0;
     fp.plans.forEach(p => {
       if (!p.bay) return;
       if (p.kind === "door" || notch <= 0) {
         p.bay.room = 0.46;
+        // The household door is seated onto the wall with the shops. A short
+        // slot keeps the gate and the first steps in the opening.
+        if (p.kind === "door" && notch >= 0.4) {
+          let doorAlong, doorWidth;
+          if (face === "n" || face === "s") { doorAlong = p.bay.x - x; doorWidth = p.bay.w; }
+          else { doorAlong = p.bay.z - z; doorWidth = p.bay.d; }
+          let margin = 0.24;
+          if (doorWidth - margin * 2 < 0.62) margin = Math.max(0.05, (doorWidth - 0.62) / 2);
+          const mouth = Math.min(Math.max(0.55, doorWidth - margin * 2), 1.08);
+          const doorNotch = Math.min(0.55, notch);
+          if (mouth >= 0.55) cuts.push({ face: face, along0: doorAlong + margin, width: mouth, notch: doorNotch });
+        }
         return;
       }
       let along0, width;
@@ -5476,7 +5690,7 @@ function shopRoomCuts(x, z, w, d, facePlans, openFaces) {
         return;
       }
       const cut = { face: face, along0: along0 + pad, width: cutW, notch: notch, bay: p.bay };
-      p.bay.room = 0.48 + notch - 0.06;
+      p.bay.room = 0.48 + Math.max(0, notch - SHOP_SEAT) - 0.06;
       p.bay.roomW = cutW;
       cuts.push(cut);
     });
@@ -5579,7 +5793,7 @@ function makeFramedBlock(w, d, floors, floorH, openFaces, ox, oz, stairCut, step
           return;
         }
         cut.notch = n;
-        if (cut.bay) cut.bay.room = n > 0.35 ? 0.48 + n - 0.06 : 0.46;
+        if (cut.bay) cut.bay.room = n > 0.35 ? 0.48 + Math.max(0, n - SHOP_SEAT) - 0.06 : 0.46;
         if (n <= 0) return;
         notchRects(cut.face, cut.along0, cut.width, n);
         applied.push({ face: cut.face, a0: cut.along0, a1: cut.along0 + cut.width, notch: n });
@@ -5702,7 +5916,7 @@ function stairOnRun(x, z, w, d, face, run) {
     bay: bayOnFace(x, z, w, d, face, along0, along0 + stairW),
     face: face,
     atEnd: atEnd,
-    cut: { face: face, along0: along0, width: stairW, notch: 1.02 },
+    cut: { face: face, along0: along0, width: stairW, notch: 1.02 + SHOP_SEAT },
     variant: Math.floor(lotRoll(x, z, 0x51a1) * 3),
     along0: along0
   };
@@ -6564,9 +6778,7 @@ function blockQuad(x, z) {
 }
 function fillInst(geo, mat, items, place) {
   if (!items.length) return null;
-  // A phone sees every quadrant from the opening view, so the split is four
-  // draws of the same cages and gates. One batch keeps every instance.
-  if (tier > 0 && items.length > 160 && !fillInst.split) {
+  if (items.length > 160 && !fillInst.split) {
     const probe = new THREE.Object3D();
     const bins = [[], [], [], []];
     for (let i = 0; i < items.length; i++) {
@@ -7379,11 +7591,7 @@ function dressAlleys() {
         if (!wallHolds(side, mid)) side = -side;
         if (!wallHolds(side, mid)) continue;
         if ((narrow || nearWell) && pick < 0.2) {
-          const tap = wallPos(side, 0.05, mid);
-          pipes.galv.push({
-            x: tap.x, y: 1.02, z: tap.z,
-            sx: ns ? 0.09 : 0.05, sy: 0.07, sz: ns ? 0.05 : 0.09
-          });
+          // The tap head was a loose box at 1.02 m. Keep the roll so the lane stays put.
           if (narrow && pick < 0.1) {
             const sy = 2.35;
             const pipe = wallPos(-side, 0.08, mid);
@@ -8801,14 +9009,13 @@ function fillUntracedParcels() {
 // Every parcel from the sheet, plus the holes the trace left inside the wall.
 // Slivers are kept: the old carve dropped anything under about 4.6 m, which
 // is why edge buildings disappeared.
-async function placeFootprint() {
+function placeFootprint() {
   fillUntracedParcels();
   const temple = { x: TEMPLE_X, z: TEMPLE_Z, x2: TEMPLE_X + TEMPLE_W, z2: TEMPLE_Z + TEMPLE_D };
-  for (let li = 0; li < FOOT_LOTS.length; li++) {
-    const L = FOOT_LOTS[li];
+  FOOT_LOTS.forEach(L => {
     const x = L[0], z = L[1], w = L[2], d = L[3];
-    if (x < court.x2 && x + w > court.x && z < court.z2 && z + d > court.z) continue;
-    if (x < temple.x2 && x + w > temple.x && z < temple.z2 && z + d > temple.z) continue;
+    if (x < court.x2 && x + w > court.x && z < court.z2 && z + d > court.z) return;
+    if (x < temple.x2 && x + w > temple.x && z < temple.z2 && z + d > temple.z) return;
     const id = lotZone(x, z, w, d);
     const zone = ZONES[id] || ZONES.lane;
     let floors = storeysAt(x, z, w, d);
@@ -8820,8 +9027,7 @@ async function placeFootprint() {
       const owns = gap && (gap.across === "z" ? z <= gap.mz : x <= gap.mx);
       if (gap && owns) slitNets.push({ gap, y: 3.05 + lift * 1.7 });
     }
-    if (tier < 1 && (li % 8) === 7) await breathe();
-  }
+  });
 }
 const slitNets = [];
 function placeSlitNets() {
@@ -8845,7 +9051,7 @@ function placeSlitNets() {
   });
   slitNets.length = 0;
 }
-await placeFootprint();
+placeFootprint();
 // Outer roads only. The 1987 photographs (Tung Tau Tsuen Road, and the same
 // kind of front on Tung Tsing Road and Carpenter Road) show blade signs
 // projecting over the pavement: separate boards, different sizes, irregular
@@ -9024,7 +9230,6 @@ function dressOuterBlades() {
 }
 dressOuterBlades();
 flushShops();
-if (tier < 1) await breathe();
 
 const brick = new THREE.MeshStandardMaterial({ map: greyBrickMap(1, 1), color: 0x6a645c, roughness: 0.96, metalness: 0, clippingPlanes: clips });
 attachBoxTile(brick, 1.55, 0, 0);
@@ -9050,8 +9255,10 @@ function repeatTex(paint, rw, rh) {
   tex.repeat.set(rw, rh);
   return tex;
 }
-function greyBrickMap(rw, rh) {
-  return repeatTex(g => {
+function greyBrickMap() {
+  if (greyBrickMap.tex) return greyBrickMap.tex;
+  // The course size is the wall shader's tile, so every brick face can share this picture.
+  return greyBrickMap.tex = repeatTex(g => {
     g.fillStyle = "#3a3834";
     g.fillRect(0, 0, 128, 128);
     const bw = 32, bh = 14;
@@ -9078,10 +9285,11 @@ function greyBrickMap(rw, rh) {
       g.lineTo(x + (i % 2 ? 5 : -4), 124);
       g.stroke();
     }
-  }, rw, rh);
+  }, 1, 1);
 }
-function greyTileMap(rw, rh) {
-  return repeatTex(g => {
+function greyTileMap() {
+  if (greyTileMap.tex) return greyTileMap.tex;
+  return greyTileMap.tex = repeatTex(g => {
     // Unglazed barrel-and-flat. Courses lap across the slope; each barrel
     // runs down it, with a grey crown and a dark channel, never a white joint.
     g.fillStyle = "#262420";
@@ -9104,10 +9312,11 @@ function greyTileMap(rw, rh) {
         g.fillRect(x + 13, row + 1, 2, course - 4);
       }
     }
-  }, rw, rh);
+  }, 1, 1);
 }
 function concreteRoofMap() {
-  return repeatTex(g => {
+  if (concreteRoofMap.tex) return concreteRoofMap.tex;
+  return concreteRoofMap.tex = repeatTex(g => {
     g.fillStyle = "#7a756e";
     g.fillRect(0, 0, 128, 128);
     for (let i = 0; i < 200; i++) {
@@ -9127,7 +9336,8 @@ function concreteRoofMap() {
   }, 1, 1);
 }
 function graniteStepMap() {
-  return repeatTex(g => {
+  if (graniteStepMap.tex) return graniteStepMap.tex;
+  return graniteStepMap.tex = repeatTex(g => {
     g.fillStyle = "#4a4640";
     g.fillRect(0, 0, 128, 128);
     for (let row = 0; row < 4; row++) {
@@ -9149,24 +9359,27 @@ function mappedMat(map, rough, tile) {
   attachBoxTile(mat, tile || 1.4, 0, 0);
   return mat;
 }
-function signMat(words, bg, ink, size) {
+function signMat(words, bg, ink, faceW, faceH) {
+  const aspect = Math.max(0.45, (faceW > 0 && faceH > 0) ? faceW / faceH : 4);
+  const H = 180;
+  const W = Math.max(96, Math.round(H * aspect));
   const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 128;
+  c.width = W;
+  c.height = H;
   const g = c.getContext("2d");
   g.fillStyle = bg;
-  g.fillRect(0, 0, 512, 128);
+  g.fillRect(0, 0, W, H);
   g.strokeStyle = "#2c2824";
-  g.lineWidth = 10;
-  g.strokeRect(8, 8, 496, 112);
+  g.lineWidth = Math.max(4, Math.round(H * 0.045));
+  g.strokeRect(H * 0.06, H * 0.06, W - H * 0.12, H - H * 0.12);
   g.fillStyle = ink;
-  g.font = "700 " + size + "px " + SHOP_FONT;
+  const n = Math.max(1, Array.from(String(words || "")).length);
+  const glyph = Math.min(H * 0.62, (W * 0.84) / (n * 1.02));
+  g.font = "700 " + Math.round(glyph) + "px " + SHOP_FONT;
   g.textAlign = "center";
   g.textBaseline = "middle";
-  g.fillText(words, 256, 68);
-  const tex = new THREE.CanvasTexture(c);
-  tex.encoding = THREE.sRGBEncoding;
-  return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.78, metalness: 0.02, clippingPlanes: clips });
+  g.fillText(words, W * 0.5, H * 0.52);
+  return new THREE.MeshStandardMaterial({ map: shopCanvasTex(c), roughness: 0.78, metalness: 0.02, clippingPlanes: clips });
 }
 // One-storey Qing hall. Ridge runs east–west; the slope falls north and south.
 // Hard gable: the roof dies into the end walls. Wall about 3.6 m, pitch about 31°,
@@ -9363,7 +9576,7 @@ function hall(x, z, w, d, name, opts) {
   step.position.set(cx, 0.22, zFace + 0.62);
   city.add(step);
   if (opts.lintel) {
-    const board = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.42, 0.08), signMat("ALMSHOUSE", "#cfc6b6", "#2a241c", 54));
+    const board = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.42, 0.08), signMat("ALMSHOUSE", "#cfc6b6", "#2a241c", 2.6, 0.42));
     board.position.set(cx, 2.55, zFace + 0.08);
     city.add(board);
   }
@@ -9496,13 +9709,16 @@ function lowBlock(x, z, w, d, h, name, opt) {
   const signFace = opt.sign || "s";
   const signWide = signFace === "w" || signFace === "e";
   const doorPlate = opt.plaque === "door" && signFace === "w";
+  const plateW = doorPlate ? 1.36 : (signWide ? Math.min(3.4, d * 0.42) : Math.min(3.4, w * 0.42));
+  const plateH = doorPlate ? 0.32 : 0.42;
+  const plateThin = doorPlate ? 0.045 : 0.06;
   const plate = new THREE.Mesh(
     new THREE.BoxGeometry(
-      doorPlate ? 0.045 : (signWide ? 0.06 : Math.min(3.4, w * 0.42)),
-      doorPlate ? 0.32 : 0.42,
-      doorPlate ? 1.36 : (signWide ? Math.min(3.4, d * 0.42) : 0.06)
+      doorPlate || signWide ? plateThin : plateW,
+      plateH,
+      doorPlate || signWide ? plateW : plateThin
     ),
-    signMat(name, doorPlate ? "#c4b49a" : "#3c342c", doorPlate ? "#2a221c" : "#efe6d4", doorPlate ? 64 : 46)
+    signMat(name, doorPlate ? "#c4b49a" : "#3c342c", doorPlate ? "#2a221c" : "#efe6d4", plateW, plateH)
   );
   // An open face is set back from the lot line. The plate sits on that plaster,
   // not out in the lane with a gap behind it. A tenement name is over the door.
@@ -9778,6 +9994,7 @@ function schoolWestFace() {
 }
 schoolWestFace();
 function elderPaintMap() {
+  if (elderPaintMap.tex) return elderPaintMap.tex;
   // One tile is 0.48 m of trowelled cement. Sand and short trowel arcs only.
   // A streak that runs off the tile was reprinting every 2.2 m. The rain
   // stains are added in world metres, once per wall.
@@ -9820,7 +10037,7 @@ function elderPaintMap() {
   tex.encoding = THREE.sRGBEncoding;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.anisotropy = 4;
-  return tex;
+  return elderPaintMap.tex = tex;
 }
 // The skirt stays in world height. The wall box is centred, so a local
 // soot would paint the middle of the storey.
@@ -9951,30 +10168,33 @@ function elderPaneMaps() {
   const rough = meshMips(rc);
   return { map: map, rough: rough };
 }
-function centreSign(words) {
+function centreSign(words, faceW, faceH) {
+  const aspect = Math.max(1.4, (faceW > 0 && faceH > 0) ? faceW / faceH : 4);
+  const H = 160;
+  const W = Math.round(H * aspect);
   const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 128;
+  c.width = W;
+  c.height = H;
   const g = c.getContext("2d");
   g.fillStyle = "#b7ab98";
-  g.fillRect(0, 0, 512, 128);
+  g.fillRect(0, 0, W, H);
   g.fillStyle = "rgba(62,52,40,0.28)";
-  g.fillRect(0, 96, 512, 32);
+  g.fillRect(0, H * 0.75, W, H * 0.25);
   for (let i = 0; i < 8; i++) {
     g.fillStyle = "rgba(48,40,32," + (0.18 + (i % 3) * 0.08) + ")";
-    g.fillRect(24 + i * 58, 8, 3, 112);
+    g.fillRect(W * (0.05 + i * 0.11), H * 0.08, Math.max(2, W * 0.006), H * 0.84);
   }
   g.strokeStyle = "#6a6256";
-  g.lineWidth = 8;
-  g.strokeRect(8, 8, 496, 112);
+  g.lineWidth = Math.max(4, Math.round(H * 0.05));
+  g.strokeRect(H * 0.06, H * 0.06, W - H * 0.12, H - H * 0.12);
   g.fillStyle = "#241e1a";
-  g.font = "700 72px " + SHOP_FONT;
+  const n = Math.max(1, Array.from(String(words || "")).length);
+  const glyph = Math.min(H * 0.58, (W * 0.82) / (n * 1.02));
+  g.font = "700 " + Math.round(glyph) + "px " + SHOP_FONT;
   g.textAlign = "center";
   g.textBaseline = "middle";
-  g.fillText(words, 256, 66);
-  const tex = new THREE.CanvasTexture(c);
-  tex.encoding = THREE.sRGBEncoding;
-  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.92, metalness: 0, clippingPlanes: clips });
+  g.fillText(words, W * 0.5, H * 0.5);
+  const mat = new THREE.MeshStandardMaterial({ map: shopCanvasTex(c), roughness: 0.92, metalness: 0, clippingPlanes: clips });
   attachElderGrime(mat);
   attachWetWall(mat);
   return mat;
@@ -10210,7 +10430,7 @@ function elderCentre() {
     addBox(barMat, 0.5, 0.02, 0.34, ux, uy + 0.08, z + d + 0.2);
     addBox(barMat, 0.5, 0.02, 0.34, ux, uy - 0.06, z + d + 0.2);
   });
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.56, 0.06), centreSign(name));
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.56, 0.06), centreSign(name, 3.4, 0.56));
   plate.position.set(dx, 3.58, z + d + 0.08);
   city.add(plate);
   const stepMat = mappedMat(graniteStepMap(), 0.96, 1.2);
@@ -10455,7 +10675,7 @@ city.add(wellFill);
   const head = new THREE.Mesh(new THREE.BoxGeometry(doorW + 0.28, 0.12, 0.16), yamenStone);
   head.position.set(cx, doorH + 0.2, zFace + 0.02);
   city.add(head);
-  const plaque = new THREE.Mesh(new THREE.BoxGeometry(2.15, 0.4, 0.06), signMat("天后廟", "#5c2420", "#f0ddb0", 56));
+  const plaque = new THREE.Mesh(new THREE.BoxGeometry(2.15, 0.4, 0.06), signMat("天后廟", "#5c2420", "#f0ddb0", 2.15, 0.4));
   plaque.position.set(cx, doorH + 0.52, zFace + 0.06);
   city.add(plaque);
   const az = z + 1.05;
@@ -10468,7 +10688,7 @@ city.add(wellFill);
   const headN = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 6), gold);
   headN.position.set(cx, 1.4, az + 0.12);
   city.add(headN);
-  const tablet = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.42, 0.04), signMat("天后", "#6a1814", "#f3e6c4", 78));
+  const tablet = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.42, 0.04), signMat("天后", "#6a1814", "#f3e6c4", 0.32, 0.42));
   tablet.position.set(cx, 1.22, az - 0.18);
   city.add(tablet);
   const flameMat = new THREE.MeshStandardMaterial({
@@ -10602,7 +10822,6 @@ retargetShopAnchors();
 // settle. Before that, a fitting pinned to its own northing steps off the
 // wall and through the slab.
 dressAlleys();
-if (tier < 1) await breathe();
 placeSlitNets();
 
 (function shrine() {
@@ -10936,8 +11155,8 @@ const traffic = [];
   }
   dashes(-9.6, x0 + 6);
   dashes(129.6, x0 + 8);
-  // Bodies stay in the opaque pass (a dither at the feather) so the glass can
-  // draw afterwards and a driver actually shows through the windshield.
+  // Bodies and glass share the opaque pass. A window is a solid pane, so the
+  // cabin behind it is never drawn.
   function fadeSolid(mat) {
     mat.customProgramCacheKey = function () {
       const grade = mat.userData.streetGrade || "";
@@ -11013,7 +11232,6 @@ const traffic = [];
   const bumperMat = solid(0x3a3c3e, 0.38, 0.62);
   const steel = solid(0xc4c8cc, 0.3, 0.7);
   const rubber = solid(0x161616, 0.92, 0);
-  const seatMat = solid(0x2a2622, 0.8, 0);
   const skinMat = solid(0xc9956c, 0.6, 0, "figure");
   const shirtA = solid(0xd5d0c4, 0.7, 0, "figure");
   const shirtB = solid(0x2a3344, 0.7, 0, "figure");
@@ -11022,20 +11240,53 @@ const traffic = [];
   const plateY = solid(0xe4c24a, 0.5, 0.06);
   const grilleMat = solid(0x141618, 0.45, 0.4);
   const blindMat = solid(0x1a1c16, 0.4, 0.1);
+  // One opaque pane for every window. The canvas is smoked glass with a
+  // horizon band. The grade adds a thin sky fresnel, and rain picks up the
+  // same wet mirror the carriageway uses.
+  const glassTex = document.createElement("canvas");
+  glassTex.width = 64;
+  glassTex.height = 64;
+  const glassInk = glassTex.getContext("2d");
+  const glassGrad = glassInk.createLinearGradient(0, 0, 0, 64);
+  glassGrad.addColorStop(0, "#7d9098");
+  glassGrad.addColorStop(0.28, "#4a5c66");
+  glassGrad.addColorStop(1, "#1c282e");
+  glassInk.fillStyle = glassGrad;
+  glassInk.fillRect(0, 0, 64, 64);
+  glassInk.fillStyle = "rgba(214, 224, 228, 0.32)";
+  glassInk.fillRect(0, 16, 64, 7);
+  glassInk.strokeStyle = "rgba(18, 14, 10, 0.38)";
+  glassInk.lineWidth = 1;
+  for (let i = 0; i < 6; i++) {
+    glassInk.beginPath();
+    glassInk.moveTo(6 + i * 10, 0);
+    glassInk.lineTo(2 + i * 10, 64);
+    glassInk.stroke();
+  }
+  const glassMap = new THREE.CanvasTexture(glassTex);
+  glassMap.wrapS = glassMap.wrapT = THREE.RepeatWrapping;
+  glassMap.anisotropy = 2;
   const glass = new THREE.MeshStandardMaterial({
-    color: 0xb7c6cc, roughness: 0.08, metalness: 0.18, transparent: true, opacity: 0.42
+    map: glassMap, color: 0xffffff, roughness: 0.4, metalness: 0.48
   });
   glass.userData.streetGrade = "glass";
-  fadeWithGround(glass);
-  glass.depthWrite = false;
-  // Side bands stay dark enough to read as windows against the haze, and still
-  // thin enough that a head behind the pane shows through.
-  const sideGlass = new THREE.MeshStandardMaterial({
-    color: 0x243034, roughness: 0.16, metalness: 0.08, transparent: true, opacity: 0.62
-  });
-  sideGlass.userData.streetGrade = "glass";
-  fadeWithGround(sideGlass);
-  sideGlass.depthWrite = false;
+  fadeSolid(glass);
+  const glassCompile = glass.onBeforeCompile;
+  glass.onBeforeCompile = function (shader) {
+    glassCompile(shader);
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);",
+      [
+        "float glassNdotV = clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);",
+        "float glassFres = pow(1.0 - glassNdotV, 2.4);",
+        "vec3 glassSky = mix(vec3(0.22, 0.26, 0.28), vec3(0.74, 0.80, 0.84), clamp(normal.y * 0.55 + 0.5, 0.0, 1.0));",
+        "gl_FragColor.rgb = mix(gl_FragColor.rgb, glassSky, glassFres * 0.2);",
+        "gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);"
+      ].join("\n")
+    );
+  };
+  glass.customProgramCacheKey = function () { return "roadFadeSolid|quiet|glass|pane"; };
+  const sideGlass = glass;
   const pane = solid(0x1c2c34, 0.45, 0.06);
   const headMat = glow(0xfff4dc, 0xffe4ae, 0.45);
   const tailOff = glow(0x7a1614, 0xff241c, 0.22);
@@ -11273,7 +11524,8 @@ const traffic = [];
       bakeDirect(shell, skip);
     }
     function piece(sx, sy, sz, x, y, z, mat, order) {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+      const mesh = new THREE.Mesh(box, mat);
+      mesh.scale.set(sx, sy, sz);
       mesh.position.set(x, y - axle, z);
       mesh.renderOrder = order || 2;
       mesh.castShadow = false;
@@ -11485,11 +11737,6 @@ const traffic = [];
     r.mirror(0.7, 1.12, -0.74);
     p(0.016, 0.28, 0.012, 0.95, 1.16, 0.2, blackTrim, { z: -0.5 });
     p(0.016, 0.28, 0.012, 0.95, 1.16, -0.18, blackTrim, { z: -0.5 });
-    p(0.5, 0.08, 1.1, -0.1, 0.78, 0, seatMat);
-    p(0.08, 0.28, 0.46, -0.32, 0.96, 0, seatMat);
-    p(0.55, 0.08, 0.4, 0.35, 0.9, 0.22, blackTrim);
-    r.rider(0.22, 0.98, 0.28, shirtB);
-    r.steerAt(0.48, 1.05, 0.28);
     r.stem(0.006, 0.42, 1.2, 1.02, -0.55, steel, { z: 0.55 });
     if (taxi) {
       const sign = new THREE.Mesh(roundedBox(0.56, 0.13, 0.22, 0.03, 2), opt.forHire ? signOn : signOff);
@@ -11499,22 +11746,6 @@ const traffic = [];
       r.ride.signMesh = sign;
       r.ride.forHire = !!opt.forHire;
       r.ride.hireT = 14 + Math.random() * 18;
-      const fare = new THREE.Group();
-      r.ride.shell.add(fare);
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.11), shirtA);
-      body.position.set(-0.35, 0.86 - 0.33, -0.22);
-      const shoulders = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.045, 0.1), shirtA);
-      shoulders.position.set(-0.35, 0.94 - 0.33, -0.22);
-      fare.add(body);
-      fare.add(shoulders);
-      const hd = new THREE.Mesh(headGeo, skinMat);
-      hd.scale.set(0.1, 0.12, 0.1);
-      hd.position.set(-0.33, 1.02 - 0.33, -0.2);
-      hd.userData.y0 = hd.position.y;
-      fare.add(hd);
-      fare.visible = !opt.forHire;
-      r.ride.riders.push(hd);
-      r.ride.fare = fare;
       r.ride.cruise = 9.1;
     } else r.ride.cruise = 8.4;
     r.arch(1.28, 0.8, 0.33);
@@ -11758,7 +11989,6 @@ const traffic = [];
     r.pairLamps(-3.48, 0.78, 0.72, tailOff, true, 0.15);
     r.piece(0.05, 0.06, 0.08, 2.85, 2.26, 0.72, markerMat, 3);
     r.piece(0.05, 0.06, 0.08, 2.85, 2.26, -0.72, markerMat, 3);
-    r.piece(0.55, 0.03, 0.16, 0.1, 2.08, 0, bulbMat, 3);
     r.mirror(2.55, 1.72, 0.98);
     r.mirror(2.55, 1.72, -0.98);
     // Sliding door on the left, the kerb side of a right-hand-drive minibus.
@@ -11767,10 +11997,6 @@ const traffic = [];
     p(1.06, 0.02, 0.025, -0.1, 0.66, -1.06, blackTrim);
     p(1.06, 0.02, 0.025, -0.1, 1.78, -1.06, blackTrim);
     p(0.1, 0.025, 0.02, 0.05, 1.05, -1.07, chrome);
-    p(4.4, 0.1, 1.5, -0.3, 1.15, 0, seatMat);
-    r.rider(2.15, 1.25, 0.48, shirtB);
-    r.steerAt(2.45, 1.38, 0.48);
-    [-1.5, -0.4, 0.7, 1.5].forEach((x, i) => r.rider(x, 1.22, i % 2 ? -0.55 : 0.5, i % 2 ? shirtA : shirtC));
     r.arch(2.05, 1.08, 0.4);
     r.arch(2.05, -1.08, 0.4);
     r.arch(-2.15, 1.08, 0.4);
@@ -11826,8 +12052,6 @@ const traffic = [];
     p(0.02, 0.95, 0.02, -1.15, 1.22, -0.96, blackTrim);
     p(0.08, 0.025, 0.02, 0.85, 0.98, 0.94, chrome);
     p(0.08, 0.025, 0.02, 0.85, 0.98, -0.94, chrome);
-    r.rider(0.82, 0.98, 0.32, shirtA);
-    r.steerAt(1.08, 1.12, 0.32);
     r.arch(1.32, 0.98, 0.34);
     r.arch(1.32, -0.98, 0.34);
     r.arch(-1.48, 0.98, 0.34);
@@ -11889,8 +12113,6 @@ const traffic = [];
     p(0.04, 0.32, 0.18, -1.7, 0.48, -0.95, blackTrim);
     r.mirror(2.2, 1.65, 0.98);
     r.mirror(2.2, 1.65, -0.98);
-    r.rider(1.85, 1.2, 0.38, shirtC);
-    r.steerAt(2.15, 1.32, 0.38);
     r.arch(1.7, 1.08, 0.42);
     r.arch(1.7, -1.08, 0.42);
     r.wheel(1.7, 1.1, 0.42, 0.22, false);
@@ -12094,16 +12316,6 @@ const traffic = [];
     r.piece(0.06, 0.07, 0.1, 4.35, 3.72, -0.85, markerMat, 3);
     r.piece(0.06, 0.07, 0.1, -4.5, 3.72, 0.85, markerMat, 3);
     r.piece(0.06, 0.07, 0.1, -4.5, 3.72, -0.85, markerMat, 3);
-    [-3.2, -1.2, 0.8, 2.6].forEach((x, i) => {
-      p(0.7, 0.08, 0.4, x, 1.2, 0.7, seatMat);
-      p(0.7, 0.08, 0.4, x, 2.25, -0.65, seatMat);
-    });
-    r.rider(4.15, 1.15, 0.42, shirtB);
-    r.steerAt(4.45, 1.28, 0.42);
-    [-2.4, -0.2, 1.8].forEach((x, i) => {
-      r.rider(x, 1.28, i % 2 ? 0.65 : -0.6, i % 2 ? shirtA : shirtC);
-      r.rider(x + 0.3, 2.45, i % 2 ? -0.6 : 0.62, shirtB);
-    });
     r.mirror(4.35, 1.95, 1.18);
     r.mirror(4.35, 1.95, -1.18);
     r.arch(3.05, 1.28, 0.48);
@@ -14256,7 +14468,6 @@ function dressPerimeter() {
 }
 let sharedAcMat = null, sharedGrilleMat = null, sharedGrilleMats = null;
 dressPerimeter();
-if (tier < 1) await breathe();
 // Bamboo scaffolds on a few alley and outer faces, the repair frames in the 1980s photographs.
 // The bay stays off the walking line. A lane under about two metres is left clear.
 // Each bay is remembered so a cage on that patch can be taken down. The window stays.
@@ -14418,7 +14629,7 @@ function slabOpen(x0, x1, z0, z1) {
 // mesh, posts between the windows, and plants or laundry along the rail. A metre-wide
 // lane only gets a short projection, so the two sides leave the walking line.
 // The dark core has none.
-async function dressCages() {
+function dressCages() {
   dressCages.sheets = [];
   function wireTexture() {
     const S = 256;
@@ -15167,8 +15378,7 @@ async function dressCages() {
   dressCages.scaffoldCuts = 0;
   let northN = 0, northSum = 0;
   const toneKey = { steel: "Steel", mint: "Mint", rust: "Rust", chalk: "Chalk" };
-  for (let hi = 0; hi < winHosts.length; hi++) {
-    const u = winHosts[hi];
+  winHosts.forEach((u, hi) => {
     const floors = u.floors | 0;
     const hx = u.x + u.w * 0.5, hz = u.z + u.d * 0.5;
     pinAz = u.street ? streetAz(hx, hz) : anchorNear(hx, hz);
@@ -15693,8 +15903,101 @@ async function dressCages() {
         }
       }
     });
-    if (tier < 1 && (hi % 4) === 3) await breathe();
-  }
+  });
+  // A rail or a sheet is sized to the windows on its own wall. The next
+  // building often steps into that line, and the end then sits inside the
+  // neighbour. Shorten the piece until the ends are back in the open.
+  (function clipCageToSolids() {
+    const cell = 4;
+    const grid = new Map();
+    for (let i = 0; i < walkSolids.length; i++) {
+      const b = walkSolids[i];
+      if (b.x == null || b.x2 == null || b.z == null || b.z2 == null) continue;
+      const x0 = Math.floor(b.x / cell), x1 = Math.floor(b.x2 / cell);
+      const z0 = Math.floor(b.z / cell), z1 = Math.floor(b.z2 / cell);
+      for (let x = x0; x <= x1; x++) {
+        for (let z = z0; z <= z1; z++) {
+          const k = x + "," + z;
+          let list = grid.get(k);
+          if (!list) grid.set(k, list = []);
+          list.push(b);
+        }
+      }
+    }
+    function inSolid(x, z) {
+      const list = grid.get((Math.floor(x / cell)) + "," + (Math.floor(z / cell)));
+      if (!list) return false;
+      for (let i = 0; i < list.length; i++) {
+        const b = list[i];
+        if (x > b.x + 0.05 && x < b.x2 - 0.05 && z > b.z + 0.05 && z < b.z2 - 0.05) return true;
+      }
+      return false;
+    }
+    function trim(it, hx, hz) {
+      const yaw = it.ry || it.yaw || 0;
+      const c = Math.cos(yaw), s = Math.sin(yaw);
+      function inside(lx, lz) {
+        const wx = it.x + lx * c - lz * s;
+        const wz = it.z + lx * s + lz * c;
+        return inSolid(wx, wz);
+      }
+      let x0 = -hx, x1 = hx, z0 = -hz, z1 = hz;
+      const spanX = x1 - x0, spanZ = z1 - z0;
+      let guard = 0;
+      while (x1 - x0 > 0.1 && inside(x0, 0) && guard++ < 48) x0 += 0.06;
+      guard = 0;
+      while (x1 - x0 > 0.1 && inside(x1, 0) && guard++ < 48) x1 -= 0.06;
+      guard = 0;
+      while (z1 - z0 > 0.06 && inside(0, z0) && guard++ < 48) z0 += 0.06;
+      guard = 0;
+      while (z1 - z0 > 0.06 && inside(0, z1) && guard++ < 48) z1 -= 0.06;
+      if (inside(x0, z0) || inside(x0, z1) || inside(x1, z0) || inside(x1, z1)) {
+        guard = 0;
+        while (x1 - x0 > 0.1 && (inside(x0, z0) || inside(x0, z1)) && guard++ < 24) x0 += 0.06;
+        guard = 0;
+        while (x1 - x0 > 0.1 && (inside(x1, z0) || inside(x1, z1)) && guard++ < 24) x1 -= 0.06;
+        guard = 0;
+        while (z1 - z0 > 0.06 && (inside(x0, z0) || inside(x1, z0)) && guard++ < 24) z0 += 0.06;
+        guard = 0;
+        while (z1 - z0 > 0.06 && (inside(x0, z1) || inside(x1, z1)) && guard++ < 24) z1 -= 0.06;
+      }
+      if (inside(0, 0)) return false;
+      if (spanX > 0.3 && x1 - x0 < 0.16) return false;
+      if (spanZ > 0.3 && z1 - z0 < 0.1) return false;
+      const mx = (x0 + x1) * 0.5, mz = (z0 + z1) * 0.5;
+      it.x += mx * c - mz * s;
+      it.z += mx * s + mz * c;
+      it.sx *= (x1 - x0) / (hx * 2);
+      it.sz *= (z1 - z0) / (hz * 2);
+      return true;
+    }
+    const boxKeys = [
+      "barSteel", "barMint", "barRust", "barChalk",
+      "postSteel", "postMint", "postRust", "postChalk",
+      "deckSteel", "deckMint", "deckRust", "deckChalk",
+      "boardGalv", "boardRust", "line"
+    ];
+    boxKeys.forEach(key => {
+      const list = buckets[key];
+      if (!list) return;
+      const kept = [];
+      for (let i = 0; i < list.length; i++) {
+        const it = list[i];
+        if (!it || it.sx == null || it.sz == null) { kept.push(it); continue; }
+        let hx, hz;
+        if (key === "line") {
+          hx = Math.abs(it.sx) * 0.5;
+          hz = 0.006 * Math.abs(it.sz || 1);
+        } else {
+          hx = Math.abs(it.sx) * 0.5;
+          hz = Math.abs(it.sz) * 0.5;
+        }
+        if (hx < 0.001 || hz < 0.001) { kept.push(it); continue; }
+        if (trim(it, hx, hz)) kept.push(it);
+      }
+      buckets[key] = kept;
+    });
+  })();
   function placeCage(o, it) {
     o.position.set(it.x, it.y, it.z);
     o.rotation.y = it.yaw || 0;
@@ -15828,8 +16131,7 @@ async function dressCages() {
   dressCages.maxDeep = maxDeep;
   dressCages.northDeep = northN ? northSum / northN : 0;
 }
-await dressCages();
-if (tier < 1) await breathe();
+dressCages();
 // Any blade that meets a cage is hung on the outside of that cage.
 // Flower baskets bow past their depth; iron balconies are a flat front.
 // The board clears the outer wire. The bracket still starts on the plaster.
@@ -16836,12 +17138,11 @@ const parts = {
   sack: part(sackRecipe, true),
   basket: part(basketRecipe, true),
   bucket: part(bucketRecipe, true),
-  eyeWhite: new THREE.BoxGeometry(0.05, 0.03, 0.012),
-  pupil: new THREE.BoxGeometry(0.015, 0.015, 0.01),
-  brow: new THREE.BoxGeometry(0.044, 0.009, 0.01),
-  grin: new THREE.BoxGeometry(0.07, 0.018, 0.012),
-  teeth: new THREE.BoxGeometry(0.058, 0.011, 0.01),
-  smile: new THREE.BoxGeometry(0.028, 0.011, 0.01)
+  eyeWhite: new THREE.BoxGeometry(0.04, 0.022, 0.01),
+  pupil: new THREE.BoxGeometry(0.013, 0.013, 0.008),
+  brow: new THREE.BoxGeometry(0.04, 0.008, 0.008),
+  mouthLine: new THREE.BoxGeometry(0.04, 0.006, 0.008),
+  nose: new THREE.BoxGeometry(0.02, 0.024, 0.014)
 };
 figGeo.canopy = parts.canopy;
 figGeo.sack = parts.sack;
@@ -16851,6 +17152,11 @@ function dressHead(head, spec, matOf) {
   const wrap = matOf || function (m) { return m; };
   const skin = wrap(skinMats[spec.skin] || skinMats[0]);
   const hairMat = wrap(hairMats[spec.hair] || hairMats.short);
+  // One closed mouth. The old face was the same toothy grin on every resident.
+  const kind = spec.habit === "smoke" || spec.hair === "grey" ? "worn"
+    : (spec.scale || 1) < 0.85 ? "young"
+    : (spec.hair === "bob" || spec.hair === "bun") ? "soft"
+    : "shut";
   function place(geo, mat, x, y, z) {
     const mesh = figMesh(geo, mat);
     mesh.position.set(x, y, z);
@@ -16858,19 +17164,32 @@ function dressHead(head, spec, matOf) {
     return mesh;
   }
   place(parts.skull, skin, 0, 0, 0);
+  const eyeY = kind === "young" ? 0.01 : 0.004;
+  const browTilt = kind === "soft" ? 0.1 : kind === "worn" ? -0.16 : kind === "young" ? 0.06 : 0;
   [-1, 1].forEach(function (side) {
-    place(parts.eyeWhite, wrap(eyeWhite), side * 0.05, 0.012, 0.08);
-    place(parts.pupil, wrap(pupilMat), side * 0.048, 0.016, 0.09);
-    const brow = place(parts.brow, hairMat, side * 0.048, 0.046, 0.082);
-    // A slight outer lift, like the steppy brow. Steeper than this scowls.
-    brow.rotation.z = side * 0.1;
+    const eye = place(parts.eyeWhite, wrap(eyeWhite), side * 0.046, eyeY, 0.074);
+    const pupil = place(parts.pupil, wrap(pupilMat), side * 0.046, eyeY, 0.082);
+    if (kind === "worn") {
+      eye.scale.y = 0.7;
+      pupil.scale.set(0.85, 0.75, 1);
+    } else if (kind === "young") {
+      eye.scale.set(1.12, 1.18, 1);
+      pupil.scale.set(1.05, 1.05, 1);
+    }
+    const brow = place(parts.brow, hairMat, side * 0.044, eyeY + 0.026, 0.076);
+    brow.rotation.z = side * browTilt;
   });
-  place(parts.grin, wrap(mouthDark), 0, -0.048, 0.08);
-  place(parts.teeth, wrap(toothMat), 0, -0.045, 0.096);
-  [-1, 1].forEach(function (side) {
-    const corner = place(parts.smile, wrap(mouthDark), side * 0.044, -0.038, 0.086);
-    corner.rotation.z = side * 0.7;
-  });
+  // Sits on the front of the cube. Half of it is inside the skull, so there is no gap.
+  place(parts.nose, skin, 0, -0.01, 0.074);
+  const mouth = new THREE.Group();
+  head.add(mouth);
+  const line = figMesh(parts.mouthLine, wrap(mouthDark));
+  line.position.set(0, kind === "young" ? -0.042 : -0.05, 0.076);
+  if (kind === "worn") line.scale.set(0.72, 1, 1);
+  else if (kind === "soft") line.scale.set(1.12, 1, 1);
+  else if (kind === "young") line.scale.set(0.78, 1, 1);
+  mouth.add(line);
+  head.userData.mouth = mouth;
   if (spec.cap) {
     place(parts.cap, wrap(capMat), 0, 0, 0);
     place(parts.burns, hairMat, 0, 0, 0);
@@ -16983,7 +17302,7 @@ function makeCitizen(spec) {
   const shoeMat = clothMat(spec.shoes, 1, "leather");
   const sleeveMat = spec.sleeve === "skin" ? skin : topMat;
   const foreMat = spec.sleeve === "long" ? topMat : skin;
-  const skirted = (spec.hair === "bob" || spec.hair === "bun") && (spec.scale || 1) >= 0.85;
+  const skirted = !!spec.skirt || ((spec.hair === "bob" || spec.hair === "bun") && (spec.scale || 1) >= 0.85);
   const canvas = spec.shoes !== 0x1a1816;
   const legMat = skirted ? skin : pantsMat;
   const hip = new THREE.Group();
@@ -17133,9 +17452,11 @@ function makeCitizen(spec) {
   const bucketPivots = [];
   if (spec.prop === "bag") {
     bag = figMesh(figGeo.sack, bagMats[spec.bag || 0]);
-    bag.position.set(-0.03, -0.08, 0.03);
-    bag.scale.set(1.25, 1.35, 1.05);
-    bag.rotation.z = 0.35;
+    // The neck of the sack sits in the palm. The body hangs past the fingers.
+    bag.position.set(0.005, -0.115, 0.002);
+    bag.scale.set(1.15, 1.2, 1);
+    bag.rotation.x = 0.12;
+    bag.rotation.z = 0.06;
     armL.hand.add(bag);
     const handle = figMesh(figGeo.handle, clothMat(0x22201e, 0.7));
     handle.position.set(0, 0.07, 0);
@@ -17147,10 +17468,11 @@ function makeCitizen(spec) {
   }
   if (spec.prop === "basket") {
     basket = new THREE.Group();
-    // Against the left hip, handle where the left hand closes.
-    basket.position.set(-0.17, 0.22, 0.16);
-    basket.rotation.z = 0.12;
-    hip.add(basket);
+    // Handle through the left palm. The bowl hangs in front of the hip.
+    basket.position.set(0.013, -0.099, 0.012);
+    basket.rotation.x = 0.12;
+    basket.rotation.z = 0.04;
+    armL.hand.add(basket);
     basket.add(figMesh(figGeo.basket, bambooMat));
     const rim = figMesh(figGeo.rim, bambooMat);
     rim.position.y = 0.05;
@@ -17207,24 +17529,43 @@ function makeCitizen(spec) {
     towel.rotation.y = 0.3;
     hip.add(towel);
   }
-  let fan = null, cig = null;
+  if (spec.stick) {
+    // A roof aerial the child has claimed. It stands on the figure, not the fist,
+    // so a squat does not swing it through the floor.
+    const rod = figMesh(figGeo.pole, bambooMat);
+    rod.rotation.x = -Math.PI / 2;
+    rod.position.set(0.22, 0.54, 0.16);
+    g.add(rod);
+    g.userData.stick = rod;
+  }
+  let fan = null, cig = null, fanHand = null, cigHand = null;
+  // The open umbrella occupies the right fist. A fan or a cigarette in that
+  // same hand passes through the shaft, so either takes the free left hand.
+  const leftBusy = spec.prop === "basket" || spec.prop === "bag" || spec.prop === "pole";
   if (spec.fan) {
     const leaf = new THREE.MeshStandardMaterial({
       color: spec.fan, roughness: 0.74, metalness: 0, side: THREE.DoubleSide, clippingPlanes: clips
     });
     leaf.userData.streetGrade = "figure";
     fan = figMesh(figGeo.fan, leaf);
-    fan.position.set(0.02, -0.075, 0.04);
-    fan.rotation.x = 0.4;
-    fan.rotation.z = -0.3;
-    armR.hand.add(fan);
+    fanHand = spec.brolly && !leftBusy ? "L" : "R";
+    const hand = fanHand === "L" ? armL.hand : armR.hand;
+    // The lower edge of the leaf sits in the palm. The leaf opens forward.
+    fan.position.set(fanHand === "L" ? -0.01 : 0.01, 0.02, 0.055);
+    fan.rotation.x = -0.65;
+    fan.rotation.z = fanHand === "L" ? 0.2 : -0.2;
+    hand.add(fan);
   }
   if (spec.habit === "smoke") {
     cig = figMesh(figGeo.cig, cigPaper);
-    cig.position.set(0.02, -0.075, 0.04);
-    cig.rotation.x = 1.15;
-    cig.rotation.z = 0.25;
-    armR.hand.add(cig);
+    cigHand = spec.brolly && !leftBusy ? "L" : "R";
+    const hand = cigHand === "L" ? armL.hand : armR.hand;
+    cig.scale.set(1, 1, 1.7);
+    // Clear of the fist, so the paper reads at the lip instead of inside the hand.
+    cig.position.set(cigHand === "L" ? -0.022 : 0.022, -0.015, 0.09);
+    cig.rotation.x = 0.35;
+    cig.rotation.z = cigHand === "L" ? 0.35 : -0.35;
+    hand.add(cig);
   }
   if (spec.brolly) {
     brolly = new THREE.Group();
@@ -17270,6 +17611,7 @@ function makeCitizen(spec) {
   g.scale.setScalar((spec.scale || 1) * FIG_SCALE);
   g.userData.rig = {
     hip, head, torso, legL, legR, armL, armR, bag, pole, brolly, basket, bucketPivots, fan, cig,
+    mouth: head.userData.mouth || null, fanHand, cigHand, stick: g.userData.stick || null,
     prop: spec.prop || null, gait: spec.gait || "walk", apron: !!spec.apron,
     skirted, habit: spec.habit || null,
     brollyYaw: spec.brolly ? ((spec.brolly % 9) - 4) * 0.045 : 0
@@ -17401,6 +17743,10 @@ function poseIdle(rig, ud, now, w, rainUp) {
     rig.head.rotation.y += (0.72 * side - rig.head.rotation.y) * w;
     rig.head.rotation.x += (0.02 + gest * 0.06 - rig.head.rotation.x) * w;
     if (!rainUp && rig.prop !== "pole") poseToward(rig.armR, -0.7 + gest * 0.28, 0.55, -1.25 - gest * 0.2, 0.16, w);
+    if (rig.mouth) {
+      const open = 1 + (0.5 + 0.5 * gest) * 0.4;
+      rig.mouth.scale.y += (open - rig.mouth.scale.y) * w;
+    }
   } else if (act === "gaze") {
     rig.torso.rotation.x += (-0.12 - rig.torso.rotation.x) * w;
     rig.head.rotation.x += (-0.72 - rig.head.rotation.x) * w;
@@ -17434,8 +17780,8 @@ function poseIdle(rig, ud, now, w, rainUp) {
     if (!rainUp && rig.prop !== "pole") poseToward(rig.armR, 0.3, 1.0, -2.5, -0.8, w);
   } else if (act === "hitch") {
     if (rig.prop === "pole") {
-      // Free hand comes up onto the bar. The carrying arm stays where the walk pose put it.
-      poseToward(rig.armL, -1.7, -0.5, -2.35, 0.6, w);
+      // Free hand comes across onto the bar. The carrying arm stays on the pole.
+      poseToward(rig.armL, -2.1, -1.0, -1.6, 0.6, w);
       rig.head.rotation.x += (0.14 - rig.head.rotation.x) * w;
       if (rig.pole) {
         rig.pole.rotation.z += (0.12 - rig.pole.rotation.z) * w;
@@ -17485,17 +17831,54 @@ function poseIdle(rig, ud, now, w, rainUp) {
       if (!rig.prop) poseToward(rig.armL, -0.85, -0.28, -1.45, 0.4, w);
       poseToward(rig.armR, -0.85, 0.28, -1.45, -0.4, w);
     }
+  } else if (act === "write") {
+    // Homework on the roof. Same low seat as a squat, head down over the board.
+    const thigh = -1.15, knee = 1.85;
+    rig.legL.pivot.rotation.x += (thigh - rig.legL.pivot.rotation.x) * w;
+    rig.legR.pivot.rotation.x += (thigh - rig.legR.pivot.rotation.x) * w;
+    rig.legL.knee.rotation.x += (knee - rig.legL.knee.rotation.x) * w;
+    rig.legR.knee.rotation.x += (knee - rig.legR.knee.rotation.x) * w;
+    rig.legL.ankle.rotation.x = -(rig.legL.pivot.rotation.x + rig.legL.knee.rotation.x);
+    rig.legR.ankle.rotation.x = -(rig.legR.pivot.rotation.x + rig.legR.knee.rotation.x);
+    function reachW(pivot, kn) {
+      return THIGH_L * Math.cos(pivot) + SHIN_L * Math.cos(pivot + kn);
+    }
+    const seat = Math.max(
+      reachW(rig.legL.pivot.rotation.x, rig.legL.knee.rotation.x),
+      reachW(rig.legR.pivot.rotation.x, rig.legR.knee.rotation.x)
+    );
+    rig.hip.position.y += (seat + 0.04 - rig.hip.position.y) * w;
+    rig.hip.rotation.x += (0.2 - rig.hip.rotation.x) * w;
+    rig.torso.rotation.x += (0.42 - rig.torso.rotation.x) * w;
+    rig.head.rotation.x += (0.62 - rig.head.rotation.x) * w;
+    rig.head.rotation.y += (0.04 - rig.head.rotation.y) * w;
+    poseToward(rig.armL, -0.95, -0.22, -1.35, 0.2, w);
+    poseToward(rig.armR, -0.95, 0.22, -1.35, -0.2, w);
   } else if (act === "fan") {
     const flap = Math.sin(now * 8.5 + ud.offset * 3);
-    rig.head.rotation.y += (0.18 * side - rig.head.rotation.y) * w;
     rig.head.rotation.x += (0.04 - rig.head.rotation.x) * w;
-    if (!rainUp && rig.prop !== "pole") poseToward(rig.armR, -1.05, 0.4, -1.35, flap * 0.65, w);
-    if (rig.fan) rig.fan.rotation.z += (-0.2 + flap * 0.55 - rig.fan.rotation.z) * w;
+    if (rig.fanHand === "L") {
+      rig.head.rotation.y += (-0.22 - rig.head.rotation.y) * w;
+      poseToward(rig.armL, -1.05, -0.45, -1.35, -flap * 0.55, w);
+    } else if (!rainUp && rig.prop !== "pole") {
+      rig.head.rotation.y += (0.22 - rig.head.rotation.y) * w;
+      poseToward(rig.armR, -1.05, 0.45, -1.35, flap * 0.55, w);
+    }
+    if (rig.fan && rig.fan.visible) {
+      const rest = rig.fanHand === "L" ? 0.2 : -0.2;
+      rig.fan.rotation.z += (rest + flap * 0.5 - rig.fan.rotation.z) * w;
+    }
   } else if (act === "smoke") {
     const drag = Math.sin(now * 0.7 + ud.offset);
-    rig.head.rotation.x += (0.1 + Math.max(0, drag) * 0.12 - rig.head.rotation.x) * w;
-    rig.head.rotation.y += (0.26 - rig.head.rotation.y) * w;
-    if (!rainUp && rig.prop !== "pole") poseToward(rig.armR, -1.22, 0.2, -2.05 - drag * 0.12, 0.18, w);
+    rig.head.rotation.x += (0.12 + Math.max(0, drag) * 0.08 - rig.head.rotation.x) * w;
+    if (rig.cigHand === "L") {
+      rig.head.rotation.y += (-0.18 - rig.head.rotation.y) * w;
+      poseToward(rig.armL, -1.2, -0.55, -1.75, 0.22, w);
+    } else if (!rainUp && rig.prop !== "pole") {
+      rig.head.rotation.y += (0.18 - rig.head.rotation.y) * w;
+      poseToward(rig.armR, -1.2, 0.55, -1.75, -0.22, w);
+    }
+    if (rig.mouth) rig.mouth.position.z += (0.004 - rig.mouth.position.z) * w;
   } else if (act === "stoop") {
     rig.torso.rotation.x += (0.82 - rig.torso.rotation.x) * w;
     rig.head.rotation.x += (-0.22 - rig.head.rotation.x) * w;
@@ -17676,6 +18059,10 @@ function stepWalker(fig, now) {
     rig.brollyOpen = !!rainUp;
     rig.brolly.visible = !!rainUp;
   }
+  // A fan left in the umbrella fist cuts the shaft. It only stays there when
+  // the other hand is already full, and then it waits out the shower.
+  if (rig.fan) rig.fan.visible = !(rainUp && rig.fanHand === "R");
+  if (rig.cig) rig.cig.visible = !(rainUp && rig.cigHand === "R");
   function hang(arm, swing, spreadZ, elbowX, elbowZ) {
     arm.spread.rotation.z = spreadZ;
     arm.pivot.rotation.x = swing;
@@ -17702,7 +18089,7 @@ function stepWalker(fig, now) {
   if (rig.prop === "pole") {
     // Elbow out, hand on the bar just ahead of the shoulder. The free arm still walks.
     const give = Math.sin(phase) * 0.03 * moving;
-    hang(rig.armR, -0.67 + give, 0.66, -2.43, 0.2);
+    hang(rig.armR, -0.8 + give, 1.05, -2.0, 0.1);
     stepArm(rig.armL, -armS * armAmp * 0.7);
     rig.pole.position.y = 0.53 + Math.abs(c) * 0.008 * moving;
     rig.pole.rotation.z = 0.05;
@@ -17718,13 +18105,13 @@ function stepWalker(fig, now) {
   } else if (rig.prop === "basket") {
     // One arm cradles the basket on the hip. The free hand walks, or takes the umbrella.
     const bob = Math.sin(phase * 2) * 0.006 * moving;
-    hang(rig.armL, 0.24 + bob * 3, -0.3, -2.3, 0.02);
+    hang(rig.armL, 0.4 + bob * 2, -0.5, -2.0, 0.2);
     if (rainUp) raiseBrolly();
     else stepArm(rig.armR, armS * armAmp);
     if (rig.basket) {
-      rig.basket.position.y = 0.22 + bob;
-      rig.basket.rotation.z = 0.12 + s * 0.045 * moving;
-      rig.basket.rotation.x = Math.sin(phase - 0.5) * 0.035 * moving;
+      rig.basket.position.y = -0.099 + bob;
+      rig.basket.rotation.z = 0.04 + s * 0.03 * moving;
+      rig.basket.rotation.x = 0.12 + Math.sin(phase - 0.5) * 0.03 * moving;
     }
   } else if (rainUp) {
     stepArm(rig.armL, -armS * armAmp);
@@ -17734,16 +18121,21 @@ function stepWalker(fig, now) {
     stepArm(rig.armR, armS * armAmp);
     if (rig.bag) {
       // Loose elbow, sack pendulum behind the hand instead of a locked twist.
-      rig.armL.elbow.rotation.x = -0.22;
-      rig.armL.elbow.rotation.z = -0.05;
-      rig.armL.spread.rotation.z = rig.armL.restZ - 0.1;
+      rig.armL.elbow.rotation.x = -0.48;
+      rig.armL.elbow.rotation.z = -0.08;
+      rig.armL.spread.rotation.z = rig.armL.restZ - 0.06;
       const lag = Math.sin(phase - 0.7);
-      rig.bag.rotation.x = 0.08 + lag * 0.3 * (0.3 + moving);
-      rig.bag.rotation.z = 0.22;
+      rig.bag.rotation.x = 0.12 + lag * 0.1 * (0.3 + moving);
+      rig.bag.rotation.z = 0.06;
     }
   }
   poseIdle(rig, ud, now, 1 - moving, rainUp);
-  if (rainUp) standBrolly(rig);
+  if (rig.mouth && ud.act !== "talk") rig.mouth.scale.y += (1 - rig.mouth.scale.y) * Math.min(1, dt * 8);
+  if (rig.mouth && ud.act !== "smoke") rig.mouth.position.z += (0 - rig.mouth.position.z) * Math.min(1, dt * 8);
+  if (rainUp) {
+    standBrolly(rig);
+    tuckBrolly(fig);
+  }
 }
 const brollyAim = {
   inv: new THREE.Matrix4(),
@@ -17763,6 +18155,128 @@ function standBrolly(rig) {
   if (rig.brollyYaw) {
     brollyAim.yaw.setFromAxisAngle(brollyAim.dir, rig.brollyYaw);
     b.quaternion.premultiply(brollyAim.yaw);
+  }
+}
+// The canopy is a flat octagon about 0.64 m across before the figure scale,
+// and the ribs reach a little past that. The fist holds it off to the right,
+// while a walker is only kept 4 cm clear of a wall. In a corner the disc
+// goes through the masonry. Slide it toward the open lane, then shrink the
+// span until the rim is outside every solid. The shaft stays upright.
+const brollyTuck = {
+  cells: null,
+  wp: new THREE.Vector3(),
+  desired: new THREE.Vector3()
+};
+function brollyGrid() {
+  if (brollyTuck.cells) return brollyTuck.cells;
+  const cell = 4;
+  const cells = new Map();
+  for (let i = 0; i < walkSolids.length; i++) {
+    const b = walkSolids[i];
+    if (b.wx == null) continue;
+    const x0 = Math.floor((b.wx - 0.3) / cell), x1 = Math.floor((b.wx2 + 0.3) / cell);
+    const z0 = Math.floor((b.z - 0.3) / cell), z1 = Math.floor((b.z2 + 0.3) / cell);
+    for (let x = x0; x <= x1; x++) {
+      for (let z = z0; z <= z1; z++) {
+        const k = x + "," + z;
+        let list = cells.get(k);
+        if (!list) cells.set(k, list = []);
+        list.push(i);
+      }
+    }
+  }
+  brollyTuck.cells = cells;
+  return cells;
+}
+function brollyHits(x, z) {
+  const list = brollyGrid().get((Math.floor(x / 4)) + "," + (Math.floor(z / 4)));
+  if (!list) return false;
+  for (let i = 0; i < list.length; i++) {
+    const b = walkSolids[list[i]];
+    if (x > b.wx - 0.03 && x < b.wx2 + 0.03 && z > b.z - 0.03 && z < b.z2 + 0.03) return true;
+  }
+  return false;
+}
+function tuckBrolly(fig) {
+  const rig = fig.userData.rig;
+  const b = rig && rig.brolly;
+  if (!b) return;
+  if (!b.userData.rest) b.userData.rest = b.position.clone();
+  if (!b.visible) {
+    b.position.copy(b.userData.rest);
+    b.scale.set(1, 1, 1);
+    return;
+  }
+  b.position.copy(b.userData.rest);
+  b.scale.set(1, 1, 1);
+  b.updateWorldMatrix(true, false);
+  b.getWorldPosition(brollyTuck.wp);
+  const S = fig.scale.x || 1;
+  const R = 0.36 * S;
+  const cx = brollyTuck.wp.x, cz = brollyTuck.wp.z;
+  let px = 0, pz = 0, bad = 0, worst = 0;
+  for (let i = 0; i < 8; i++) {
+    const a = i * Math.PI * 0.25;
+    const dx = Math.cos(a), dz = Math.sin(a);
+    if (!brollyHits(cx + dx * R, cz + dz * R)) continue;
+    px -= dx;
+    pz -= dz;
+    bad++;
+    let depth = 0.1;
+    if (brollyHits(cx + dx * (R - 0.14), cz + dz * (R - 0.14))) depth = 0.18;
+    if (brollyHits(cx + dx * (R - 0.28), cz + dz * (R - 0.28))) depth = 0.32;
+    if (brollyHits(cx + dx * 0.06, cz + dz * 0.06)) depth = R;
+    if (depth > worst) worst = depth;
+  }
+  if (!bad) return;
+  let len = Math.hypot(px, pz);
+  if (len < 0.2) {
+    px = 0;
+    pz = 0;
+    for (let ring = 0.2; ring <= 0.7 && len < 0.2; ring += 0.16) {
+      for (let i = 0; i < 8; i++) {
+        const a = i * Math.PI * 0.25;
+        const dx = Math.cos(a), dz = Math.sin(a);
+        if (!brollyHits(cx + dx * ring, cz + dz * ring)) {
+          px = dx;
+          pz = dz;
+          len = 1;
+          worst = Math.max(worst, R);
+          break;
+        }
+      }
+    }
+  }
+  let nx = cx, nz = cz;
+  if (len > 0.05) {
+    const shift = Math.min(0.34, worst + 0.04);
+    nx += px / len * shift;
+    nz += pz / len * shift;
+  }
+  let rad = R;
+  for (let i = 0; i < 8; i++) {
+    const a = i * Math.PI * 0.25;
+    const dx = Math.cos(a), dz = Math.sin(a);
+    let free = rad;
+    if (brollyHits(nx + dx * rad, nz + dz * rad)) free = rad * 0.72;
+    if (brollyHits(nx + dx * free, nz + dz * free)) free = rad * 0.5;
+    if (brollyHits(nx + dx * free, nz + dz * free)) free = rad * 0.34;
+    if (free < rad) rad = free;
+  }
+  const s = Math.max(0.42, Math.min(1, rad / R));
+  if (s < 0.98) b.scale.set(s, 1, s);
+  if (nx !== cx || nz !== cz) {
+    brollyTuck.desired.set(nx, brollyTuck.wp.y, nz);
+    b.parent.worldToLocal(brollyTuck.desired);
+    b.position.copy(brollyTuck.desired);
+  }
+  if (!fig.userData.tucked) {
+    fig.userData.tucked = 1;
+    tuckBrolly.figs = (tuckBrolly.figs || 0) + 1;
+  }
+  if (worst > (tuckBrolly.worst || 0)) {
+    tuckBrolly.worst = worst;
+    tuckBrolly.sample = { x: +cx.toFixed(2), z: +cz.toFixed(2), y: +brollyTuck.wp.y.toFixed(2), worst: +worst.toFixed(2) };
   }
 }
 function gatherStreetPaths() {
@@ -19564,7 +20078,6 @@ function cullFloatingGoods() {
 }
 cullFloatingGoods();
 buildRoof();
-if (tier < 1) await breathe();
 function clipPavement() {
   // A slab is poured a little under the wall beside it. That overlap is one
   // edge. Cutting both axes used to delete the whole bay of an east–west lane.
@@ -19938,7 +20451,6 @@ function packMasses() {
   });
 }
 packMasses();
-if (tier < 1) await breathe();
 function scopeInstances(mesh) {
   const src = mesh.geometry;
   if (!src || !mesh.count) return;
@@ -20082,7 +20594,6 @@ function packStatic() {
   if (made) scene.add(pack);
 }
 packStatic();
-if (tier < 1) await breathe();
 function freezeStatic(obj) {
   if (!obj || (obj.userData && obj.userData.live)) return;
   if (obj.matrixAutoUpdate) {
@@ -20791,6 +21302,201 @@ function stepAirliner(now) {
   for (let i = 0; i < strobes.length; i++) strobes[i].visible = strobe;
   airliner.userData.cabin.emissiveIntensity = 0.06 + lightAmount() * 0.95;
 }
+// Children on the roofs, from the Kai Tak years: the roof was the playground.
+// Boys in singlets and shorts, girls in white shirts and dark skirts or a
+// cotton dress, one writing at a low board, one holding a spare aerial.
+// They are out only while the sun is up.
+const roofKids = [];
+const roofProps = [];
+function raiseRoofChildren() {
+  const rand = mulberry32(20261105);
+  const obstacles = [];
+  ["yagi", "stair", "tank", "stand", "shed", "cyl", "cylStand", "pot"].forEach(function (key) {
+    const list = roofQ[key] || [];
+    for (let i = 0; i < list.length; i++) {
+      const it = list[i];
+      let r = 0.9;
+      if (key === "yagi" || key === "pot") r = 0.42;
+      else if (it.sx && it.sz) r = 0.5 * Math.hypot(it.sx, it.sz) + 0.22;
+      obstacles.push({ x: it.x, z: it.z, r: r });
+    }
+  });
+  function blocked(x, z, rad) {
+    for (let i = 0; i < obstacles.length; i++) {
+      const o = obstacles[i];
+      if ((o.x - x) * (o.x - x) + (o.z - z) * (o.z - z) < (o.r + rad) * (o.r + rad)) return true;
+    }
+    return false;
+  }
+  const roofs = [];
+  for (let i = 0; i < roofMeshes.length; i++) {
+    const mesh = roofMeshes[i];
+    const p = mesh.geometry.parameters;
+    if (!p || p.width < 6.4 || p.depth < 5.6) continue;
+    const top = mesh.position.y + p.height * 0.5;
+    if (top < 10) continue;
+    roofs.push({
+      x: mesh.position.x, z: mesh.position.z,
+      w: p.width, d: p.depth, y: top + 0.02,
+      area: p.width * p.depth
+    });
+  }
+  roofs.sort(function (a, b) { return b.area - a.area || a.x - b.x; });
+  const chosen = [];
+  for (let i = 0; i < roofs.length && chosen.length < 5; i++) {
+    const roof = roofs[i];
+    let far = true;
+    for (let j = 0; j < chosen.length; j++) {
+      const dx = chosen[j].roof.x - roof.x, dz = chosen[j].roof.z - roof.z;
+      if (dx * dx + dz * dz < 18 * 18) far = false;
+    }
+    if (!far) continue;
+    const spots = [];
+    for (let n = 0; n < 56 && spots.length < 4; n++) {
+      const x = roof.x + (rand() - 0.5) * (roof.w - 1.9);
+      const z = roof.z + (rand() - 0.5) * (roof.d - 1.9);
+      if (blocked(x, z, 0.48)) continue;
+      let ok = true;
+      for (let s = 0; s < spots.length; s++) {
+        const dx = spots[s].x - x, dz = spots[s].z - z;
+        if (dx * dx + dz * dz < 0.72 * 0.72) ok = false;
+      }
+      if (ok) spots.push({ x: x, z: z });
+    }
+    if (spots.length < 3) continue;
+    chosen.push({ roof: roof, spots: spots });
+  }
+  const styles = [
+    { top: 0xd27a8a, sleeve: "skin", pants: 0x3d6a78, hair: "short", skin: 0, shoes: 0x1a1816, scale: 0.6, shorts: true },
+    { top: 0xe2b23a, sleeve: "short", pants: 0x2a4a78, hair: "short", skin: 1, shoes: 0x1a1816, scale: 0.7, shorts: true },
+    { top: 0xe7e2d6, sleeve: "skin", pants: 0x2a2622, hair: "short", skin: 2, shoes: 0x1a1816, scale: 0.64, shorts: true },
+    { top: "stripe", sleeve: "short", pants: 0x243044, hair: "short", skin: 0, shoes: 0x1a1816, scale: 0.56, shorts: true },
+    { top: 0xf3f0ea, sleeve: "short", pants: 0x1a2744, hair: "bob", skin: 1, shoes: 0x1a1816, scale: 0.72, skirt: true },
+    { top: 0x6a88b8, sleeve: "short", pants: 0x3a5680, hair: "bob", skin: 3, shoes: 0x1a1816, scale: 0.66, skirt: true },
+    { top: 0xe6d2c4, sleeve: "skin", pants: 0xc4a090, hair: "bun", skin: 4, shoes: 0x7a3030, scale: 0.62, shorts: true },
+    { top: 0xf7f4ee, sleeve: "short", pants: 0x1a1c28, hair: "bob", skin: 0, shoes: 0x1a1816, scale: 0.76, skirt: true }
+  ];
+  const boardGeo = new THREE.BoxGeometry(0.58, 0.045, 0.4);
+  const boardLeg = new THREE.BoxGeometry(0.04, 0.26, 0.04);
+  const paperGeo = new THREE.BoxGeometry(0.26, 0.008, 0.18);
+  const boardMat = clothMat(0x6e5340, 0.94, "cloth");
+  const paperMat = clothMat(0xf4f0e6, 0.78, "cloth");
+  chosen.forEach(function (group, gi) {
+    let ax = 0, az = 0;
+    for (let s = 0; s < group.spots.length; s++) { ax += group.spots[s].x; az += group.spots[s].z; }
+    ax /= group.spots.length;
+    az /= group.spots.length;
+    const writer = gi === 0;
+    if (writer) {
+      const face = Math.atan2(group.spots[0].x - ax, group.spots[0].z - az);
+      const bx = ax + Math.sin(face) * 0.42;
+      const bz = az + Math.cos(face) * 0.42;
+      if (!blocked(bx, bz, 0.3)) {
+        const board = new THREE.Group();
+        const top = figMesh(boardGeo, boardMat);
+        top.position.y = 0.3;
+        board.add(top);
+        [[-0.24, -0.14], [0.24, -0.14], [-0.24, 0.14], [0.24, 0.14]].forEach(function (p) {
+          const leg = figMesh(boardLeg, boardMat);
+          leg.position.set(p[0], 0.13, p[1]);
+          board.add(leg);
+        });
+        const paper = figMesh(paperGeo, paperMat);
+        paper.position.y = 0.328;
+        paper.rotation.y = 0.15;
+        board.add(paper);
+        board.position.set(bx, group.roof.y, bz);
+        board.visible = false;
+        vfx.add(board);
+        roofProps.push(board);
+        group.board = { x: bx, z: bz };
+      }
+    }
+    group.spots.forEach(function (spot, si) {
+      const src = styles[(gi * 3 + si * 2) % styles.length];
+      const spec = { gait: "walk" };
+      for (const k in src) spec[k] = src[k];
+      let desk = false;
+      if (writer && si === 0 && group.board) {
+        spec.top = 0xf3f0ea;
+        spec.sleeve = "short";
+        spec.pants = 0x1a2744;
+        spec.hair = "bob";
+        spec.skin = 1;
+        spec.shoes = 0x1a1816;
+        spec.scale = 0.7;
+        spec.skirt = true;
+        spec.shorts = false;
+        spec.stick = false;
+        desk = true;
+        spot.x = ax - (group.board.x - ax);
+        spot.z = az - (group.board.z - az);
+      } else if (si === 1 && !spec.skirt) {
+        spec.stick = true;
+      }
+      const fig = makeCitizen(spec);
+      fig.visible = false;
+      fig.userData.roof = {
+        homeX: spot.x, homeZ: spot.z, y: group.roof.y,
+        cx: ax, cz: az, desk: desk, stick: !!spec.stick,
+        group: gi, slot: si
+      };
+      fig.userData.scale = spec.scale || 1;
+      fig.userData.offset = gi * 1.7 + si * 0.55;
+      fig.userData.act = desk ? "write" : "talk";
+      fig.userData.wait = 8;
+      fig.userData.bias = si % 2 ? 0.35 : -0.35;
+      fig.userData.biasEase = fig.userData.bias;
+      fig.userData.ease = 0;
+      fig.position.set(spot.x, group.roof.y, spot.z);
+      vfx.add(fig);
+      roofKids.push(fig);
+    });
+  });
+}
+function stepRoofKids(now) {
+  const day = 1 - THREE.MathUtils.smoothstep(darkness, 0.26, 0.48);
+  const show = day > 0.06;
+  const plane = !!(airliner.visible);
+  const px = airliner.position.x, py = airliner.position.y, pz = airliner.position.z;
+  for (let i = 0; i < roofProps.length; i++) roofProps[i].visible = show;
+  for (let i = 0; i < roofKids.length; i++) {
+    const fig = roofKids[i];
+    fig.visible = show;
+    if (!show) continue;
+    const home = fig.userData.roof;
+    const rig = fig.userData.rig;
+    const ud = fig.userData;
+    const watch = plane && !home.desk && ((home.slot + Math.floor(now / 7 + home.group)) % 3 !== 2);
+    if (!home.desk) {
+      const w = Math.sin(now * 0.33 + ud.offset) * 0.14;
+      fig.position.set(
+        home.homeX + Math.cos(ud.offset) * w,
+        home.y,
+        home.homeZ + Math.sin(ud.offset * 1.3) * w
+      );
+    } else fig.position.set(home.homeX, home.y, home.homeZ);
+    let yaw;
+    if (watch) yaw = Math.atan2(px - fig.position.x, pz - fig.position.z);
+    else yaw = Math.atan2(home.cx - fig.position.x, home.cz - fig.position.z);
+    const dyaw = Math.atan2(Math.sin(yaw - fig.rotation.y), Math.cos(yaw - fig.rotation.y));
+    fig.rotation.y += dyaw * 0.18;
+    const play = ["squat", "talk", "point", "gaze"][Math.floor(now / 4.6 + ud.offset) % 4];
+    ud.act = home.desk ? "write" : (watch ? "gaze" : (home.stick ? "rest" : play));
+    ud.bias = home.slot % 2 ? 0.35 : -0.35;
+    poseIdle(rig, ud, now, 1, false);
+    if (home.stick && rig.stick) poseToward(rig.armR, -0.5, 0.78, -1.25, 0.08, 1);
+    if (watch) {
+      const dx = px - fig.position.x;
+      const dz = pz - fig.position.z;
+      const up = Math.atan2(py - fig.position.y - 0.85, Math.hypot(dx, dz));
+      rig.head.rotation.x = -Math.min(1.0, Math.max(0.2, up));
+      rig.head.rotation.y *= 0.25;
+      if (!home.stick) poseToward(rig.armR, -1.3, 0.16, -0.4, 0.04, 1);
+    }
+  }
+}
+raiseRoofChildren();
 
 // Planar mirror of the street, the same idea as the night-rain reference:
 // the city is drawn once from under the pavement, then the wet floor samples it.
@@ -21133,111 +21839,6 @@ function renderFrame() {
   renderer.setRenderTarget(null);
   renderer.render(scene, camera);
 }
-function foldRide(root) {
-  const ride = root.userData.ride;
-  const shell = ride && ride.shell;
-  if (!shell) return;
-  const skip = new Set();
-  function mark(node) {
-    if (!node) return;
-    if (node.traverse) node.traverse(function (o) { skip.add(o); });
-    else skip.add(node);
-  }
-  const wheels = ride.wheels || [];
-  for (let i = 0; i < wheels.length; i++) mark(wheels[i]);
-  const riders = ride.riders || [];
-  for (let i = 0; i < riders.length; i++) mark(riders[i]);
-  const tails = ride.tails || [];
-  for (let i = 0; i < tails.length; i++) mark(tails[i]);
-  if (ride.fare) mark(ride.fare);
-  if (ride.signMesh) mark(ride.signMesh);
-  shell.updateMatrixWorld(true);
-  const inv = new THREE.Matrix4().copy(shell.matrixWorld).invert();
-  const buckets = new Map();
-  shell.traverse(function (obj) {
-    if (!obj.isMesh || skip.has(obj) || obj.userData.folded) return;
-    const mat = obj.material;
-    if (!mat || Array.isArray(mat) || mat.transparent || !obj.geometry || !obj.geometry.attributes.position) return;
-    let p = obj.parent;
-    while (p && p !== shell) {
-      if (skip.has(p)) return;
-      p = p.parent;
-    }
-    let list = buckets.get(mat);
-    if (!list) buckets.set(mat, list = []);
-    list.push(obj);
-  });
-  const v = new THREE.Vector3();
-  const nm = new THREE.Matrix3();
-  const m = new THREE.Matrix4();
-  const doomed = [];
-  buckets.forEach(function (list, mat) {
-    if (list.length < 2) return;
-    let nv = 0, ni = 0;
-    for (let i = 0; i < list.length; i++) {
-      const g = list[i].geometry;
-      nv += g.attributes.position.count;
-      ni += g.index ? g.index.count : g.attributes.position.count;
-    }
-    const pos = new Float32Array(nv * 3);
-    const nrm = new Float32Array(nv * 3);
-    const uv = new Float32Array(nv * 2);
-    const idx = new Uint32Array(ni);
-    let vOff = 0, iOff = 0;
-    for (let i = 0; i < list.length; i++) {
-      const mesh = list[i];
-      const g = mesh.geometry;
-      m.copy(inv).multiply(mesh.matrixWorld);
-      nm.getNormalMatrix(m);
-      const pa = g.attributes.position;
-      const na = g.attributes.normal;
-      const ua = g.attributes.uv;
-      const n = pa.count;
-      for (let p = 0; p < n; p++) {
-        v.fromBufferAttribute(pa, p).applyMatrix4(m);
-        pos[(vOff + p) * 3] = v.x;
-        pos[(vOff + p) * 3 + 1] = v.y;
-        pos[(vOff + p) * 3 + 2] = v.z;
-        if (na) v.fromBufferAttribute(na, p).applyMatrix3(nm).normalize();
-        else v.set(0, 1, 0);
-        nrm[(vOff + p) * 3] = v.x;
-        nrm[(vOff + p) * 3 + 1] = v.y;
-        nrm[(vOff + p) * 3 + 2] = v.z;
-        if (ua) {
-          uv[(vOff + p) * 2] = ua.getX(p);
-          uv[(vOff + p) * 2 + 1] = ua.getY(p);
-        }
-      }
-      if (g.index) {
-        const ia = g.index.array;
-        for (let p = 0; p < ia.length; p++) idx[iOff + p] = ia[p] + vOff;
-        iOff += ia.length;
-      } else {
-        for (let p = 0; p < n; p++) idx[iOff + p] = vOff + p;
-        iOff += n;
-      }
-      vOff += n;
-      doomed.push(mesh);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
-    geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
-    geo.setIndex(new THREE.BufferAttribute(idx, 1));
-    const merged = new THREE.Mesh(geo, mat);
-    merged.userData.folded = 1;
-    merged.castShadow = false;
-    merged.frustumCulled = false;
-    shell.add(merged);
-  });
-  const gone = new Set();
-  for (let i = 0; i < doomed.length; i++) {
-    const mesh = doomed[i];
-    const g = mesh.geometry;
-    if (mesh.parent) mesh.parent.remove(mesh);
-    if (g && !gone.has(g)) { gone.add(g); g.dispose(); }
-  }
-}
 function bakeFleet() {
   for (let i = 0; i < traffic.length; i++) {
     const ride = traffic[i].userData.ride;
@@ -21264,7 +21865,6 @@ function bakeFleet() {
     const skip = new Set(ride.tails.concat(ride.riders));
     if (ride.signMesh) skip.add(ride.signMesh);
     bakeDirect(shell, skip);
-    if (tier < 1) foldRide(traffic[i]);
   }
 }
 
@@ -21737,25 +22337,6 @@ function syncPace() {
   }
 }
 syncPace();
-const phoneReveal = [];
-if (tier < 1) {
-  // The shells, the lit windows and the rain draw first. Cages, gates, shops
-  // and the traffic are already built; they come on a few at a time so the
-  // phone compiles a handful of shaders per frame instead of every one at once.
-  city.traverse(function (obj) {
-    if (!obj.isInstancedMesh || !obj.visible || !obj.count) return;
-    obj.visible = false;
-    phoneReveal.push(obj);
-  });
-  traffic.forEach(function (root) {
-    root.visible = false;
-    phoneReveal.push(root);
-  });
-  walkers.forEach(function (fig) {
-    fig.visible = false;
-    phoneReveal.push(fig);
-  });
-}
 (function tick() {
   requestAnimationFrame(tick);
   const now = performance.now() * 0.001;
@@ -21879,6 +22460,7 @@ if (tier < 1) {
     traffic.step(now, dt, lit);
   }
   stepAirliner(now);
+  stepRoofKids(now);
   squareMovers();
   if (shadowWarm > 0) {
     renderer.shadowMap.needsUpdate = true;
@@ -21942,10 +22524,6 @@ if (tier < 1) {
   su.uView.value.set(renderer.domElement.width, renderer.domElement.height);
   su.uInvVP.value.multiplyMatrices(camera.matrixWorld, camera.projectionMatrixInverse);
   renderFrame();
-  if (phoneReveal.length && tick.ready > 1) {
-    const n = tick.ready < 8 ? 4 : tick.ready < 24 ? 8 : 36;
-    for (let i = 0; i < n && phoneReveal.length; i++) phoneReveal.pop().visible = true;
-  }
 })();
   requestAnimationFrame(dismissBoot);
 }
@@ -22031,7 +22609,8 @@ function dismissBoot() {
 requestAnimationFrame(function () {
   bootStage("raise");
   requestAnimationFrame(function () {
-    raiseCity().catch(function (err) { console.error(err); bootFail(); });
+    try { raiseCity(); }
+    catch (err) { console.error(err); bootFail(); }
   });
 });
 </script>
