@@ -2073,8 +2073,10 @@ function attachBoxTile(mat, tile, rim, wear, phase) {
   const ph = phase || 0;
   const prev = mat.onBeforeCompile;
   const prevKey = mat.customProgramCacheKey;
+  // The course, the rim and the wear are uniforms. Every wall can share this
+  // program; a phase shift is the only change that rewrites the source.
   mat.customProgramCacheKey = function () {
-    return (prevKey ? prevKey.call(this) : "") + "|boxTile" + t.toFixed(3) + "r" + r.toFixed(3) + "w" + w + "p" + ph.toFixed(2);
+    return (prevKey ? prevKey.call(this) : "") + "|boxTile" + (ph ? "p" : "");
   };
   mat.onBeforeCompile = function (shader) {
     if (prev) prev.call(this, shader);
@@ -2171,8 +2173,9 @@ function attachTriTile(mat, tile) {
   const t = tile > 0 ? tile : 0.4;
   const prev = mat.onBeforeCompile;
   const prevKey = mat.customProgramCacheKey;
+  // Flake size is a uniform, so a tank and a pipe share this program.
   mat.customProgramCacheKey = function () {
-    return (prevKey ? prevKey.call(this) : "") + "|triTile" + t.toFixed(3);
+    return (prevKey ? prevKey.call(this) : "") + "|triTile";
   };
   mat.onBeforeCompile = function (shader) {
     if (prev) prev.call(this, shader);
@@ -2256,8 +2259,9 @@ function attachCylTile(mat, tile, radius, height) {
   const h = height > 0 ? height : 1;
   const prev = mat.onBeforeCompile;
   const prevKey = mat.customProgramCacheKey;
+  // Radius and length are uniforms. Poles of different sizes share the unwrap.
   mat.customProgramCacheKey = function () {
-    return (prevKey ? prevKey.call(this) : "") + "|cyl" + t.toFixed(3) + "r" + rad.toFixed(3);
+    return (prevKey ? prevKey.call(this) : "") + "|cyl";
   };
   mat.onBeforeCompile = function (shader) {
     if (prev) prev.call(this, shader);
@@ -2295,8 +2299,9 @@ function attachPlaneAspect(mat, texAspect, mode) {
   const fit = mode ? 1 : 0;
   const prev = mat.onBeforeCompile;
   const prevKey = mat.customProgramCacheKey;
+  // Aspect and the fit mode are uniforms, so every sign shares this program.
   mat.customProgramCacheKey = function () {
-    return (prevKey ? prevKey.call(this) : "") + "|aspect" + aspect.toFixed(4) + "m" + fit;
+    return (prevKey ? prevKey.call(this) : "") + "|aspect";
   };
   mat.onBeforeCompile = function (shader) {
     if (prev) prev.call(this, shader);
@@ -11118,7 +11123,7 @@ const traffic = [];
   fadeWithGround(asphalt, true);
   fadeWithGround(kerbMat, true);
   asphalt.customProgramCacheKey = function () { return "roadCast"; };
-  kerbMat.customProgramCacheKey = function () { return "roadCastKerb"; };
+  kerbMat.customProgramCacheKey = function () { return "roadCast"; };
   fadeWithGround(paint, false);
   scene.userData.roadWet = { asphalt, kerb: kerbMat };
   function slab(w, h, d, x, y, z, mat) {
@@ -13727,7 +13732,8 @@ const rain = new THREE.Mesh(rainGeo, new THREE.ShaderMaterial({
     "    mod(aSeed.y * uSpanZ, uSpanZ) - uSpanZ * 0.5",
     "  );",
     "  vec3 worldP = (modelMatrix * vec4(local, 1.0)).xyz;",
-    "  vLit = mix(vec3(1.0), lampLit(worldP), uNight);",
+    "  vLit = vec3(1.0);",
+    "  if (uNight > 0.001) vLit = mix(vec3(1.0), lampLit(worldP), uNight);",
     "  vec3 down = normalize(vec3(uLean, -1.0, 0.0));",
     "  vec3 toC = cameraPosition - worldP;",
     "  float dc = length(toC);",
@@ -13797,7 +13803,8 @@ const splash = new THREE.Mesh(splashGeo, new THREE.ShaderMaterial({
     "  vec2 world0 = vec2(aSeed.x, aSeed.y) * span;",
     "  vec2 rel = mod(world0 - cameraPosition.xz + halfS, span) - halfS;",
     "  vec3 p = vec3(cameraPosition.x + rel.x, uBot + 0.02, cameraPosition.z + rel.y);",
-    "  vLit = mix(vec3(1.0), lampLit(p), uNight);",
+    "  vLit = vec3(1.0);",
+    "  if (uNight > 0.001) vLit = mix(vec3(1.0), lampLit(p), uNight);",
     "  float s = (0.032 + vT * 0.085) * (0.6 + aSeed.w * 0.4);",
     "  vec3 toC = cameraPosition - p;",
     "  float dc = length(toC);",
@@ -14011,7 +14018,8 @@ function dripMaterial() {
       "  rt = rtL < 0.001 ? vec3(1.0, 0.0, 0.0) : rt / rtL;",
       "  vec3 q = center + rt * position.x * uW + vec3(0.0, position.y * uH, 0.0);",
       "  vC = position.xy;",
-      "  vLit = mix(vec3(1.0), lampLit(center), uNight);",
+      "  vLit = vec3(1.0);",
+      "  if (uNight > 0.001) vLit = mix(vec3(1.0), lampLit(center), uNight);",
       "  gl_Position = projectionMatrix * viewMatrix * vec4(q, 1.0);",
       "}"
     ].join("\n"),
@@ -21908,12 +21916,15 @@ function bodyLightChunk(wrapK, wrapB, fill) {
   const fl = fill.toFixed(2);
   for (let i = 0; i < 6; i++) {
     lines.push(
-      "{ vec3 lp = uBodyPos[" + i + "]; vec3 lc = uBodyCol[" + i + "]; float reach = uBodyReach[" + i + "];",
+      "{ float reach = uBodyReach[" + i + "];",
+      "if (reach > 0.001) {",
+      "vec3 lp = uBodyPos[" + i + "]; vec3 lc = uBodyCol[" + i + "];",
       "vec3 toL = lp - vBodyWorld; float dist = length(toL);",
       "float ndl = dot(bodyNn, toL / max(dist, 1e-4));",
       "float wrap = clamp(ndl * " + wk + " + " + wb + ", 0.0, 1.0);",
-      "float atten = pow(clamp(1.0 - dist / max(reach, 0.001), 0.0, 1.0), 1.45) * step(0.001, reach);",
-      "reflectedLight.directDiffuse += lc * (wrap + " + fl + ") * atten * bodyLow * RECIPROCAL_PI * material.diffuseColor; }"
+      "float atten = pow(clamp(1.0 - dist / max(reach, 0.001), 0.0, 1.0), 1.45);",
+      "reflectedLight.directDiffuse += lc * (wrap + " + fl + ") * atten * bodyLow * RECIPROCAL_PI * material.diffuseColor; }",
+      "}"
     );
   }
   return lines.join("\n");
