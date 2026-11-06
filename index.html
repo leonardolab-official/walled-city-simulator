@@ -4923,6 +4923,21 @@ function glassFront(openW) {
 // line, so the whole bay sat in the alley in front of the concrete. Seat
 // every board, gate, step and prop of that bay back by the same amount.
 const SHOP_SEAT = 0.40;
+// Open shopfronts, not doors and not a shuttered bay. Filled once the
+// figures exist, so a keeper can stand in the mouth of the shop.
+const shopPosts = [];
+function noteShopkeeper(bay, face, kind, data) {
+  const veiled = kind === "mahjong" || kind === "paikau";
+  const glass = kind === "dentist" || kind === "doctor";
+  const along = veiled ? 0.7 : 0.4;
+  const depth = glass || veiled ? -0.26 : -0.1;
+  const spot = facePose(bay.x, bay.z, bay.w, bay.d, face, along, depth - SHOP_SEAT, 0.33);
+  if (massCovers(spot.x, spot.z, data.x, data.z, data.w, data.d)) return;
+  shopPosts.push({
+    x: spot.x, y: 0.33, z: spot.z, rot: spot.rot, kind: kind,
+    fx: Math.sin(spot.rot), fz: Math.cos(spot.rot)
+  });
+}
 function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   const guard = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.5, 0.12, 0);
   if (massCovers(guard.x, guard.z, bay.x, bay.z, bay.w, bay.d)) return;
@@ -5326,6 +5341,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     addShopMesh(shopGeo.box, lamp, lp.x, lp.y, lp.z, 0, 0.08, 0.08, 0.06);
   }
   if (lined) {
+    noteShopkeeper(bay, face, kind, data);
     putIn.raw = put;
     fitOpenShop(kind, putIn, openW, span, bay, face);
   }
@@ -11417,9 +11433,11 @@ const traffic = [];
   const cream = solid(0xf3ead8, 0.72, 0);
   const miniCream = solid(0xf2e2bc, 0.46, 0.05);
   const kmbCream = solid(0xf3e6c4, 0.5, 0.03);
-  const kmbOrange = solid(0xe04a1c, 0.48, 0.04);
-  const taxiRed = solid(0xc83a24, 0.46, 0.05);
-  const taxiRoof = solid(0xd5d3cc, 0.4, 0.38);
+  // Kowloon Motor Bus, through the 1980s: cream above, red below, red roof.
+  // The later orange fleet colour is a 1990s change.
+  const kmbOrange = solid(0xc4161c, 0.5, 0.04);
+  const taxiRed = solid(0xd01818, 0.46, 0.05);
+  const taxiRoof = solid(0xd01818, 0.46, 0.05);
   const silver = solid(0xd5d8dc, 0.32, 0.55);
   const ivory = solid(0xe6dece, 0.5, 0.04);
   const carBlue = solid(0x6d92a8, 0.48, 0.05);
@@ -11853,11 +11871,20 @@ const traffic = [];
         if (mat === tailOff) ride.tails.push(a, b);
       }
     }
-    function plates(xFront, xRear, y) {
-      put(0.035, 0.16, 0.4, xFront, y, 0, chrome);
-      put(0.04, 0.11, 0.32, xFront + 0.012, y, 0, plateW);
-      put(0.035, 0.16, 0.4, xRear, y, 0, chrome);
-      put(0.04, 0.11, 0.32, xRear - 0.012, y, 0, plateY);
+    function plates(xFront, xRear, y, reg) {
+      const id = reg || "DH 2841";
+      put(0.02, 0.14, 0.38, xFront, y, 0, chrome);
+      put(0.02, 0.14, 0.38, xRear, y, 0, chrome);
+      function face(ww, hh, x, yy, mat, yaw, flip) {
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(ww, hh), mat);
+        mesh.position.set(x, yy - axle, 0);
+        mesh.rotation.y = yaw || 0;
+        if (flip) mesh.scale.x = -1;
+        mesh.renderOrder = 4;
+        shell.add(mesh);
+      }
+      face(0.34, 0.11, xFront + 0.02, y, plateMat(id, false), Math.PI / 2, false);
+      face(0.34, 0.11, xRear - 0.02, y, plateMat(id, true), -Math.PI / 2, false);
     }
     function blob(wid) {
       const m = new THREE.Mesh(blobGeo, blobMat);
@@ -11948,9 +11975,9 @@ const traffic = [];
     const hit = bodySkins.get(key);
     if (hit) return hit;
     const c = document.createElement("canvas");
-    c.width = 128;
-    c.height = 64;
-    draw(c.getContext("2d"), 128, 64);
+    c.width = 256;
+    c.height = 128;
+    draw(c.getContext("2d"), 256, 128);
     const tex = new THREE.CanvasTexture(c);
     tex.encoding = THREE.sRGBEncoding;
     tex.anisotropy = 2;
@@ -11963,90 +11990,178 @@ const traffic = [];
     bodySkins.set(key, mat);
     return mat;
   }
+  const plateSkins = new Map();
+  function plateMat(reg, rear) {
+    const key = (rear ? "r:" : "f:") + reg;
+    const hit = plateSkins.get(key);
+    if (hit) return hit;
+    const c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 64;
+    const g = c.getContext("2d");
+    g.fillStyle = rear ? "#e4b423" : "#f7f4ea";
+    g.fillRect(0, 0, 256, 64);
+    g.strokeStyle = "#141414";
+    g.lineWidth = 7;
+    g.strokeRect(5, 5, 246, 54);
+    g.fillStyle = "#141414";
+    g.font = "700 34px sans-serif";
+    if ("letterSpacing" in g) g.letterSpacing = "3px";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(reg, 128, 34);
+    const tex = new THREE.CanvasTexture(c);
+    tex.encoding = THREE.sRGBEncoding;
+    tex.anisotropy = 4;
+    tex.needsUpdate = true;
+    const mat = new THREE.MeshStandardMaterial({ map: tex, color: 0xffffff, roughness: 0.52, metalness: 0.02 });
+    mat.userData.streetGrade = "ride";
+    fadeSolid(mat);
+    plateSkins.set(key, mat);
+    return mat;
+  }
   function cssColor(mat) {
     return "#" + mat.color.getHexString();
   }
+  function soil(g, w, h) {
+    g.fillStyle = "rgba(24,18,12,0.32)";
+    g.fillRect(0, h * 0.9, w, h * 0.1);
+    g.fillStyle = "rgba(36,28,20,0.14)";
+    for (let i = 0; i < 7; i++) g.fillRect((i * 41) % w, h * 0.78 + (i % 3) * 4, 14 + (i % 3) * 8, 2);
+  }
+  function chromeBar(g, y, w, thick) {
+    const grd = g.createLinearGradient(0, y, 0, y + thick);
+    grd.addColorStop(0, "#6e767c");
+    grd.addColorStop(0.42, "#f4f6f8");
+    grd.addColorStop(1, "#4a5258");
+    g.fillStyle = grd;
+    g.fillRect(0, y, w, thick);
+  }
   function glassPane(g, x, y, w, h) {
+    g.fillStyle = "#101416";
+    g.fillRect(x - 3, y - 3, w + 6, h + 6);
     g.fillStyle = "#1a262c";
     g.fillRect(x, y, w, h);
-    g.fillStyle = "rgba(214, 224, 228, 0.34)";
-    g.fillRect(x, y + h * 0.22, w, Math.max(2, h * 0.14));
+    const band = g.createLinearGradient(x, y, x, y + h);
+    band.addColorStop(0, "rgba(214,224,228,0.42)");
+    band.addColorStop(0.22, "rgba(214,224,228,0.16)");
+    band.addColorStop(1, "rgba(8,12,14,0.2)");
+    g.fillStyle = band;
+    g.fillRect(x, y, w, h);
+    g.fillStyle = "rgba(230,236,238,0.4)";
+    g.fillRect(x + 2, y + h * 0.16, w - 4, Math.max(2, h * 0.1));
   }
   function doorSide(g, w, h, body) {
     g.fillStyle = body;
     g.fillRect(0, 0, w, h);
-    g.fillStyle = "rgba(0,0,0,0.38)";
-    g.fillRect(w * 0.34, h * 0.1, 2, h * 0.8);
-    g.fillRect(w * 0.67, h * 0.1, 2, h * 0.8);
-    g.fillStyle = "#d5dbe0";
-    g.fillRect(w * 0.28, h * 0.5, w * 0.045, 3);
-    g.fillRect(w * 0.6, h * 0.5, w * 0.045, 3);
+    g.fillStyle = "rgba(12,10,8,0.45)";
+    g.fillRect(w * 0.33, h * 0.08, 3, h * 0.78);
+    g.fillRect(w * 0.66, h * 0.08, 3, h * 0.78);
+    chromeBar(g, h * 0.46, w, 4);
+    g.fillStyle = "#d8dee4";
+    g.fillRect(w * 0.22, h * 0.5, w * 0.06, 4);
+    g.fillRect(w * 0.55, h * 0.5, w * 0.06, 4);
+    g.fillStyle = "#1a1c1e";
+    g.fillRect(0, h * 0.86, w, h * 0.14);
+    soil(g, w, h);
   }
   function sideRow(g, w, h, body, n, top, tall, belt, skirt) {
     g.fillStyle = body;
     g.fillRect(0, 0, w, h);
     if (skirt) {
-      g.fillStyle = skirt;
-      g.fillRect(0, h * (1 - skirt.h), w, h * skirt.h);
+      g.fillStyle = skirt.color || skirt;
+      g.fillRect(0, h * (1 - (skirt.h || skirt)), w, h * (skirt.h || skirt));
     }
     if (belt) {
       g.fillStyle = belt.color;
       g.fillRect(0, h * belt.y, w, h * belt.h);
+      g.fillStyle = "rgba(255,255,255,0.18)";
+      g.fillRect(0, h * belt.y, w, 2);
     }
     const y0 = h * top;
     const hh = h * tall;
-    const gap = w * 0.04;
+    const gap = w * 0.035;
     const pane = (w - gap * 2) / n;
-    for (let i = 0; i < n; i++) glassPane(g, gap + i * pane + pane * 0.1, y0, pane * 0.8, hh);
+    for (let i = 0; i < n; i++) glassPane(g, gap + i * pane + pane * 0.12, y0, pane * 0.76, hh);
+    g.fillStyle = "#121416";
+    g.fillRect(0, h * 0.9, w, h * 0.1);
+    soil(g, w, h);
   }
   function noseFace(g, w, h, body, screenTop, screenH, grille, stripe) {
     g.fillStyle = body;
     g.fillRect(0, 0, w, h);
-    if (screenH > 0) glassPane(g, w * 0.1, h * screenTop, w * 0.8, h * screenH);
+    if (screenH > 0) glassPane(g, w * 0.08, h * screenTop, w * 0.84, h * screenH);
     if (stripe) {
       g.fillStyle = stripe;
-      g.fillRect(0, h * 0.46, w, h * 0.08);
+      g.fillRect(0, h * 0.42, w, h * 0.07);
+      g.fillStyle = "rgba(255,255,255,0.2)";
+      g.fillRect(0, h * 0.42, w, 2);
     }
     if (grille) {
-      g.fillStyle = "#141618";
-      g.fillRect(w * 0.2, h * 0.52, w * 0.6, h * 0.24);
-      g.strokeStyle = "#a4aaae";
+      g.fillStyle = "#101214";
+      g.fillRect(w * 0.22, h * 0.5, w * 0.56, h * 0.22);
+      g.strokeStyle = "#c5ccd0";
       g.lineWidth = 2;
-      for (let i = 1; i <= 3; i++) {
-        const y = h * 0.52 + h * 0.24 * i / 4;
+      for (let i = 1; i <= 4; i++) {
+        const y = h * 0.5 + h * 0.22 * i / 5;
         g.beginPath();
-        g.moveTo(w * 0.24, y);
-        g.lineTo(w * 0.76, y);
+        g.moveTo(w * 0.25, y);
+        g.lineTo(w * 0.75, y);
         g.stroke();
       }
+      g.fillStyle = "#e0a020";
+      g.fillRect(w * 0.06, h * 0.56, w * 0.08, h * 0.08);
+      g.fillRect(w * 0.86, h * 0.56, w * 0.08, h * 0.08);
     }
-    g.fillStyle = "#3a3c3e";
-    g.fillRect(0, h * 0.84, w, h * 0.16);
+    chromeBar(g, h * 0.82, w, h * 0.1);
+    g.fillStyle = "#2a2c2e";
+    g.fillRect(0, h * 0.92, w, h * 0.08);
+    soil(g, w, h);
   }
   function tailFace(g, w, h, body, stripe) {
     g.fillStyle = body;
     g.fillRect(0, 0, w, h);
-    glassPane(g, w * 0.18, h * 0.16, w * 0.64, h * 0.34);
+    glassPane(g, w * 0.16, h * 0.12, w * 0.68, h * 0.32);
     if (stripe) {
       g.fillStyle = stripe;
-      g.fillRect(0, h * 0.46, w, h * 0.08);
+      g.fillRect(0, h * 0.46, w, h * 0.07);
     }
-    g.fillStyle = "#3a3c3e";
-    g.fillRect(0, h * 0.82, w, h * 0.18);
+    g.fillStyle = "#5a1210";
+    g.fillRect(w * 0.06, h * 0.58, w * 0.16, h * 0.12);
+    g.fillRect(w * 0.78, h * 0.58, w * 0.16, h * 0.12);
+    chromeBar(g, h * 0.8, w, h * 0.09);
+    g.fillStyle = "#2a2c2e";
+    g.fillRect(0, h * 0.9, w, h * 0.1);
+    soil(g, w, h);
   }
   function panelSide(g, w, h, body) {
     g.fillStyle = body;
     g.fillRect(0, 0, w, h);
-    g.strokeStyle = "rgba(20,16,12,0.35)";
+    g.fillStyle = "rgba(20,16,12,0.4)";
+    g.fillRect(w * 0.46, h * 0.08, 3, h * 0.78);
+    g.fillRect(0, h * 0.16, w, 3);
+    g.strokeStyle = "rgba(20,16,12,0.28)";
     g.lineWidth = 2;
-    g.strokeRect(w * 0.06, h * 0.14, w * 0.4, h * 0.68);
-    g.strokeRect(w * 0.52, h * 0.14, w * 0.4, h * 0.68);
+    g.strokeRect(w * 0.06, h * 0.24, w * 0.34, h * 0.52);
+    g.strokeRect(w * 0.54, h * 0.24, w * 0.38, h * 0.52);
+    g.fillStyle = "#d0d6da";
+    g.fillRect(w * 0.38, h * 0.48, w * 0.05, 4);
+    g.fillRect(w * 0.7, h * 0.48, w * 0.05, 4);
+    g.fillStyle = "#1c1e20";
+    g.fillRect(0, h * 0.86, w, h * 0.14);
+    soil(g, w, h);
   }
   function plankFace(g, w, h, base) {
     g.fillStyle = base;
     g.fillRect(0, 0, w, h);
-    g.fillStyle = "rgba(30,20,12,0.22)";
-    for (let i = 1; i < 6; i++) g.fillRect(0, h * i / 6, w, 2);
+    g.fillStyle = "rgba(48,32,18,0.28)";
+    for (let i = 1; i < 7; i++) g.fillRect(0, h * i / 7, w, 3);
+    g.fillStyle = "rgba(90,70,48,0.35)";
+    for (let i = 0; i < 5; i++) g.fillRect(w * (0.08 + i * 0.18), 0, 2, h);
+    g.fillStyle = "#3a3e40";
+    g.fillRect(0, 0, w * 0.04, h);
+    g.fillRect(w * 0.96, 0, w * 0.04, h);
+    g.fillRect(0, h * 0.9, w, h * 0.1);
   }
   function glowPair(r, x, y, z, mat, h, w, tail) {
     const a = r.piece(0.05, h, w, x, y, z, mat, 3);
@@ -12074,7 +12189,7 @@ const traffic = [];
     r.block(2.05, 0.5, 1.48, 0.1, 1.16, 0, [screen, back, roofMat, paint, cabSide, cabSide]);
     glowPair(r, 2.12, 0.62, 0.52, headMat, 0.12, 0.28, false);
     glowPair(r, -2.12, 0.58, 0.52, tailOff, 0.14, 0.26, true);
-    r.plates(2.14, -2.14, taxi ? 0.4 : 0.34);
+    r.plates(2.14, -2.14, taxi ? 0.4 : 0.34, opt && opt.reg);
     r.wheelBox(1.32, 0.9, 0.33, 0.2);
     r.wheelBox(1.32, -0.9, 0.33, 0.2);
     r.wheelBox(-1.32, 0.9, 0.33, 0.2);
@@ -12127,7 +12242,7 @@ const traffic = [];
         };
         sedan.taxiBoards = {
           door: taxiBoard((g, w, h) => {
-            g.fillStyle = "#c83a24";
+            g.fillStyle = "#d01818";
             g.fillRect(0, 0, w, h);
             g.fillStyle = "#f6f1e8";
             g.textAlign = "center";
@@ -12157,17 +12272,17 @@ const traffic = [];
       }
       const boards = sedan.taxiBoards;
       const axle = r.ride.axle;
-      function board(w, h, x, y, z, mat, yaw) {
+      function board(w, h, x, y, z, mat, yaw, flip) {
         const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
         mesh.position.set(x, y - axle, z);
         mesh.rotation.y = yaw || 0;
+        if (flip) mesh.scale.x = -1;
         mesh.renderOrder = 4;
         r.ride.shell.add(mesh);
         return mesh;
       }
-      board(0.42, 0.22, 0.35, 0.78, 0.86, boards.door, 0);
-      board(0.42, 0.22, 0.35, 0.78, -0.86, boards.door, Math.PI);
-      board(0.36, 0.11, 2.16, 0.4, 0, boards.plate, Math.PI / 2);
+      board(0.46, 0.24, 0.35, 0.78, 0.86, boards.door, 0, false);
+      board(0.46, 0.24, 0.35, 0.78, -0.86, boards.door, Math.PI, true);
       const faceMat = opt.forHire ? boards.signOn : boards.signOff;
       const faces = [
         board(0.48, 0.1, 0.28, 1.5, 0.125, faceMat, 0),
@@ -12184,7 +12299,7 @@ const traffic = [];
     const r = rig(7.05, 0.4);
     const body = cssColor(miniCream);
     const red = cssColor(busRed);
-    const belt = { color: red, y: 0.55, h: 0.07 };
+    const belt = { color: red, y: 0.48, h: 0.12 };
     const side = bodySkin("mini:side", (g, w, h) => sideRow(g, w, h, body, 5, 0.16, 0.34, belt, null));
     const nose = bodySkin("mini:nose", (g, w, h) => noseFace(g, w, h, body, 0.08, 0.34, true, red));
     const tail = bodySkin("mini:tail", (g, w, h) => tailFace(g, w, h, body, red));
@@ -12239,21 +12354,22 @@ const traffic = [];
       };
     }
     const boards = minibus.boards;
-    function board(w, h, x, y, z, mat, yaw) {
+    function board(w, h, x, y, z, mat, yaw, flip) {
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
       mesh.position.set(x, y - 0.4, z);
       mesh.rotation.y = yaw || 0;
+      if (flip) mesh.scale.x = -1;
       mesh.renderOrder = 4;
       r.ride.shell.add(mesh);
     }
-    board(1.7, 0.14, -0.1, 1.42, 1.05, boards.plb, 0);
-    board(1.7, 0.14, -0.1, 1.42, -1.05, boards.plb, Math.PI);
+    board(1.85, 0.18, -0.1, 1.28, 1.05, boards.plb, 0, false);
+    board(1.85, 0.18, -0.1, 1.28, -1.05, boards.plb, Math.PI, true);
     board(0.28, 0.24, 1.15, 1.48, -1.05, boards.route, Math.PI);
     board(0.62, 0.2, 3.24, 2.05, 0, boards.dest, -Math.PI / 2);
     board(0.55, 0.1, 3.24, 1.15, 0, boards.badge, -Math.PI / 2);
     glowPair(r, 3.24, 0.72, 0.62, headMat, 0.16, 0.28, false);
     glowPair(r, -3.24, 0.72, 0.62, tailOff, 0.16, 0.26, true);
-    r.plates(3.26, -3.26, 0.42);
+    r.plates(3.26, -3.26, 0.42, minibus.reg);
     r.wheelBox(2.05, 1.08, 0.4, 0.22);
     r.wheelBox(2.05, -1.08, 0.4, 0.22);
     r.wheelBox(-2.15, 1.08, 0.4, 0.22);
@@ -12271,12 +12387,17 @@ const traffic = [];
     const cargoRear = bodySkin(key + ":rear", (g, w, h) => {
       g.fillStyle = body;
       g.fillRect(0, 0, w, h);
-      g.fillStyle = "rgba(0,0,0,0.4)";
-      g.fillRect(w * 0.5 - 1, h * 0.1, 2, h * 0.78);
-      glassPane(g, w * 0.16, h * 0.12, w * 0.24, h * 0.16);
-      glassPane(g, w * 0.6, h * 0.12, w * 0.24, h * 0.16);
-      g.fillStyle = "#3a3c3e";
-      g.fillRect(0, h * 0.88, w, h * 0.12);
+      g.fillStyle = "rgba(12,10,8,0.55)";
+      g.fillRect(w * 0.5 - 2, h * 0.08, 4, h * 0.74);
+      glassPane(g, w * 0.12, h * 0.1, w * 0.28, h * 0.16);
+      glassPane(g, w * 0.6, h * 0.1, w * 0.28, h * 0.16);
+      g.fillStyle = "#c8ced2";
+      g.fillRect(w * 0.2, h * 0.62, w * 0.08, 4);
+      g.fillRect(w * 0.72, h * 0.62, w * 0.08, 4);
+      chromeBar(g, h * 0.82, w, h * 0.08);
+      g.fillStyle = "#1c1e20";
+      g.fillRect(0, h * 0.9, w, h * 0.1);
+      soil(g, w, h);
     });
     const cabSide = bodySkin(key + ":cab", (g, w, h) => sideRow(g, w, h, body, 1, 0.12, 0.46, null, null));
     const screen = bodySkin(key + ":screen", (g, w, h) => noseFace(g, w, h, body, 0.08, 0.4, true, null));
@@ -12285,7 +12406,7 @@ const traffic = [];
     r.block(1.65, 0.95, 1.72, 1.22, 1.05, 0, [screen, plain, paint, blackTrim, cabSide, cabSide]);
     glowPair(r, 2.04, 0.62, 0.5, headMat, 0.12, 0.24, false);
     glowPair(r, -2.32, 0.7, 0.55, tailOff, 0.14, 0.24, true);
-    r.plates(2.08, -2.34, 0.38);
+    r.plates(2.08, -2.34, 0.38, van.reg);
     r.wheelBox(1.35, 0.98, 0.34, 0.2);
     r.wheelBox(1.35, -0.98, 0.34, 0.2);
     r.wheelBox(-1.5, 0.98, 0.34, 0.2);
@@ -12308,12 +12429,22 @@ const traffic = [];
     const tarp = bodySkin("tarp:" + canvas, (g, w, h) => {
       g.fillStyle = canvas;
       g.fillRect(0, 0, w, h);
-      g.strokeStyle = "rgba(20,24,18,0.35)";
+      g.strokeStyle = "rgba(18,22,16,0.4)";
       g.lineWidth = 2;
+      for (let i = 1; i <= 4; i++) {
+        g.beginPath();
+        g.moveTo(0, h * i / 5);
+        g.lineTo(w, h * i / 5);
+        g.stroke();
+      }
+      g.strokeStyle = "rgba(210,200,170,0.35)";
       g.beginPath();
-      g.moveTo(0, h * 0.35); g.lineTo(w, h * 0.35);
-      g.moveTo(0, h * 0.65); g.lineTo(w, h * 0.65);
+      g.moveTo(w * 0.08, h * 0.15);
+      g.lineTo(w * 0.5, h * 0.55);
+      g.lineTo(w * 0.92, h * 0.12);
       g.stroke();
+      g.fillStyle = "rgba(16,18,14,0.2)";
+      g.fillRect(0, h * 0.86, w, h * 0.14);
     });
     r.block(1.85, 1.15, 2.0, 1.85, 1.15, 0, [screen, plain, paint, blackTrim, cabSide, cabSide]);
     r.block(3.7, 0.28, 1.9, -1.0, 0.95, 0, [bed, bed, bedWood, blackTrim, bed, bed]);
@@ -12325,7 +12456,7 @@ const traffic = [];
     }
     glowPair(r, 2.8, 0.72, 0.62, headMat, 0.14, 0.26, false);
     glowPair(r, -2.85, 0.7, 0.7, tailOff, 0.14, 0.28, true);
-    r.plates(2.84, -2.88, 0.48);
+    r.plates(2.84, -2.88, 0.48, lorry.reg);
     r.wheelBox(1.7, 1.08, 0.42, 0.22);
     r.wheelBox(1.7, -1.08, 0.42, 0.22);
     r.dual(-1.45, 0.95, 0.42, 0.18);
@@ -12343,8 +12474,8 @@ const traffic = [];
       g.fillStyle = cream;
       g.fillRect(0, 0, w, h);
       g.fillStyle = orange;
-      g.fillRect(0, h * 0.76, w, h * 0.24);
-      const n = 6, top = 0.16, tall = 0.42;
+      g.fillRect(0, h * 0.62, w, h * 0.38);
+      const n = 5, top = 0.1, tall = 0.44;
       const y0 = h * top, hh = h * tall, gap = w * 0.03, pane = (w - gap * 2) / n;
       for (let i = 0; i < n; i++) glassPane(g, gap + i * pane + pane * 0.1, y0, pane * 0.8, hh);
     });
@@ -12425,14 +12556,13 @@ const traffic = [];
       mesh.renderOrder = 4;
       r.ride.shell.add(mesh);
     }
-    board(2.2, 0.5, -0.2, 1.15, 1.26, boards.sideR, 0);
-    board(2.2, 0.5, -0.2, 1.15, -1.26, boards.sideL, Math.PI);
+    board(3.4, 0.28, -0.15, 0.66, 1.26, boards.sideR, 0);
+    board(3.4, 0.28, -0.15, 0.66, -1.26, boards.sideL, Math.PI);
     board(1.7, 0.36, 4.9, 2.15, 0, boards.dest, Math.PI / 2);
     board(0.42, 0.14, 4.9, 3.15, 0, boards.fleet, Math.PI / 2);
-    board(0.5, 0.14, 4.95, 0.62, 0, boards.plate, Math.PI / 2);
     glowPair(r, 4.9, 0.85, 0.85, headMat, 0.16, 0.28, false);
     glowPair(r, -4.95, 0.85, 0.85, tailOff, 0.16, 0.3, true);
-    r.plates(5.0, -5.05, 0.5);
+    r.plates(5.0, -5.05, 0.5, bus.reg);
     r.wheelBox(3.05, 1.28, 0.48, 0.24);
     r.wheelBox(3.05, -1.28, 0.48, 0.24);
     r.dual(-3.2, 1.12, 0.48, 0.2);
@@ -12444,29 +12574,31 @@ const traffic = [];
     return r;
   }
   function busSideMark(g, w, h, noseRight) {
-    g.fillStyle = "#f3e6c4";
+    g.fillStyle = "#c4161c";
     g.fillRect(0, 0, w, h);
     const routeX = noseRight ? w * 0.8 : w * 0.2;
     const markX = noseRight ? w * 0.46 : w * 0.54;
-    smearSign(g, 38, (sg) => {
-      sg.fillStyle = "#1a1a1a";
-      sg.font = "700 84px sans-serif";
-      sg.textAlign = "center";
-      sg.textBaseline = "middle";
-      sg.fillText("5C", routeX, h * 0.42);
-    });
-    g.fillStyle = "#e04a1c";
-    g.beginPath();
-    g.arc(markX, h * 0.4, 46, 0, Math.PI * 2);
-    g.fill();
     const wing = noseRight ? -1 : 1;
-    g.fillRect(markX, h * 0.4 - 9, wing * 86, 18);
+    g.fillStyle = "#f6f1e4";
+    g.font = "700 64px sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText("5C", routeX, h * 0.4);
+    g.fillStyle = "#f3e6c4";
+    g.fillRect(markX - 96, h * 0.38 - 8, 192, 16);
+    g.beginPath();
+    g.arc(markX, h * 0.38, 46, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#c4161c";
+    g.beginPath();
+    g.arc(markX, h * 0.38, 36, 0, Math.PI * 2);
+    g.fill();
     g.fillStyle = "#fffaf2";
-    g.font = "700 30px sans-serif";
-    g.fillText("KMB", markX, h * 0.42);
-    g.fillStyle = "#d4451c";
-    g.font = "700 26px 'WenQuanYi Micro Hei', 'Droid Sans Fallback', sans-serif";
-    g.fillText("九巴服務  日日進步", markX + wing * 8, h * 0.78);
+    g.font = "700 26px sans-serif";
+    g.fillText("KMB", markX, h * 0.4);
+    g.fillStyle = "#f6f1e4";
+    g.font = "700 24px 'WenQuanYi Micro Hei', 'Droid Sans Fallback', sans-serif";
+    g.fillText("九巴服務  日日進步", markX + wing * 6, h * 0.78);
   }
 
   function bike(shirt) {
@@ -12479,13 +12611,13 @@ const traffic = [];
     const seat = [-0.06, 0.86, 0];
     const headTop = [0.36, 0.9, 0];
     const headBot = [0.46, 0.5, 0];
-    b(bb[0], bb[1], bb[2], seat[0], seat[1], seat[2], 0.018, steel);
-    b(headBot[0], headBot[1], headBot[2], bb[0], bb[1], bb[2], 0.018, steel);
-    b(seat[0], seat[1], seat[2], headTop[0], headTop[1], headTop[2], 0.016, steel);
+    b(bb[0], bb[1], bb[2], seat[0], seat[1], seat[2], 0.018, blackTrim);
+    b(headBot[0], headBot[1], headBot[2], bb[0], bb[1], bb[2], 0.018, blackTrim);
+    b(seat[0], seat[1], seat[2], headTop[0], headTop[1], headTop[2], 0.016, blackTrim);
     b(headBot[0], headBot[1], headBot[2], headTop[0], headTop[1], headTop[2], 0.02, steel);
     [-0.045, 0.045].forEach(z => {
-      b(bb[0], bb[1], z, rear[0], rear[1], z * 0.4, 0.012, steel);
-      b(seat[0], seat[1] - 0.04, z, rear[0], rear[1] + 0.04, z * 0.4, 0.011, steel);
+      b(bb[0], bb[1], z, rear[0], rear[1], z * 0.4, 0.012, blackTrim);
+      b(seat[0], seat[1] - 0.04, z, rear[0], rear[1] + 0.04, z * 0.4, 0.011, blackTrim);
       b(headBot[0], headBot[1], z, front[0], front[1], z, 0.014, steel);
     });
     b(headTop[0], headTop[1], -0.2, headTop[0], headTop[1], 0.2, 0.014, steel);
@@ -12538,17 +12670,20 @@ const traffic = [];
   ];
   const carPaints = [carWhite, ivory, carBlue, carMaroon];
   const bikeShirts = [shirtA, shirtB, shirtC, shirtB];
-  let taxiN = 0, carN = 0, vanN = 0, lorryN = 0;
+  const PLATES = ["DH 2841", "BY 6592", "DE 5506", "ER 1740", "AW 8823", "CJ 4417", "FK 2095", "GM 7730", "HJ 3164", "KS 5508"];
+  let taxiN = 0, carN = 0, vanN = 0, lorryN = 0, plateN = 0;
+  function nextPlate() { return PLATES[plateN++ % PLATES.length]; }
   function makeVehicle(type) {
-    if (type === "minibus") return minibus();
-    if (type === "bus") return bus();
-    if (type === "taxi") return sedan(taxiRed, { taxi: true, forHire: (taxiN++ % 2) === 0 });
+    if (type === "minibus") { minibus.reg = nextPlate(); return minibus(); }
+    if (type === "bus") { bus.reg = nextPlate(); return bus(); }
+    if (type === "taxi") return sedan(taxiRed, { taxi: true, forHire: (taxiN++ % 2) === 0, reg: nextPlate() });
     if (type === "car") {
       const n = carN++;
-      return sedan(carPaints[n % carPaints.length], { vinyl: n % 2 === 1 });
+      return sedan(carPaints[n % carPaints.length], { vinyl: n % 2 === 1, reg: nextPlate() });
     }
-    if (type === "van") return van(vanN++ % 2 ? vanWhite : vanCream);
+    if (type === "van") { van.reg = nextPlate(); return van(vanN++ % 2 ? vanWhite : vanCream); }
     const n = lorryN++;
+    lorry.reg = nextPlate();
     return lorry(n % 2 ? lorryGreen : lorryBlue, n % 2 === 1);
   }
   function park(made, z, x, dir, lane, free) {
@@ -16782,6 +16917,8 @@ function cityLit() {
   return lightAmount() > 0.16;
 }
 const walkers = [];
+// Residents of the lanes. The record keeps walking when the figure is gone.
+const cityFolk = [];
 const GROUND_Y = 0.27;
 const THIGH_L = 0.42, SHIN_L = 0.4, UPPER_L = 0.28, FORE_L = 0.26;
 const FIG_SCALE = 0.82;
@@ -16859,7 +16996,7 @@ const figGeo = {
   pole: new THREE.BoxGeometry(0.03, 0.03, 1.08),
   rope: new THREE.BoxGeometry(0.012, 0.46, 0.012),
   bucket: new THREE.BoxGeometry(0.13, 0.14, 0.13),
-  shaft: new THREE.BoxGeometry(0.02, 0.72, 0.02),
+  shaft: new THREE.BoxGeometry(0.02, 0.56, 0.02),
   canopy: new THREE.BoxGeometry(0.72, 0.07, 0.72),
   rib: new THREE.BoxGeometry(0.012, 0.36, 0.012),
   finial: new THREE.BoxGeometry(1, 1, 1),
@@ -17225,6 +17362,110 @@ function canopyRecipe(box, cut) {
   cut(-32, -1, 22, -22, 1, 32);
   cut(22, -1, 22, 32, 1, 32);
 }
+// A rain umbrella sized to the figure, before FIG_SCALE. An adult is about
+// 1.7 m here and ends up near 1.4 m tall, so a 1.04 m canopy becomes about
+// 85 cm in the street: wide enough to cover the head even though the shaft
+// sits beside it, with the rim a few centimetres above the hair.
+const UMBRELLA = { R: 0.52, rise: 0.16, sag: 0.048, thick: 0.016, gores: 8, shaft: 0.56 };
+function umbrellaArc(r) {
+  const R = UMBRELLA.R, rise = UMBRELLA.rise;
+  const Rs = (R * R + rise * rise) / (2 * rise);
+  return Math.sqrt(Math.max(0, Rs * Rs - r * r)) - (Rs - rise);
+}
+function umbrellaCanopyGeo() {
+  if (umbrellaCanopyGeo.geo) return umbrellaCanopyGeo.geo;
+  const gores = UMBRELLA.gores, segA = 4, segR = 7;
+  const R = UMBRELLA.R, sag = UMBRELLA.sag, thick = UMBRELLA.thick;
+  const spoke = Math.PI * 2 / gores;
+  const nA = gores * segA;
+  function sample(r, ang) {
+    const k = (ang % spoke) / spoke;
+    const mid = Math.sin(k * Math.PI);
+    const tt = r / R;
+    const y = umbrellaArc(r) - sag * mid * tt * tt;
+    return [Math.cos(ang) * r, y, Math.sin(ang) * r];
+  }
+  const grid = [];
+  for (let i = 0; i <= segR; i++) {
+    const r = (i / segR) * R;
+    const ring = [];
+    const count = i === 0 ? 1 : nA;
+    for (let j = 0; j < count; j++) ring.push(sample(r, i === 0 ? 0 : (j / nA) * Math.PI * 2));
+    grid.push(ring);
+  }
+  const outer = [];
+  const at = [];
+  grid.forEach(function (ring) {
+    const row = [];
+    ring.forEach(function (p) { row.push(outer.length); outer.push(p); });
+    at.push(row);
+  });
+  const idx = [];
+  for (let i = 0; i < segR; i++) {
+    const a = at[i], b = at[i + 1];
+    const nb = b.length;
+    for (let j = 0; j < nb; j++) {
+      const j1 = (j + 1) % nb;
+      if (a.length === 1) idx.push(a[0], b[j], b[j1]);
+      else idx.push(a[j], b[j], b[j1], a[j], b[j1], a[j1]);
+    }
+  }
+  const acc = outer.map(function () { return [0, 0, 0]; });
+  for (let t = 0; t < idx.length; t += 3) {
+    const ia = idx[t], ib = idx[t + 1], ic = idx[t + 2];
+    const ax = outer[ib][0] - outer[ia][0], ay = outer[ib][1] - outer[ia][1], az = outer[ib][2] - outer[ia][2];
+    const bx = outer[ic][0] - outer[ia][0], by = outer[ic][1] - outer[ia][1], bz = outer[ic][2] - outer[ia][2];
+    const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+    acc[ia][0] += nx; acc[ia][1] += ny; acc[ia][2] += nz;
+    acc[ib][0] += nx; acc[ib][1] += ny; acc[ib][2] += nz;
+    acc[ic][0] += nx; acc[ic][1] += ny; acc[ic][2] += nz;
+  }
+  const norms = acc.map(function (n) {
+    const len = Math.hypot(n[0], n[1], n[2]) || 1;
+    return [n[0] / len, n[1] / len, n[2] / len];
+  });
+  const pos = [], nrm = [], uv = [], col = [], ind = [];
+  function vert(p, n, inward, u, v) {
+    const s = inward ? -1 : 1;
+    pos.push(p[0] + n[0] * s * (inward ? thick : 0), p[1] + n[1] * s * (inward ? thick : 0), p[2] + n[2] * s * (inward ? thick : 0));
+    nrm.push(n[0] * s, n[1] * s, n[2] * s);
+    uv.push(u, v);
+    // The inside of the cloth sits in its own shade, so the shell reads as cloth with a hem.
+    const shade = inward ? 0.62 : 1;
+    col.push(shade, shade, shade);
+    return pos.length / 3 - 1;
+  }
+  const outerId = [], innerId = [];
+  outer.forEach(function (p, i) {
+    const u = 0.5 + p[0] / (R * 2), v = 0.5 + p[2] / (R * 2);
+    outerId.push(vert(p, norms[i], false, u, v));
+    innerId.push(vert(p, norms[i], true, u, v));
+  });
+  function copy(src, map, flip) {
+    for (let t = 0; t < src.length; t += 3) {
+      if (flip) ind.push(map[src[t]], map[src[t + 2]], map[src[t + 1]]);
+      else ind.push(map[src[t]], map[src[t + 1]], map[src[t + 2]]);
+    }
+  }
+  copy(idx, outerId, false);
+  copy(idx, innerId, true);
+  const lip = at[segR];
+  for (let j = 0; j < lip.length; j++) {
+    const j1 = (j + 1) % lip.length;
+    const o0 = outerId[lip[j]], o1 = outerId[lip[j1]];
+    const i0 = innerId[lip[j]], i1 = innerId[lip[j1]];
+    ind.push(o0, i0, i1, o0, i1, o1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  geo.setIndex(ind);
+  geo.computeBoundingSphere();
+  umbrellaCanopyGeo.geo = geo;
+  return geo;
+}
 function sackRecipe(box) {
   box(-6, -7, -4, 6, 6, 4);
   box(-5, 6, -3, 5, 8, 3);
@@ -17400,6 +17641,9 @@ function bakeDirect(group, skip) {
     geo.setIndex(new THREE.BufferAttribute(idx, 1));
     geo.computeBoundingSphere();
     if (bucket.mat.normalMap) addTangents(geo);
+    // Merged buffers belong to this figure. Shared voxel geos stay unmarked
+    // so a shopkeeper can be dropped without freeing anyone else's body.
+    geo.userData.own = 1;
     const mesh = new THREE.Mesh(geo, bucket.mat);
     mesh.renderOrder = bucket.order;
     mesh.castShadow = bucket.cast;
@@ -17703,31 +17947,40 @@ function makeCitizen(spec) {
     brolly.visible = false;
     armR.elbow.add(brolly);
     const shaft = figMesh(figGeo.shaft, shaftMat);
-    shaft.position.y = 0.36;
+    shaft.position.y = UMBRELLA.shaft / 2;
     brolly.add(shaft);
     const canopyMat = clothMat(spec.brolly, 0.72);
-    canopyMat.side = THREE.DoubleSide;
-    const canopy = figMesh(figGeo.canopy, canopyMat);
-    canopy.position.y = 0.68;
+    canopyMat.side = THREE.FrontSide;
+    canopyMat.vertexColors = true;
+    const canopy = figMesh(umbrellaCanopyGeo(), canopyMat);
+    // Crown sits on the shaft tip. The rim hangs just above the hair.
+    canopy.position.y = UMBRELLA.shaft - UMBRELLA.rise;
     brolly.add(canopy);
-    const crown = figMesh(figGeo.canopy, canopyMat);
-    crown.position.y = 0.72;
-    crown.scale.set(0.48, 0.55, 0.48);
-    brolly.add(crown);
     const up = new THREE.Vector3(0, 1, 0);
-    const tip = new THREE.Vector3();
-    for (let i = 0; i < 8; i++) {
-      const a = i / 8 * Math.PI * 2;
-      tip.set(Math.cos(a) * 0.34, -0.1, Math.sin(a) * 0.34);
-      const rib = figMesh(figGeo.rib, shaftMat);
-      rib.position.set(tip.x * 0.5, 0.68 + tip.y * 0.5, tip.z * 0.5);
-      rib.quaternion.setFromUnitVectors(up, tip.clone().normalize());
-      rib.scale.y = tip.length() / 0.36;
-      brolly.add(rib);
+    const dir = new THREE.Vector3();
+    const ribN = UMBRELLA.gores;
+    const steps = 6;
+    for (let i = 0; i < ribN; i++) {
+      const a = i / ribN * Math.PI * 2;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      for (let s = 0; s < steps; s++) {
+        const t0 = 0.08 + (s / steps) * 0.92;
+        const t1 = 0.08 + ((s + 1) / steps) * 0.92;
+        const r0 = t0 * UMBRELLA.R - 0.008, r1 = t1 * UMBRELLA.R - 0.008;
+        const y0 = umbrellaArc(t0 * UMBRELLA.R) - 0.024;
+        const y1 = umbrellaArc(t1 * UMBRELLA.R) - 0.024;
+        const rib = figMesh(figGeo.rib, shaftMat);
+        rib.position.set((ca * r0 + ca * r1) * 0.5, canopy.position.y + (y0 + y1) * 0.5, (sa * r0 + sa * r1) * 0.5);
+        dir.set(ca * (r1 - r0), y1 - y0, sa * (r1 - r0));
+        const len = dir.length() || 0.01;
+        rib.quaternion.setFromUnitVectors(up, dir.multiplyScalar(1 / len));
+        rib.scale.set(0.95, len / 0.36, 0.95);
+        brolly.add(rib);
+      }
     }
     const finial = figMesh(figGeo.finial, shaftMat);
-    finial.scale.set(0.018, 0.018, 0.018);
-    finial.position.y = 0.76;
+    finial.scale.set(0.022, 0.034, 0.022);
+    finial.position.y = canopy.position.y + UMBRELLA.rise + 0.02;
     brolly.add(finial);
   }
   const blob = figMesh(figGeo.blob, blobMat);
@@ -18022,7 +18275,9 @@ function poseIdle(rig, ud, now, w, rainUp) {
   rig.torso.rotation.x += Math.sin(now * 1.35 + ud.offset * 2) * 0.012 * w;
 }
 function stepWalker(fig, now) {
-  const ud = fig.userData;
+  advanceWalker(fig.userData, now, fig);
+}
+function advanceWalker(ud, now, fig) {
   const path = ud.path;
   const span = Math.max(0.5, path.b - path.a);
   if (ud.along == null) ud.along = ud.offset % span;
@@ -18055,8 +18310,9 @@ function stepWalker(fig, now) {
     let speed = ud.speed;
     let tail = 99;
     ud.held = false;
-    for (let i = 0; i < walkers.length; i++) {
-      const other = walkers[i].userData;
+    const crowd = ud.inside ? cityFolk : walkers;
+    for (let i = 0; i < crowd.length; i++) {
+      const other = ud.inside ? crowd[i] : crowd[i].userData;
       if (other === ud || other.path !== path || other.along == null) continue;
       const ahead = (other.along - ud.along) * ud.dir;
       if (other.wait > 0 && ahead > 0.04 && ahead < 0.8) {
@@ -18118,15 +18374,22 @@ function stepWalker(fig, now) {
   const footY = path.y == null ? GROUND_Y : path.y;
   // city adds another easting of k*z. Take it back off so the world point
   // stays on the lane, level with the walls, instead of inside them.
-  const localX = fig.parent === city ? frame.worldX - SHEAR_K * pz : frame.worldX;
-  fig.position.set(localX, footY, pz);
+  const localX = fig && fig.parent === city ? frame.worldX - SHEAR_K * pz : frame.worldX;
+  ud.x = localX;
+  ud.y = footY;
+  ud.z = pz;
+  if (fig) fig.position.set(localX, footY, pz);
   const biasGoal = ud.wait > 0 && ud.act ? (ud.bias || 0) : 0;
   ud.biasEase = (ud.biasEase || 0) + (biasGoal - (ud.biasEase || 0)) * Math.min(1, dt * 2.4);
   const faceYaw = yaw + ud.biasEase;
-  const dy = Math.atan2(Math.sin(faceYaw - fig.rotation.y), Math.cos(faceYaw - fig.rotation.y));
+  const yawNow = fig ? fig.rotation.y : (ud.yaw || 0);
+  const dy = Math.atan2(Math.sin(faceYaw - yawNow), Math.cos(faceYaw - yawNow));
   // A U-turn takes a moment. Small corrections while walking stay quick.
   const yawFollow = Math.abs(dy) > 0.7 ? 3.2 : 9;
-  fig.rotation.y += dy * Math.min(1, dt * yawFollow);
+  ud.yaw = yawNow + dy * Math.min(1, dt * yawFollow);
+  if (fig) fig.rotation.y = ud.yaw;
+  // A lane resident with no figure still advances. The pose needs a body.
+  if (!fig) return;
   const endProx = Math.min(along, span - along);
   const turning = Math.min(1, Math.abs(dy) / 1.15);
   const stride = ud.wait > 0 || ud.held ? 0 : Math.min(1, endProx / 0.55) * (1 - turning);
@@ -18208,10 +18471,10 @@ function stepWalker(fig, now) {
     hang(arm, shoulder, arm.restZ, elbow, flare);
   }
   function raiseBrolly() {
-    // Elbow by the ribs, forearm raised, so the fist sits under the canopy.
-    // The shaft is stood upright afterwards; a wide elbow left it leaning.
+    // Elbow across the chest, forearm raised, so the shaft stands just in
+    // front of the head instead of out past the shoulder. Stood upright after.
     const give = Math.sin(phase) * 0.03 * moving;
-    hang(rig.armR, -0.92 + give * 0.25, 0.1, -2.32 - give, 0.04);
+    hang(rig.armR, -0.85 + give * 0.25, -0.42, -2.15 - give, -0.35);
   }
   if (rig.prop === "pole") {
     // Elbow out, hand on the bar just ahead of the shoulder. The free arm still walks.
@@ -18284,8 +18547,8 @@ function standBrolly(rig) {
     b.quaternion.premultiply(brollyAim.yaw);
   }
 }
-// The canopy is a flat octagon about 0.64 m across before the figure scale,
-// and the ribs reach a little past that. The fist holds it off to the right,
+// The canopy is a dome a little over a metre across before the figure scale,
+// and the ribs end just inside that rim. The fist holds it off to the right,
 // while a walker is only kept 4 cm clear of a wall. In a corner the disc
 // goes through the masonry. Slide it toward the open lane, then shrink the
 // span until the rim is outside every solid. The shaft stays upright.
@@ -18339,7 +18602,7 @@ function tuckBrolly(fig) {
   b.updateWorldMatrix(true, false);
   b.getWorldPosition(brollyTuck.wp);
   const S = fig.scale.x || 1;
-  const R = 0.36 * S;
+  const R = (UMBRELLA.R + 0.02) * S;
   const cx = brollyTuck.wp.x, cz = brollyTuck.wp.z;
   let px = 0, pz = 0, bad = 0, worst = 0;
   for (let i = 0; i < 8; i++) {
@@ -18465,60 +18728,85 @@ const outfits = [
   { top: 0x3c5160, sleeve: "short", pants: 0x1c1a18, hair: "short", skin: 4, prop: "bag", bag: 4, shoes: 0x1a1816, gait: "walk", brolly: 0x1a1c20 },
   { top: 0xd7c2b0, sleeve: "short", pants: 0x3a3632, hair: "bun", skin: 1, shoes: 0x1a1816, gait: "walk", scale: 0.98, brolly: 0x4a3038 }
 ];
+function folkStub(wear) {
+  return {
+    prop: wear.prop || null,
+    habit: wear.habit || null,
+    gait: wear.gait || "walk",
+    skirted: !!wear.skirt || ((wear.hair === "bob" || wear.hair === "bun") && (wear.scale || 1) >= 0.85)
+  };
+}
 function addWalker(path, spec, i, place) {
   let wear = spec;
   if (path.thick < 2.2 && spec.prop === "pole") wear = outfits[(i + 4) % outfits.length];
   if (path.thick < 2.2 && wear.prop === "pole") wear = outfits[0];
-  const fig = makeCitizen(wear);
+  const inside = !!(place && place.inside);
+  const fig = inside ? null : makeCitizen(wear);
+  const ud = fig ? fig.userData : { rig: folkStub(wear) };
   const span = Math.max(0.5, path.b - path.a);
-  fig.userData.path = path;
-  fig.userData.speed = wear.gait === "slow" ? 0.52 + (i % 3) * 0.05 : wear.gait === "load" ? 0.64 : 0.78 + (i % 5) * 0.06;
-  fig.userData.offset = (i * 2.35) % 3.1;
-  fig.userData.scale = wear.scale || 1;
+  ud.path = path;
+  ud.speed = place && place.speed != null ? place.speed
+    : wear.gait === "slow" ? 0.52 + (i % 3) * 0.05 : wear.gait === "load" ? 0.64 : 0.78 + (i % 5) * 0.06;
+  ud.offset = (i * 2.35) % 3.1;
+  ud.scale = wear.scale || 1;
+  ud.wear = wear;
   const dir = place ? place.dir : (i % 2 ? -1 : 1);
   const along = place ? place.along : (i * 5.1 + path.a) % span;
-  fig.userData.dir = dir;
-  fig.userData.along = along;
-  fig.userData.live = 1;
-  fig.userData.wait = place && place.wait != null ? place.wait : (i % 5) * 0.15;
-  fig.userData.ease = 1;
-  fig.userData.bias = 0;
-  fig.userData.biasEase = 0;
-  fig.userData.act = null;
-  fig.userData.chatCool = 0;
+  ud.dir = dir;
+  ud.along = along;
+  ud.live = 1;
+  ud.inside = inside ? 1 : 0;
+  ud.wait = place && place.wait != null ? place.wait : (i % 5) * 0.15;
+  ud.ease = 1;
+  ud.bias = 0;
+  ud.biasEase = 0;
+  ud.act = null;
+  ud.chatCool = 0;
+  ud.fig = fig;
   const opening = place && place.wait > 1.2;
   if (opening || i % 3 === 0) {
-    fig.userData.act = pickAct(fig.userData);
-    if (!opening) fig.userData.wait = 2.6 + (i % 4) * 0.5;
-    fig.userData.actLeft = Math.min(fig.userData.wait, 3.6);
-    fig.userData.bias = actBias(fig.userData);
-    fig.userData.ease = 0;
+    ud.act = pickAct(ud);
+    if (!opening) ud.wait = 2.6 + (i % 4) * 0.5;
+    ud.actLeft = Math.min(ud.wait, 3.6);
+    ud.bias = actBias(ud);
+    ud.ease = 0;
   }
-  fig.rotation.y = path.axis === "z" ? (dir > 0 ? 0 : Math.PI) : (dir > 0 ? Math.PI / 2 : -Math.PI / 2);
-  if (walkerBlocked(path, fig.userData.along, fig.userData.dir)) {
+  const yaw0 = path.axis === "z" ? (dir > 0 ? 0 : Math.PI) : (dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+  ud.yaw = yaw0;
+  if (fig) fig.rotation.y = yaw0;
+  if (walkerBlocked(path, ud.along, ud.dir)) {
     let parked = false;
     for (let t = 0; t <= span && !parked; t += 0.45) {
-      if (!walkerBlocked(path, t, fig.userData.dir)) {
-        fig.userData.along = t;
+      if (!walkerBlocked(path, t, ud.dir)) {
+        ud.along = t;
         parked = true;
       }
     }
     if (!parked) {
-      const flip = -fig.userData.dir;
+      const flip = -ud.dir;
       for (let t = 0; t <= span && !parked; t += 0.45) {
         if (!walkerBlocked(path, t, flip)) {
-          fig.userData.along = t;
-          fig.userData.dir = flip;
-          fig.rotation.y = path.axis === "z" ? (flip > 0 ? 0 : Math.PI) : (flip > 0 ? Math.PI / 2 : -Math.PI / 2);
+          ud.along = t;
+          ud.dir = flip;
+          ud.yaw = path.axis === "z" ? (flip > 0 ? 0 : Math.PI) : (flip > 0 ? Math.PI / 2 : -Math.PI / 2);
+          if (fig) fig.rotation.y = ud.yaw;
           parked = true;
         }
       }
     }
     if (!parked) return null;
   }
-  if (fig.userData.act) fig.userData.bias = actBias(fig.userData);
-  vfx.add(fig);
-  walkers.push(fig);
+  if (ud.act) ud.bias = actBias(ud);
+  const frame = walkerFrame(path, ud.along, ud.dir);
+  ud.x = frame.worldX;
+  ud.z = frame.worldZ;
+  ud.y = path.y == null ? GROUND_Y : path.y;
+  ud.yaw = frame.yaw;
+  if (fig) {
+    fig.rotation.y = ud.yaw;
+    vfx.add(fig);
+    walkers.push(fig);
+  } else cityFolk.push(ud);
   return fig;
 }
 const roster = [];
@@ -18539,9 +18827,328 @@ roster.forEach((entry, i) => {
   const along = (span * frac + (i % 6) * 0.6) % span;
   addWalker(entry.path, outfits[(i + entry.slot * 4) % outfits.length], i, {
     dir: entry.slot % 2 ? -1 : 1,
-    along
+    along,
+    inside: true
   });
 });
+// What the person behind the counter is wearing, and what their hands do
+// when nobody is at the door. A coat for the clinics, an apron for the
+// food and the dry goods, work clothes for the factories.
+const KEEPER_LOOK = {
+  dentist:    { top: 0xf7f4ee, sleeve: "long", pants: 0x2c3344, hair: "short", skin: 0, shoes: 0x1a1816 },
+  doctor:     { top: 0xe7eee8, sleeve: "long", pants: 0x243044, hair: "grey", skin: 1, shoes: 0x1a1816 },
+  pharmacy:   { top: 0xf3efe4, sleeve: "long", pants: 0x2a3140, hair: "bob", skin: 4, shoes: 0x1a1816 },
+  bonesetter: { top: 0xe6dcc4, sleeve: "short", pants: 0x3a342c, hair: "short", skin: 2, shoes: 0x1a1816 },
+  herbal:     { top: 0x3a4034, sleeve: "short", pants: 0x2a2824, hair: "bun", skin: 3, shoes: 0x1a1816, apron: true, straps: 0x1e3a32 },
+  grocery:    { top: 0xe6e0d2, sleeve: "skin", pants: 0x2a2826, hair: "short", skin: 0, shoes: 0x1a1816, apron: true, straps: 0x4a4038, shorts: true, mix: 1 },
+  rice:       { top: 0xd7c8a4, sleeve: "short", pants: 0x3a342c, hair: "short", skin: 2, shoes: 0x1a1816, apron: true, straps: 0x6a5438, mix: 1 },
+  cafe:       { top: 0xf4f1ea, sleeve: "short", pants: 0x1e4a3a, hair: "bob", skin: 1, shoes: 0x1a1816, apron: true, straps: 0x1a3a6b },
+  barber:     { top: 0xf7f4ee, sleeve: "short", pants: 0x1c2430, hair: "short", skin: 0, shoes: 0x1a1816 },
+  electrical: { top: 0xd5e0ea, sleeve: "short", pants: 0x243044, hair: "short", skin: 2, shoes: 0x1a1816 },
+  hardware:   { top: 0x6a645c, sleeve: "long", pants: 0x2a2824, hair: "short", skin: 3, shoes: 0x1a1816, apron: true, straps: 0x3e4650 },
+  mahjong:    { top: 0x1a6b3c, sleeve: "short", pants: 0x1c1a18, hair: "short", skin: 2, shoes: 0x1a1816 },
+  paikau:     { top: 0x6a1820, sleeve: "short", pants: 0x1a1816, hair: "short", skin: 0, shoes: 0x1a1816 },
+  dogmeat:    { top: 0x8a3030, sleeve: "short", pants: 0x2a241c, hair: "short", skin: 1, shoes: 0x1a1816, apron: true, straps: 0x3a241c },
+  fishball:   { top: 0xe7e2d4, sleeve: "skin", pants: 0x1c3a44, hair: "short", skin: 2, shoes: 0x1a1816, apron: true, straps: 0x2a4038, shorts: true },
+  noodle:     { top: 0xf0eadc, sleeve: "skin", pants: 0x3a3428, hair: "short", skin: 0, shoes: 0x1a1816, apron: true, straps: 0xc4b49a, shorts: true },
+  bbq:        { top: 0x6a1a12, sleeve: "skin", pants: 0x2a1814, hair: "short", skin: 3, shoes: 0x1a1816, apron: true, straps: 0x3a241c, shorts: true },
+  tofu:       { top: 0xf4f1ea, sleeve: "skin", pants: 0x2a3a30, hair: "bun", skin: 4, shoes: 0x1a1816, apron: true, straps: 0xd9d4c6 },
+  candy:      { top: 0xf7e27a, sleeve: "short", pants: 0x6a1830, hair: "bob", skin: 1, shoes: 0x7a3030, apron: true, straps: 0xc44a58 },
+  plastic:    { top: 0x5a635c, sleeve: "long", pants: 0x2a3028, hair: "short", skin: 2, shoes: 0x1a1816, apron: true, straps: 0x3a4038 },
+  textile:    { top: 0x4a4038, sleeve: "long", pants: 0x2a241c, hair: "bun", skin: 3, shoes: 0x1a1816, apron: true, straps: 0x6a5438 },
+  joss:       { top: 0x8a3030, sleeve: "short", pants: 0x2a1814, hair: "grey", skin: 3, shoes: 0x1a1816, mix: 1 },
+  water:      { top: 0xd5dde2, sleeve: "skin", pants: 0x1a3040, hair: "short", skin: 0, shoes: 0x1a1816, shorts: true }
+};
+function keeperTrade(kind) {
+  if (kind === "dentist" || kind === "doctor" || kind === "pharmacy" || kind === "bonesetter") return "clinic";
+  if (kind === "cafe" || kind === "dogmeat" || kind === "bbq") return "serve";
+  if (kind === "fishball" || kind === "noodle" || kind === "tofu" || kind === "plastic" || kind === "textile" || kind === "herbal") return "make";
+  if (kind === "barber") return "cut";
+  if (kind === "mahjong" || kind === "paikau") return "watch";
+  return "counter";
+}
+function keeperWear(kind, i) {
+  const src = KEEPER_LOOK[kind] || KEEPER_LOOK.grocery;
+  const wear = { gait: "slow" };
+  for (const k in src) if (k !== "mix") wear[k] = src[k];
+  if (src.mix && (i % 2)) {
+    wear.hair = i % 4 === 1 ? "bun" : "bob";
+    wear.shorts = false;
+  }
+  return wear;
+}
+const keepers = [];
+const keeperPosts = [];
+const keeperView = {
+  frustum: new THREE.Frustum(),
+  mat: new THREE.Matrix4(),
+  sphere: new THREE.Sphere(new THREE.Vector3(), 1)
+};
+// A figure still reads at this distance. Past it the far plane would pull in
+// every shop on a long street, so the stream stops where the person fades.
+const KEEPER_REACH = 46;
+const KEEPER_REACH_OUT = 54;
+function prepareKeeperPosts() {
+  for (let i = 0; i < shopPosts.length; i++) {
+    const post = shopPosts[i];
+    let skip = false;
+    for (let j = 0; j < keeperPosts.length; j++) {
+      const q = keeperPosts[j];
+      const dx = post.x - q.x, dz = post.z - q.z;
+      if (dx * dx + dz * dz < 0.2) { skip = true; break; }
+    }
+    if (skip) continue;
+    keeperPosts.push({
+      x: post.x, y: post.y, z: post.z, rot: post.rot, kind: post.kind,
+      fx: post.fx, fz: post.fz, i: i, fig: null
+    });
+  }
+}
+prepareKeeperPosts();
+function spawnKeeper(post, now) {
+  const fig = makeCitizen(keeperWear(post.kind, post.i));
+  fig.position.set(post.x, post.y, post.z);
+  fig.rotation.y = post.rot;
+  fig.userData.live = 1;
+  fig.userData.keeper = 1;
+  fig.userData.post = post;
+  fig.userData.trade = keeperTrade(post.kind);
+  fig.userData.offset = (post.i * 1.37) % 4.2;
+  fig.userData.scale = 1;
+  fig.userData.greetUntil = 0;
+  fig.userData.greetCool = 0;
+  fig.userData.aimYaw = 0;
+  fig.userData.then = now - 0.4;
+  fig.userData.rig.hip.position.y = THIGH_L + SHIN_L + 0.04;
+  vfx.add(fig);
+  keepers.push(fig);
+  post.fig = fig;
+}
+function disposeOwned(fig) {
+  const gone = new Set();
+  fig.traverse(obj => {
+    if (!obj.isMesh || !obj.geometry || !obj.geometry.userData.own || gone.has(obj.geometry)) return;
+    gone.add(obj.geometry);
+    obj.geometry.dispose();
+  });
+  if (fig.parent) fig.parent.remove(fig);
+}
+function dropKeeper(post) {
+  const fig = post.fig;
+  if (!fig) return;
+  post.fig = null;
+  const at = keepers.indexOf(fig);
+  if (at >= 0) keepers.splice(at, 1);
+  disposeOwned(fig);
+}
+function dropKeepers() {
+  for (let i = 0; i < keeperPosts.length; i++) {
+    if (keeperPosts[i].fig) dropKeeper(keeperPosts[i]);
+  }
+}
+function keeperSeen(post, radius, reach) {
+  const cam = camera.position;
+  const dx = post.x - cam.x;
+  const dy = post.y + 0.72 - cam.y;
+  const dz = post.z - cam.z;
+  if (dx * dx + dy * dy + dz * dz > reach * reach) return false;
+  keeperView.sphere.center.set(post.x, post.y + 0.72, post.z);
+  keeperView.sphere.radius = radius;
+  return keeperView.frustum.intersectsSphere(keeperView.sphere);
+}
+// Walk mode only. A shop in the frame gains its keeper; one that leaves
+// loses it. Two builds a frame, nearest first, so a turn does not hitch.
+function syncKeepers(now) {
+  if (!walkMode) {
+    if (keepers.length) dropKeepers();
+    return;
+  }
+  camera.updateMatrixWorld();
+  keeperView.mat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  keeperView.frustum.setFromProjectionMatrix(keeperView.mat);
+  let a = -1, b = -1, ad = Infinity, bd = Infinity;
+  const budget = pace.tier === 0 ? 1 : 2;
+  for (let i = 0; i < keeperPosts.length; i++) {
+    const post = keeperPosts[i];
+    if (post.fig) {
+      if (!keeperSeen(post, 1.35, KEEPER_REACH_OUT)) dropKeeper(post);
+      continue;
+    }
+    if (!keeperSeen(post, 0.72, KEEPER_REACH)) continue;
+    const dx = post.x - camera.position.x;
+    const dz = post.z - camera.position.z;
+    const d = dx * dx + dz * dz;
+    if (d < ad) { bd = ad; b = a; ad = d; a = i; }
+    else if (d < bd) { bd = d; b = i; }
+  }
+  if (a >= 0) spawnKeeper(keeperPosts[a], now);
+  if (budget > 1 && b >= 0) spawnKeeper(keeperPosts[b], now);
+}
+function spawnFolk(ud) {
+  if (ud.fig) return;
+  const fig = makeCitizen(ud.wear);
+  const rig = fig.userData.rig;
+  fig.userData = ud;
+  ud.rig = rig;
+  ud.live = 1;
+  ud.inside = 1;
+  ud.fig = fig;
+  fig.position.set(ud.x || 0, ud.y == null ? GROUND_Y : ud.y, ud.z || 0);
+  fig.rotation.y = ud.yaw || 0;
+  city.add(fig);
+  walkers.push(fig);
+  renderWetReflection.figs = null;
+}
+function dropFolk(ud) {
+  const fig = ud.fig;
+  if (!fig) return;
+  ud.fig = null;
+  ud.rig = folkStub(ud.wear);
+  const at = walkers.indexOf(fig);
+  if (at >= 0) walkers.splice(at, 1);
+  disposeOwned(fig);
+  renderWetReflection.figs = null;
+}
+function folkSeen(ud, radius, reach) {
+  const cam = camera.position;
+  const dx = ud.x - cam.x;
+  const dy = (ud.y || 0) + 0.75 - cam.y;
+  const dz = ud.z - cam.z;
+  if (dx * dx + dy * dy + dz * dz > reach * reach) return false;
+  keeperView.sphere.center.set(ud.x, (ud.y || 0) + 0.75, ud.z);
+  keeperView.sphere.radius = radius;
+  return keeperView.frustum.intersectsSphere(keeperView.sphere);
+}
+// Lane residents share the shopkeeper rule: a body only while walking, and
+// only while it sits in the frame. The outer pavements are not in this list.
+function syncCityFolk(now) {
+  if (!walkMode) {
+    for (let i = 0; i < cityFolk.length; i++) if (cityFolk[i].fig) dropFolk(cityFolk[i]);
+  } else {
+    camera.updateMatrixWorld();
+    keeperView.mat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    keeperView.frustum.setFromProjectionMatrix(keeperView.mat);
+    let a = -1, b = -1, ad = Infinity, bd = Infinity;
+    const budget = pace.tier === 0 ? 1 : 2;
+    for (let i = 0; i < cityFolk.length; i++) {
+      const ud = cityFolk[i];
+      if (ud.fig) {
+        if (!folkSeen(ud, 1.4, KEEPER_REACH_OUT)) dropFolk(ud);
+        continue;
+      }
+      if (!folkSeen(ud, 0.75, KEEPER_REACH)) continue;
+      const dx = ud.x - camera.position.x;
+      const dz = ud.z - camera.position.z;
+      const d = dx * dx + dz * dz;
+      if (d < ad) { bd = ad; b = a; ad = d; a = i; }
+      else if (d < bd) { bd = d; b = i; }
+    }
+    if (a >= 0) spawnFolk(cityFolk[a]);
+    if (budget > 1 && b >= 0) spawnFolk(cityFolk[b]);
+  }
+  for (let i = 0; i < cityFolk.length; i++) {
+    const ud = cityFolk[i];
+    advanceWalker(ud, now, ud.fig || null);
+  }
+}
+function stepKeeper(fig, now) {
+  const ud = fig.userData;
+  const post = ud.post;
+  const rig = ud.rig;
+  const prev = ud.then == null ? now : ud.then;
+  ud.then = now;
+  const dt = Math.min(0.05, Math.max(0, now - prev));
+  const w = Math.min(1, dt * 6);
+  const greet = now < ud.greetUntil;
+  if (!greet && now >= ud.greetCool) {
+    const px = fig.position.x, pz = fig.position.z;
+    let aim = null;
+    let aimD = 4.4;
+    for (let i = 0; i < walkers.length; i++) {
+      const other = walkers[i];
+      const ou = other.userData;
+      if (!ou || (ou.ease || 0) < 0.35) continue;
+      const dx = other.position.x - px;
+      const dz = other.position.z - pz;
+      if (dx * post.fx + dz * post.fz < 0.4) continue;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < aimD) { aimD = d2; aim = dx; ud.aimZ = dz; }
+    }
+    if (aim != null) {
+      const want = Math.atan2(aim, ud.aimZ);
+      let dy = want - fig.rotation.y;
+      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      ud.aimYaw = dy > 0.9 ? 0.9 : dy < -0.9 ? -0.9 : dy;
+      ud.greetUntil = now + 1.35;
+      ud.greetCool = now + 8.5;
+    }
+  }
+  const waving = now < ud.greetUntil;
+  const s = Math.sin(now * 1.7 + ud.offset);
+  const s2 = Math.sin(now * 2.6 + ud.offset * 2);
+  let lean = 0.08, headX = 0.12, headY = s * 0.1, torsoY = 0;
+  let L = [-0.75, -0.35, -1.25, 0.12];
+  let R = [-0.7, 0.38, -1.2, -0.1];
+  const trade = ud.trade;
+  if (trade === "clinic") {
+    lean = 0.04; headX = 0.16 + s * 0.05; headY = s2 * 0.14;
+    L = [-0.9, -0.4, -1.6, 0.18];
+    R = [-0.9, 0.4, -1.6, -0.18];
+  } else if (trade === "serve") {
+    lean = 0.24; headX = 0.32; headY = s * 0.06;
+    L = [-0.65, -0.28, -1.15, 0.08];
+    R = [-1.05 + s * 0.2, 0.22, -1.4, s2 * 0.28];
+  } else if (trade === "make") {
+    lean = 0.32; headX = 0.4; headY = s * 0.05;
+    L = [-0.85 + s2 * 0.12, -0.3, -1.35, 0.16];
+    R = [-0.95 + s * 0.16, 0.28, -1.3, -0.14];
+  } else if (trade === "cut") {
+    lean = 0.06; headX = 0.08; headY = 0.22 + s * 0.06;
+    L = [-0.55, -0.2, -0.9, 0.05];
+    R = [-1.25, 0.18, -0.55, s2 * 0.4];
+  } else if (trade === "watch") {
+    lean = 0.02; headX = 0.04; headY = s * 0.28;
+    L = [-0.4, -0.85, -2.2, 0.35];
+    R = [-0.35, 0.9, -2.15, -0.4];
+  } else {
+    lean = 0.16;
+    headX = 0.34 + s * 0.08;
+    L = [-1.05, -0.22, -1.1, 0.12 + s2 * 0.22];
+    R = [-0.95 + s * 0.28, 0.26, -1.0, -0.1];
+  }
+  if (waving) {
+    headY = ud.aimYaw;
+    headX = 0.02;
+    lean = 0.04;
+    torsoY = ud.aimYaw * 0.45;
+    const wave = Math.sin(now * 8);
+    R = [-1.45, 0.2, -0.4, wave * 0.45];
+    if (rig.mouth) {
+      const open = 1.15 + Math.max(0, wave) * 0.2;
+      rig.mouth.scale.y += (open - rig.mouth.scale.y) * w;
+    }
+  } else if (rig.mouth) {
+    rig.mouth.scale.y += (1 - rig.mouth.scale.y) * w;
+  }
+  rig.hip.position.y += (THIGH_L + SHIN_L + 0.04 - rig.hip.position.y) * w;
+  rig.hip.position.x += (s * 0.012 - rig.hip.position.x) * w;
+  rig.hip.rotation.x += (0.02 - rig.hip.rotation.x) * w;
+  rig.hip.rotation.z += (0 - rig.hip.rotation.z) * w;
+  rig.torso.rotation.x += (lean - rig.torso.rotation.x) * w;
+  rig.torso.rotation.y += (torsoY - rig.torso.rotation.y) * w;
+  rig.torso.rotation.z += (0 - rig.torso.rotation.z) * w;
+  rig.head.rotation.x += (headX - rig.head.rotation.x) * w;
+  rig.head.rotation.y += (headY - rig.head.rotation.y) * w;
+  rig.head.rotation.z += (0 - rig.head.rotation.z) * w;
+  rig.legL.pivot.rotation.x += (0 - rig.legL.pivot.rotation.x) * w;
+  rig.legR.pivot.rotation.x += (0 - rig.legR.pivot.rotation.x) * w;
+  rig.legL.knee.rotation.x += (0.04 - rig.legL.knee.rotation.x) * w;
+  rig.legR.knee.rotation.x += (0.04 - rig.legR.knee.rotation.x) * w;
+  rig.legL.ankle.rotation.x = -(rig.legL.pivot.rotation.x + rig.legL.knee.rotation.x);
+  rig.legR.ankle.rotation.x = -(rig.legR.pivot.rotation.x + rig.legR.knee.rotation.x);
+  poseToward(rig.armL, L[0], L[1], L[2], L[3], w);
+  poseToward(rig.armR, R[0], R[1], R[2], R[3], w);
+}
 (function dressRiderHeads() {
   const cache = new Map();
   function fadeOf(src) {
@@ -20057,10 +20664,9 @@ seatPavement();
   }
   people.forEach((p, n) => {
     const span = p.path.b - p.path.a;
-    const fig = addWalker(p.path, outfits[p.outfit], 320 + n, {
-      dir: p.dir, along: span * p.along, wait: p.wait
+    addWalker(p.path, outfits[p.outfit], 320 + n, {
+      dir: p.dir, along: span * p.along, wait: p.wait, speed: p.speed, inside: true
     });
-    if (fig) fig.userData.speed = p.speed;
   });
 })();
 function bakeWalk() {
@@ -21707,8 +22313,8 @@ function stepRoofKids(now) {
   }
   for (let i = 0; i < roofKids.length; i++) {
     const fig = roofKids[i];
-    fig.visible = show;
-    if (!show) continue;
+    fig.visible = show && !walkMode;
+    if (!fig.visible) continue;
     const ud = fig.userData;
     const home = ud.roof;
     const group = home.group;
@@ -22034,6 +22640,11 @@ function renderRoofReflection() {
     if (!walkers[wi].visible) continue;
     hiddenWalkers.push(walkers[wi]);
     walkers[wi].visible = false;
+  }
+  for (let wi = 0; wi < keepers.length; wi++) {
+    if (!keepers[wi].visible) continue;
+    hiddenWalkers.push(keepers[wi]);
+    keepers[wi].visible = false;
   }
   const shadows = renderer.shadowMap.needsUpdate;
   renderer.shadowMap.needsUpdate = false;
@@ -22820,7 +23431,7 @@ syncPace();
     uni.uFade.value = fade;
     uni.uBead.value = bead;
   });
-  walkers.forEach(fig => stepWalker(fig, now));
+  walkers.forEach(fig => { if (!fig.userData.inside) stepWalker(fig, now); });
   if (traffic.step) {
     const dt = Math.min(0.05, Math.max(0, now - (traffic.t || now)));
     traffic.t = now;
@@ -22861,6 +23472,9 @@ syncPace();
   if (walkMode) stepWalk(dt);
   else stepViewGlide(dt);
   holdCameraAboveFloor();
+  syncCityFolk(now);
+  syncKeepers(now);
+  for (let ki = 0; ki < keepers.length; ki++) stepKeeper(keepers[ki], now);
   sky.position.copy(camera.position);
   stepRainSound(now);
   if (rain.visible) {
