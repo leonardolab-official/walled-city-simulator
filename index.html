@@ -4199,7 +4199,8 @@ function faceDir(face) {
 }
 // One point on a lot face. "mass" is another building, or the well, or the shrine.
 // "void" is a lane. "court" is the temple yard. "outer" is a road outside the wall.
-// "margin" is a chamfer of open ground. "none" has nothing recorded in front.
+// "margin" is a chamfer of open ground. "none" is clear frontage that is not a
+// named lane: a gap or open ground. Shops use it. The sign pass still skips it.
 function probeFace(x, z, w, d, face, along) {
   const t = along < 0.012 ? 0.012 : along > 0.988 ? 0.988 : along;
   const origin = facePose(x, z, w, d, face, t, 0.06, 0);
@@ -4207,24 +4208,36 @@ function probeFace(x, z, w, d, face, along) {
   if (Math.hypot(origin.x - 57.75, origin.z - 74.25) < 2.2) return { kind: "mass" };
   if (Math.hypot(origin.x - 21.2, origin.z - 99) < 2.0) return { kind: "mass" };
   const dir = faceDir(face);
+  // The nearest other building along this ray, and the first named lane.
+  // A neighbour against the wall closes it. A neighbour across a gap a person
+  // can stand in does not: that stretch is still a shopfront.
+  let massAt = 99;
+  let lane = null;
   for (let s = 0.12; s <= 6.2; s += 0.28) {
     const px = origin.x + dir[0] * s;
     const pz = origin.z + dir[1] * s;
-    if (massCovers(px, pz, x, z, w, d)) return { kind: "mass" };
-    if (inTempleCourt(px, pz)) return { kind: "court", thick: 1.7 };
-    for (let i = 0; i < VOIDS.length; i++) {
-      const v = VOIDS[i];
-      if (v.court || v.notch) continue;
-      if (px > v.x && px < v.x2 && pz > v.z && pz < v.z2) {
-        // A block between this wall and a further lane is not an opening.
-        if (s > 3.8) return { kind: "mass" };
-        let thick = Math.min(v.x2 - v.x, v.z2 - v.z);
-        if (thick > 6) thick = 2.2;
-        if (v.link && thick > 1.55) thick = 1.55;
-        return { kind: "void", thick: thick };
+    if (massAt === 99 && massCovers(px, pz, x, z, w, d)) massAt = s;
+    if (!lane && inTempleCourt(px, pz)) lane = { kind: "court", thick: 1.7, s: s };
+    if (!lane) {
+      for (let i = 0; i < VOIDS.length; i++) {
+        const v = VOIDS[i];
+        if (v.court || v.notch) continue;
+        if (px > v.x && px < v.x2 && pz > v.z && pz < v.z2) {
+          let thick = Math.min(v.x2 - v.x, v.z2 - v.z);
+          if (thick > 6) thick = 2.2;
+          if (v.link && thick > 1.55) thick = 1.55;
+          lane = { kind: "void", thick: thick, s: s };
+          break;
+        }
       }
     }
+    if (massAt < 1.2) break;
   }
+  if (massAt < 1.2) return { kind: "mass" };
+  if (lane && lane.s < massAt && lane.s <= 3.8) return { kind: lane.kind, thick: lane.thick };
+  // The next building is across a gap, not against this wall. Keep the kind
+  // the sign pass already skips, and tell the shop the gap is narrow.
+  if (massAt < 99) return { kind: "none", thick: Math.max(0.9, massAt - 0.15) };
   if (face === "n" && z < 5.5) return { kind: "outer", thick: 7.5 };
   if (face === "e" && x + w > SITE_W - 5.5) return { kind: "outer", thick: 5.5 };
   if (face === "s" && z + d > SITE_D - 6) return { kind: "outer", thick: 6 };
@@ -4237,7 +4250,9 @@ function probeFace(x, z, w, d, face, along) {
     if (!cityContains(px, pz)) outside++;
   }
   if (outside >= 4) return { kind: "margin", thick: 4.2 };
-  return { kind: "none" };
+  // Open ground inside the wall, with no building on this ray. Same kind the
+  // sign pass skips, so the enamel boards stay where they were.
+  return { kind: "none", thick: lane ? lane.thick : 3.2 };
 }
 function openingClearance(x, z, w, d, face) {
   const hit = probeFace(x, z, w, d, face, 0.5);
@@ -4258,7 +4273,7 @@ function faceOpenRuns(x, z, w, d, face) {
   for (let i = 0; i <= n; i++) {
     const m = span * (i / n);
     const hit = probeFace(x, z, w, d, face, m / span);
-    const open = hit.kind === "void" || hit.kind === "court" || hit.kind === "outer" || hit.kind === "margin";
+    const open = hit.kind === "void" || hit.kind === "court" || hit.kind === "outer" || hit.kind === "margin" || hit.kind === "none";
     samples.push({ m: m, open: open, thick: open ? hit.thick : 0 });
   }
   const runs = [];
@@ -4396,7 +4411,9 @@ function flushShops() {
   const groups = {};
   for (let i = 0; i < shopQueue.length; i++) {
     const it = shopQueue[i];
-    const key = it.geo.uuid + "|" + it.mat.uuid;
+    // One batch per quadrant, same split as the props, so a view of one side
+    // does not draw the shops on the other three.
+    const key = it.geo.uuid + "|" + it.mat.uuid + "|" + blockQuad(it.x, it.z);
     let g = groups[key];
     if (!g) groups[key] = g = { geo: it.geo, mat: it.mat, items: [] };
     g.items.push(it);
@@ -4495,7 +4512,7 @@ function fitOpenShop(kind, put, openW, span, bay, face) {
   // 0.42 m deep. A good placed at along 0.3 and y 0.90 sits beside that top,
   // so the whole stack hangs in the room. These helpers put the bottom on the
   // top, and keep a row inside the top's width.
-  const roomD = Math.max(0.42, Math.min(1.62, (bay && bay.room) || 0.7));
+  const roomD = Math.min(1.62, Math.max(0.2, (bay && bay.room != null) ? bay.room : 0.7));
   const wall = -(roomD - 0.05);
   const frontTop = 0.88;
   const frontAlong = 0.62;
@@ -4888,20 +4905,18 @@ function noteLaneMouth(bay, face) {
     half: Math.max(0.34, span * 0.34)
   });
 }
-// A clinic front is one bay a person can use: a door near 0.86 m, a display
-// window beside it, and a fascia over that pair. A wider lot is wall. A bay
-// too narrow for both is a glazed door, not a window and a door forced past
-// the jambs.
+// A clinic front is a door and a display window filling the bay. The window
+// used to stop at 1.7 m, so a wide lot read as a thin shop beside a blank wall.
+// A bay too narrow for both is a glazed door, not a window and a door forced
+// past the jambs.
 function glassFront(openW) {
   const gap = 0.07;
   if (openW < 1.45) {
     const doorW = Math.min(0.92, Math.max(0.62, openW * 0.86));
     return { doorW: doorW, winW: 0, gap: 0, unit: doorW, glazedDoor: true };
   }
-  const doorW = Math.min(0.88, Math.max(0.74, openW * 0.28));
-  let winW = openW - doorW - gap;
-  if (winW > 1.7) winW = 1.7;
-  if (winW < 0.7) winW = Math.max(0.55, openW - doorW - gap);
+  const doorW = Math.min(0.88, Math.max(0.74, openW * 0.22));
+  const winW = Math.max(0.55, openW - doorW - gap);
   return { doorW: doorW, winW: winW, gap: gap, unit: doorW + gap + winW, glazedDoor: false };
 }
 // Open ground walls are inset 0.48 m. The shop used to be built on the lot
@@ -4911,7 +4926,6 @@ const SHOP_SEAT = 0.40;
 function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   const guard = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.5, 0.12, 0);
   if (massCovers(guard.x, guard.z, bay.x, bay.z, bay.w, bay.d)) return;
-  noteLaneMouth(bay, face);
   // The tenement leans on its north edge. Every board, light and step of this bay uses that same lean.
   // pin is the block centre. After the row anchors settle, the shop takes that block's shift.
   addShopMesh.az = lotZ == null ? bay.z : lotZ;
@@ -4924,6 +4938,27 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   if (kind === "door" || spec.workshop || spec.glass || kind === "water") variant = Math.floor(rng() * 3);
   else if (rng() > 0.84) variant = "shut";
   else variant = rng() > 0.5 ? 1 : 0;
+  // bay.room is the depth of the hole actually cut. A shop or a door with no
+  // hole is a frame on the bare wall. Drop it, and spend the same random draws
+  // the bay would have used so the shops further along the street stay put.
+  const room = Math.min(1.62, Math.max(0.2, bay.room == null ? 0.7 : bay.room));
+  const lined = room >= 0.34;
+  if (!lined) {
+    // A door spends no further draws: it returns before the awning and the crate.
+    if (kind !== "door") {
+      const pose = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.5, 0.2 - SHOP_SEAT, 1.23);
+      const hitsTemple = pose.x > TEMPLE_X - 0.3 && pose.x < TEMPLE_X + TEMPLE_W + 0.5 && pose.z > TEMPLE_Z + TEMPLE_D - 0.3 && pose.z < TEMPLE_Z + TEMPLE_D + 1.8;
+      const proj = hitsTemple ? 0 : Math.min(wide ? 0.62 : 0.36, Math.max(0, alley * 0.16));
+      if (spec.awning && proj >= 0.18 && variant !== "shut") {
+        const p = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.5, proj - SHOP_SEAT, 0);
+        if (!massCovers(p.x, p.z, bay.x, bay.z, bay.w, bay.d)) rng();
+      }
+      if (variant !== "shut") rng();
+    }
+    addShopMesh.pinX = addShopMesh.pinZ = null;
+    return;
+  }
+  noteLaneMouth(bay, face);
   const span = bay.span;
   let margin = 0.24;
   if (span - margin * 2 < 0.62) margin = Math.max(0.05, (span - 0.62) / 2);
@@ -4939,7 +4974,6 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     return !massCovers(p.x, p.z, bay.x, bay.z, bay.w, bay.d);
   }
   const open = variant !== "shut" && kind !== "door";
-  const room = Math.max(0.42, Math.min(1.62, bay.room || 0.7));
   const backFace = -(room - 0.05);
   const isDoor = kind === "door";
   // A household door is about a metre. Anything wider in the same bay is wall,
@@ -5001,9 +5035,16 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   // The bay.room depth is the recess plus the notch cut out of the ground
   // shell. Floor, walls and the back board fill that volume, so the opening
   // is a room you can look into rather than a picture on the wall.
-  const roomW = room > 0.7 && bay.roomW ? Math.min(bay.roomW - 0.04, openW + 0.16) : openW * 0.96;
+  // A door bay is often wider than the slot actually cut. Lining the whole
+  // bay put the floor and the side wall through the pier into the next shop.
+  const roomCenter = isDoor ? dMid : 0.5;
+  const roomW = isDoor
+    ? doorMouth * 0.92
+    : (room > 0.7 && bay.roomW ? Math.min(bay.roomW - 0.04, openW + 0.16) : openW * 0.96);
   const floorTop = 0.33;
   const floorBack = backFace + 0.03;
+  // Unlit, so the daylight and the alley lamps cannot lift it back to gray.
+  const lobbyBlack = shopMat("lobby-black", () => new THREE.MeshBasicMaterial({ color: 0x000000 }));
   const clinic = kind === "dentist" || kind === "doctor" || kind === "pharmacy" || kind === "bonesetter";
   const tiled = clinic || kind === "cafe" || kind === "grocery" || kind === "barber";
   // One 150 mm concrete step at the lot line. The tile is only the wearing
@@ -5011,28 +5052,33 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   const stepDepth = 0.16;
   const stepFront = -0.02;
   const stepBot = Math.max(streetFoot, floorTop - 0.15);
-  put(shopGeo.box, shopFinish.concrete, 0.5, stepFront - stepDepth * 0.5, (floorTop + stepBot) * 0.5, Math.min(roomW, openW * 0.98), floorTop - stepBot, stepDepth);
+  put(shopGeo.box, shopFinish.concrete, roomCenter, stepFront - stepDepth * 0.5, (floorTop + stepBot) * 0.5, Math.min(roomW, openW * 0.98), floorTop - stepBot, stepDepth);
+  if (lined) {
   const bodyFront = -0.14;
   const bodyD = Math.max(0.12, bodyFront - floorBack);
   const bodyBot = Math.min(0.06, streetFoot);
-  put(shopGeo.box, shopFinish.concrete, 0.5, (bodyFront + floorBack) * 0.5, (0.29 + bodyBot) * 0.5, roomW, Math.max(0.08, 0.29 - bodyBot), bodyD);
+  put(shopGeo.box, isDoor ? lobbyBlack : shopFinish.concrete, roomCenter, (bodyFront + floorBack) * 0.5, (0.29 + bodyBot) * 0.5, roomW, Math.max(0.08, 0.29 - bodyBot), bodyD);
   const tileD = Math.max(0.12, -0.16 - floorBack);
-  put(shopGeo.box, tiled ? shopFinish.shopTile : shopFinish.concrete, 0.5, (-0.16 + floorBack) * 0.5, floorTop - 0.02, roomW * 0.98, 0.04, tileD);
+  put(shopGeo.box, isDoor ? lobbyBlack : (tiled ? shopFinish.shopTile : shopFinish.concrete), roomCenter, (-0.16 + floorBack) * 0.5, floorTop - 0.02, roomW * 0.98, 0.04, tileD);
   const shallow = room < 0.8;
-  const ceilFront = shallow ? -0.16 : -0.42;
+  const ceilFront = isDoor ? -0.12 : (shallow ? -0.16 : -0.42);
   const ceilBack = backFace + 0.03;
   const ceilD = ceilFront - ceilBack;
-  if (ceilD > 0.12) put(shopGeo.box, shopFinish.concrete, 0.5, (ceilFront + ceilBack) * 0.5, 2.29, roomW, 0.26, ceilD);
-  const sideFront = shallow ? -0.14 : -0.5;
+  if (ceilD > 0.12) put(shopGeo.box, isDoor ? lobbyBlack : shopFinish.concrete, roomCenter, (ceilFront + ceilBack) * 0.5, 2.29, roomW, 0.26, ceilD);
+  const sideFront = isDoor ? -0.1 : (shallow ? -0.14 : -0.5);
   const sideBack = backFace + 0.04;
   if (sideFront - sideBack > 0.16) {
     const sideD = sideFront - sideBack;
     const sideOut = (sideFront + sideBack) * 0.5;
     const half = (roomW * 0.5 - 0.03) / span;
-    put(shopGeo.box, shopFinish.plaster, 0.5 - half, sideOut, 1.24, 0.06, 1.82, sideD);
-    put(shopGeo.box, shopFinish.plaster, 0.5 + half, sideOut, 1.24, 0.06, 1.82, sideD);
+    const sideMat = isDoor ? lobbyBlack : shopFinish.plaster;
+    put(shopGeo.box, sideMat, roomCenter - half, sideOut, 1.24, 0.06, 1.82, sideD);
+    put(shopGeo.box, sideMat, roomCenter + half, sideOut, 1.24, 0.06, 1.82, sideD);
   }
-  put(shopGeo.box, clinic ? shopFinish.shopTile : shopFinish.plaster, 0.5, backFace - 0.025, 1.24, roomW * 0.98, 1.82, 0.05);
+  // A door's back is the dark lobby, not this light plaster sheet. The sheet
+  // showed through the gate as a blank board.
+  if (!isDoor) put(shopGeo.box, clinic ? shopFinish.shopTile : shopFinish.plaster, roomCenter, backFace - 0.025, 1.24, roomW * 0.98, 1.82, 0.05);
+  }
   // Girard’s Tung Tau Tsuen Road facade and the 1987 alley pictures: a tong lau
   // bay, not a glass wall. The fascia is the full opening and 36 cm tall.
   // A clinic has a door and a framed window. A workshop keeps an open mouth
@@ -5060,13 +5106,14 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     if (spare > 0.18) {
       const spareMid = (d1 + (1 - inset)) * 0.5;
       const infillFront = -0.02;
-      const infillBack = backFace + 0.02;
+      // The spare width was never cut out of the shell. A panel carried back
+      // to the rear wall ran through that concrete into the shop next door.
+      const infillBack = -0.06;
       const infillD = infillFront - infillBack;
-      if (infillD > 0.08) {
+      if (infillD > 0.025) {
         put(shopGeo.box, shopFinish.plaster, spareMid, (infillFront + infillBack) * 0.5, 1.26, Math.max(0.08, spare - 0.04), 1.96, infillD);
       }
     }
-    const lobby = solidMat("lobby", 0x242220, 0.94, 0);
     const tread = 0.11;
     const rise = 0.16;
     const stepW = Math.max(0.42, doorMouth * 0.82);
@@ -5077,7 +5124,11 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
       put(shopGeo.box, shopFinish.concrete, dMid, out, top - rise * 0.5, stepW, rise, tread * 0.94);
     }
     const stairTop = base + rise * 3;
-    put(shopGeo.box, lobby, dMid, backFace + 0.05, (stairTop + 1.92) * 0.5, doorMouth * 0.88, Math.max(0.4, 1.92 - stairTop), 0.04);
+    // The closing plane sits at the back of the recess, not on the gate.
+    // Unlit black, so the opening falls away into a dim stair instead of a lit board.
+    const lobbyTop = 2.02;
+    const lobbyH = Math.max(0.4, lobbyTop - stairTop);
+    put(shopGeo.box, lobbyBlack, dMid, backFace + 0.02, stairTop + lobbyH * 0.5, doorMouth * 0.9, lobbyH, 0.04);
     // A pull on the jamb. The old meter plates sat in the opening with nothing behind them.
     put(shopGeo.box, shopFinish.metal, d1 - 0.04 / span, -0.06, 0.96, 0.016, 0.28, 0.016);
     const v = variant === 1 || variant === 2 ? variant : 0;
@@ -5167,7 +5218,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     putFoldedStack(put, span, inset + fold / (2 * span), 0.36, 1.9, gateV);
     if (spec.half && variant === 1) roller(0.36, 1.05, mouth * 0.96, inset + mouth / (2 * span));
   }
-  if (open && kind !== "mahjong" && kind !== "paikau") {
+  if (lined && open && kind !== "mahjong" && kind !== "paikau") {
     const cw = Math.min(1.15, Math.max(0.55, openW * 0.42));
     putIn(shopGeo.box, shopFinish.timber, 0.62, -0.42, 0.86, cw, 0.04, 0.42);
     putIn(shopGeo.box, shopFinish.timber, 0.62, -0.23, 0.60, cw, 0.48, 0.03);
@@ -5195,7 +5246,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     addShopMesh(shopGeo.box, awningMat(spec.awning, Math.floor(rng() * 3)), ap.x, ap.y, ap.z, ap.rot, Math.max(0.6, bay.span * 0.86), 0.045, proj);
     [0.28, 0.72].forEach(along => put(shopGeo.box, shopFinish.timber, along, proj * 0.5, 2.28, 0.035, 0.028, Math.max(0.12, proj)));
   }
-  if (spec.tube && variant !== "shut" && kind !== "door") {
+  if (lined && spec.tube && variant !== "shut" && kind !== "door") {
     // The tube stays inside the opening. One hung at the lot line read as a bar in the lane.
     const tubeMat = solidMat("tube-" + spec.tube.toString(16), spec.tube, 0.35, 0, spec.dim ? 0.22 : 0.48, spec.dim ? 0.55 : 0.95);
     const len = front ? Math.min(1.05, Math.max(0.5, front.unit * 0.62)) : Math.min(Math.max(0.62, openW * 0.42), 1.15);
@@ -5206,10 +5257,9 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
       put(shopGeo.box, shopFinish.metal, along, out, y + 0.022, len + 0.05, 0.014, 0.035);
       const tp = facePose(bay.x, bay.z, bay.w, bay.d, face, along, out + 0.01 - SHOP_SEAT, y);
       addShopMesh(shopGeo.box, tubeMat, tp.x, tp.y, tp.z, tp.rot, len, 0.02, 0.024);
-      const ceilFront = room < 0.8 ? -0.16 : -0.42;
       const housingTop = y + 0.029;
       const ceilBottom = 2.16;
-      if (out < ceilFront - 0.02 && ceilBottom > housingTop + 0.015) {
+      if (ceilBottom > housingTop + 0.01) {
         const drop = ceilBottom - housingTop;
         put(shopGeo.box, shopFinish.metal, along, out, housingTop + drop * 0.5, 0.012, drop, 0.012);
       }
@@ -5240,7 +5290,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   const potMat = solidMat("pot", 0x3c4042, 0.76, 0.14);
   const crateAlt = rng() > 0.5;
   const stoolCols = [0xa33a30, 0x24506a, 0x1e4a3a];
-  if (spec.hanging && variant !== "shut") {
+  if (lined && spec.hanging && variant !== "shut") {
     const railY = 1.78;
     const railD = 0.03;
     const railOut = backFace + railD * 0.5 - 0.008;
@@ -5270,13 +5320,15 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
       addShopMesh(shopGeo.stool, stoolMat, sp.x, sitY(sp.x, sp.z, 0), sp.z, 0, 1, 1, 1);
     });
   }
-  if ((kind === "grocery" || kind === "cafe" || kind === "pharmacy" || kind === "rice") && variant !== "shut") {
+  if (lined && (kind === "grocery" || kind === "cafe" || kind === "pharmacy" || kind === "rice") && variant !== "shut") {
     const lamp = solidMat("shrine", 0xc43a32, 0.4, 0, 0.18, 0.42);
     const lp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.22, backFace + 0.022 - SHOP_SEAT, 1.85);
     addShopMesh(shopGeo.box, lamp, lp.x, lp.y, lp.z, 0, 0.08, 0.08, 0.06);
   }
-  putIn.raw = put;
-  fitOpenShop(kind, putIn, openW, span, bay, face);
+  if (lined) {
+    putIn.raw = put;
+    fitOpenShop(kind, putIn, openW, span, bay, face);
+  }
   addShopMesh.pinX = addShopMesh.pinZ = null;
 }
 // Girard, Suddaby, City of Darkness: the stair is a slot about 0.8 m beside the
@@ -5670,7 +5722,8 @@ function shopRoomCuts(x, z, w, d, facePlans, openFaces) {
     fp.plans.forEach(p => {
       if (!p.bay) return;
       if (p.kind === "door" || notch <= 0) {
-        p.bay.room = 0.46;
+        // No slot yet. A 0.46 m room here was built inside the solid wall.
+        p.bay.room = 0.2;
         // The household door is seated onto the wall with the shops. A short
         // slot keeps the gate and the first steps in the opening.
         if (p.kind === "door" && notch >= 0.4) {
@@ -5680,8 +5733,9 @@ function shopRoomCuts(x, z, w, d, facePlans, openFaces) {
           let margin = 0.24;
           if (doorWidth - margin * 2 < 0.62) margin = Math.max(0.05, (doorWidth - 0.62) / 2);
           const mouth = Math.min(Math.max(0.55, doorWidth - margin * 2), 1.08);
-          const doorNotch = Math.min(0.55, notch);
-          if (mouth >= 0.55) cuts.push({ face: face, along0: doorAlong + margin, width: mouth, notch: doorNotch });
+          // Deep enough that the gate frames a recess, not a board on the jamb.
+          const doorNotch = Math.min(1.05, notch);
+          if (mouth >= 0.55) cuts.push({ face: face, along0: doorAlong + margin, width: mouth, notch: doorNotch, bay: p.bay });
         }
         return;
       }
@@ -5691,7 +5745,7 @@ function shopRoomCuts(x, z, w, d, facePlans, openFaces) {
       const pad = width > 1.15 ? 0.22 : 0.08;
       const cutW = width - pad * 2;
       if (cutW < 0.4) {
-        p.bay.room = 0.46;
+        p.bay.room = 0.2;
         return;
       }
       const cut = { face: face, along0: along0 + pad, width: cutW, notch: notch, bay: p.bay };
@@ -5784,24 +5838,112 @@ function makeFramedBlock(w, d, floors, floorH, openFaces, ox, oz, stairCut, step
         }
         rects = next;
       }
+      // Notches already taken, in the shell's own coordinates. A later shop
+      // stops at these instead of building its room through the party wall.
+      const holes = [];
+      function notchRect(face, along0, width, notch) {
+        const a0 = (face === "n" || face === "s") ? -w / 2 + along0 : -d / 2 + along0;
+        const a1 = a0 + width;
+        if (face === "n") return { x0: a0, x1: a1, z0: sz0, z1: sz0 + notch };
+        if (face === "s") return { x0: a0, x1: a1, z0: sz1 - notch, z1: sz1 };
+        if (face === "w") return { x0: sx0, x1: sx0 + notch, z0: a0, z1: a1 };
+        return { x0: sx1 - notch, x1: sx1, z0: a0, z1: a1 };
+      }
+      function subtractRect(a, b) {
+        const ix0 = Math.max(a.x0, b.x0), ix1 = Math.min(a.x1, b.x1);
+        const iz0 = Math.max(a.z0, b.z0), iz1 = Math.min(a.z1, b.z1);
+        if (ix1 - ix0 < 0.02 || iz1 - iz0 < 0.02) return [a];
+        const out = [];
+        if (ix0 - a.x0 >= 0.04) out.push({ x0: a.x0, x1: ix0, z0: a.z0, z1: a.z1 });
+        if (a.x1 - ix1 >= 0.04) out.push({ x0: ix1, x1: a.x1, z0: a.z0, z1: a.z1 });
+        if (iz0 - a.z0 >= 0.04) out.push({ x0: ix0, x1: ix1, z0: a.z0, z1: iz0 });
+        if (a.z1 - iz1 >= 0.04) out.push({ x0: ix0, x1: ix1, z0: iz1, z1: a.z1 });
+        return out;
+      }
+      function touchesMouth(face, r) {
+        if (face === "n") return r.z0 <= sz0 + 0.05;
+        if (face === "s") return r.z1 >= sz1 - 0.05;
+        if (face === "w") return r.x0 <= sx0 + 0.05;
+        return r.x1 >= sx1 - 0.05;
+      }
+      function measureHole(face, r) {
+        if (face === "n" || face === "s") {
+          return {
+            along0: r.x0 + w / 2,
+            width: r.x1 - r.x0,
+            notch: face === "n" ? r.z1 - sz0 : sz1 - r.z0
+          };
+        }
+        return {
+          along0: r.z0 + d / 2,
+          width: r.z1 - r.z0,
+          notch: face === "w" ? r.x1 - sx0 : sx1 - r.x0
+        };
+      }
       function applyCut(cut) {
         if (!cut || !(cut.notch > 0)) return;
-        const n = fitNotch(cut.face, cut.along0, cut.width, cut.notch);
-        const horiz = cut.face === "n" || cut.face === "s";
-        const origin = horiz ? -w / 2 + cut.along0 : -d / 2 + cut.along0;
-        const spanHit = horiz
-          ? Math.min(sx1, origin + cut.width) - Math.max(sx0, origin)
-          : Math.min(sz1, origin + cut.width) - Math.max(sz0, origin);
-        if (spanHit < 0.3) {
+        const n0 = fitNotch(cut.face, cut.along0, cut.width, cut.notch);
+        if (!(n0 > 0)) {
           cut.notch = 0;
-          if (cut.bay) cut.bay.room = 0.46;
+          if (cut.bay) cut.bay.room = 0.2;
           return;
         }
-        cut.notch = n;
-        if (cut.bay) cut.bay.room = n > 0.35 ? 0.48 + Math.max(0, n - SHOP_SEAT) - 0.06 : 0.46;
-        if (n <= 0) return;
-        notchRects(cut.face, cut.along0, cut.width, n);
-        applied.push({ face: cut.face, a0: cut.along0, a1: cut.along0 + cut.width, notch: n });
+        let parts = [notchRect(cut.face, cut.along0, cut.width, n0)];
+        const shell = parts[0];
+        shell.x0 = Math.max(shell.x0, sx0);
+        shell.x1 = Math.min(shell.x1, sx1);
+        shell.z0 = Math.max(shell.z0, sz0);
+        shell.z1 = Math.min(shell.z1, sz1);
+        if (shell.x1 - shell.x0 < 0.3 || shell.z1 - shell.z0 < 0.3) {
+          cut.notch = 0;
+          if (cut.bay) cut.bay.room = 0.2;
+          return;
+        }
+        for (let h = 0; h < holes.length; h++) {
+          const next = [];
+          for (let i = 0; i < parts.length; i++) {
+            const bits = subtractRect(parts[i], holes[h]);
+            for (let b = 0; b < bits.length; b++) next.push(bits[b]);
+          }
+          parts = next;
+        }
+        let best = null;
+        let bestA = 0;
+        for (let i = 0; i < parts.length; i++) {
+          const p = parts[i];
+          if (!touchesMouth(cut.face, p)) continue;
+          const area = (p.x1 - p.x0) * (p.z1 - p.z0);
+          if (area > bestA) { bestA = area; best = p; }
+        }
+        if (!best || bestA < 0.22) {
+          cut.notch = 0;
+          if (cut.bay) cut.bay.room = 0.2;
+          return;
+        }
+        const hole = measureHole(cut.face, best);
+        if (hole.width < 0.3 || hole.notch < 0.35) {
+          cut.notch = 0;
+          if (cut.bay) cut.bay.room = 0.2;
+          return;
+        }
+        const moved = Math.abs(hole.along0 - cut.along0) > 0.04 || hole.width < cut.width - 0.04;
+        cut.along0 = hole.along0;
+        cut.width = hole.width;
+        cut.notch = hole.notch;
+        if (cut.bay) {
+          cut.bay.room = hole.notch > 0.35 ? 0.48 + Math.max(0, hole.notch - SHOP_SEAT) - 0.06 : 0.2;
+          // The bay was wider than the hole left beside a neighbour. Sit the
+          // shop on the hole, or its counter and lining run through that wall.
+          if (moved) {
+            if (cut.face === "n" || cut.face === "s") { cut.bay.x = ox + hole.along0; cut.bay.w = hole.width; }
+            else { cut.bay.z = oz + hole.along0; cut.bay.d = hole.width; }
+            cut.bay.span = hole.width;
+            cut.bay.roomW = hole.width;
+          }
+        }
+        notchRects(cut.face, hole.along0, hole.width, hole.notch);
+        applied.push({ face: cut.face, a0: hole.along0, a1: hole.along0 + hole.width, notch: hole.notch });
+        holes.push(best);
       }
       if (stairCut) applyCut(stairCut);
       const cuts = shopCuts || [];
@@ -7422,10 +7564,19 @@ function dressAlleys() {
       return true;
     }
     function hangTube(list, y, along, run) {
-      const g = laneSpan(ns, ns ? cx : cz, along, thick, Math.max(0, run * 0.45 - 0.05));
+      // `run` is the lamp, along the lane. `y` is where its top meets the
+      // cover. The tube bites into the cover and sits in a metal channel,
+      // so it is part of that slab. The gap between the walls used to be
+      // the length, and the fitting was a white bar in open air.
+      const len = Math.max(0.08, run);
+      const g = laneSpan(ns, ns ? cx : cz, along, thick, Math.max(0, len * 0.45 - 0.05));
       if (!g || nearFitting(g.x, g.z)) return false;
-      if (ns) list.push({ x: g.x, y, z: g.z, az: g.az, sx: g.span, sy: 0.05, sz: 0.07 });
-      else list.push({ x: g.x, y, z: g.z, az: g.az, sx: 0.07, sy: 0.05, sz: g.span });
+      const yy = y + 0.012;
+      if (ns) list.push({ x: g.x, y: yy, z: g.z, az: g.az, sx: 0.07, sy: 0.05, sz: len });
+      else list.push({ x: g.x, y: yy, z: g.z, az: g.az, sx: len, sy: 0.05, sz: 0.07 });
+      const trayY = yy + 0.02;
+      if (ns) cross.zinc.push({ x: g.x, y: trayY, z: g.z, az: g.az, sx: 0.09, sy: 0.04, sz: len + 0.04 });
+      else cross.zinc.push({ x: g.x, y: trayY, z: g.z, az: g.az, sx: len + 0.04, sy: 0.04, sz: 0.09 });
       return true;
     }
     // A crossing wire sags. Each piece is measured across the same gap, so both
@@ -7517,7 +7668,6 @@ function dressAlleys() {
     function weaveCanopy(a0, a1) {
       const tight = thick < 2.45;
       const step = tight ? 0.42 : 1.25;
-      let hung = 0;
       for (let t = a0 + 0.15; t < a1 - 0.12; t += step) {
         const nStrand = tight ? 4 + (weave() * 4 | 0) : 2 + (weave() * 2 | 0);
         for (let s = 0; s < nStrand; s++) {
@@ -7528,12 +7678,9 @@ function dressAlleys() {
           const skew = (weave() - 0.5) * (tight ? 0.95 : 0.4);
           const roll = weave();
           const list = roll < 0.72 ? cross.cable : roll < 0.9 ? cross.loom : cross.cord;
-          if (!sagStrand(list, yWall, along, drop, gauge, skew)) continue;
-          hung++;
-          if (tight && hung % 64 === 0) {
-            const lamp = hung % 128 === 0 ? cross.warm : cross.tube;
-            hangTube(lamp, Math.min(2.72, Math.max(HEAD + 0.2, yWall - 0.04)), along, 0.12);
-          }
+          // The wires are the canopy. A bare tube at mid-span sat above the
+          // sag and read as a white bar with nothing holding it.
+          sagStrand(list, yWall, along, drop, gauge, skew);
         }
       }
       loomAlong(cross.cable, tight ? 2.58 : 3.02, a0, a1, -1);
@@ -7742,18 +7889,17 @@ function dressAlleys() {
           if (rng() > 0.55 && held) spanBox(cross.cable, yPipe - 0.1, t - 0.05, 0.022, 0.022);
         }
       } else if (!narrow && runLen > 4) {
+        // The old lamp stood off the face: the wide lane has no soffit to
+        // bite, and seating it still left the tube in the air. Keep the
+        // dice so the lane stays put, and draw nothing here.
         for (let t = start + 2.2; t < end - 2; t += 13 + rng() * 5) {
           const side = rng() > 0.5 ? 1 : -1;
           if (!wallHolds(side, t)) continue;
           const p = wallPos(side, 0.04, t);
-          const list = rng() < 0.5 ? cross.tube : rng() < 0.78 ? cross.warm : cross.green;
+          const roll = rng();
+          if (roll >= 0.5) rng();
           if (nearFitting(p.x, p.z)) continue;
-          list.push({
-            x: p.x, y: 3.02 + rng() * 0.18, z: p.z, az: p.z, wall: 1,
-            back: ns ? (side < 0 ? -1 : 1) : 0,
-            backZ: ns ? 0 : (side < 0 ? -1 : 1),
-            sx: ns ? 0.14 : 1.05, sy: 0.05, sz: ns ? 1.05 : 0.14
-          });
+          rng();
         }
       }
       // A third pass, on its own dice, so the covers and the first canopy stay
@@ -7928,8 +8074,17 @@ function dressAlleys() {
           const shift = (filth() > 0.5 ? 1 : -1) * Math.min(0.2, thick * 0.16);
           const y = HEAD + 0.26 + filth() * 0.22;
           const lamp = filth() < 0.38 ? cross.tube : filth() < 0.72 ? cross.warm : cross.green;
-          if (ns) lamp.push({ x: g.x + shift, y, z: t, az: g.az, sx: 0.055, sy: 0.04, sz: len });
-          else lamp.push({ x: t, y, z: g.z + shift, az: g.az, sx: len, sy: 0.04, sz: 0.055 });
+          // On the plaster, bitten in. A tube at mid-lane had no bracket.
+          const side = shift >= 0 ? 1 : -1;
+          const depth = 0.055;
+          const p = wallPos(side, 0.02, t);
+          const box = {
+            x: p.x, y, z: p.z, az: g.az, wall: 1,
+            hold: depth * 0.5 - 0.004, sy: 0.04
+          };
+          if (ns) { box.sx = depth; box.sz = len; }
+          else { box.sx = len; box.sz = depth; }
+          lamp.push(box);
         }
         let gateSide = filth() > 0.5 ? 1 : -1;
         let gt = start + 0.45;
@@ -8257,12 +8412,58 @@ function dressAlleys() {
     }
   }
   bits.paper = bits.paper.filter(box => !gateCoversMouth(box));
+  // A metre-lane lamp is a short tube on the plaster. The lot line is not
+  // that plaster: an open ground floor steps back, and a void edge can sit
+  // a metre clear of either wall. Snap each tube onto the solid it actually
+  // meets. One with nothing within reach is the floating bar, so it goes.
+  const lampWalls = [];
+  city.updateMatrixWorld(true);
+  for (let ci = 0; ci < city.children.length; ci++) {
+    const o = city.children[ci];
+    if (!o.isMesh || !o.geometry || !o.geometry.userData || o.geometry.userData.pack !== 1) continue;
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    const box3 = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld);
+    lampWalls.push({ mesh: o, box: box3 });
+  }
+  const lampRay = new THREE.Raycaster();
+  const lampOrigin = new THREE.Vector3();
+  const lampDir = new THREE.Vector3();
   [cross.tube, cross.warm, cross.green].forEach(list => {
-    list.forEach(box => {
-      if (!box.wall || !seatOnWall(box)) return;
-      if (box.back) box.x += box.back * 0.42;
-      if (box.backZ) box.z += box.backZ * 0.42;
-    });
+    for (let i = list.length - 1; i >= 0; i--) {
+      const box = list[i];
+      if (!box.wall) continue;
+      seatOnWall(box);
+      const intoX = Math.abs(box.sx) <= Math.abs(box.sz);
+      const axes = intoX ? [[1, 0], [-1, 0]] : [[0, 1], [0, -1]];
+      const near = [];
+      for (let w = 0; w < lampWalls.length; w++) {
+        const b = lampWalls[w].box;
+        if (box.x < b.min.x - 0.95 || box.x > b.max.x + 0.95) continue;
+        if (box.z < b.min.z - 0.95 || box.z > b.max.z + 0.95) continue;
+        if (box.y < b.min.y - 0.4 || box.y > b.max.y + 0.4) continue;
+        near.push(lampWalls[w].mesh);
+      }
+      let best = null;
+      let dirX = 0;
+      let dirZ = 0;
+      for (let a = 0; a < axes.length; a++) {
+        lampOrigin.set(box.x, box.y, box.z);
+        lampDir.set(axes[a][0], 0, axes[a][1]);
+        lampRay.set(lampOrigin, lampDir);
+        lampRay.far = 0.9;
+        const hits = near.length ? lampRay.intersectObjects(near, false) : [];
+        if (hits.length && (!best || hits[0].distance < best.distance)) {
+          best = hits[0];
+          dirX = axes[a][0];
+          dirZ = axes[a][1];
+        }
+      }
+      if (!best) { list.splice(i, 1); continue; }
+      const depth = intoX ? Math.abs(box.sx) : Math.abs(box.sz);
+      const bite = depth * 0.5 - 0.004;
+      box.x = best.point.x - dirX * bite;
+      box.z = best.point.z - dirZ * bite;
+    }
   });
   function bridgePipes(list) {
     const k = SHEAR_K;
@@ -10910,8 +11111,9 @@ label("labSzkung", 21.55, 5, 100.6, true);
 label("labBack", 95, 8, 36.75, true);
 // Eight standpipes are a count along the north front, not a mapped main.
 label("labPipes", 103, 18, -2.2, true);
-// Outer roads: Tung Tau Tsuen Road and Carpenter Road are the wide north and
-// south streets; Tung Tsing Road is the narrower road outside the east wall.
+// The vehicle road is Tung Tau Tsuen Road, along the north wall. Carpenter Road
+// and Tung Tsing Road name the south and east edges. They were not a second
+// carriageway in the 1987 photographs.
 label("labNorthRoad", 150, 8, -10, true);
 label("labEastRoad", 216, 8, 52, true);
 label("labSouthRoad", 48, 8, 127, true);
@@ -11008,8 +11210,9 @@ const ROAD_STREET = (function () {
 const roads = new THREE.Group();
 roads.userData.keepShear = true;
 scene.add(roads);
-// Tung Tau Tsuen Road to the north and Carpenter Road to the south.
-// A walking pavement sits against the wall; the carriageway is outside that.
+// One carriageway: Tung Tau Tsuen Road, north of the wall. The 1987 photographs
+// (Girard, Suddaby) put the buses, taxis, and the street lamps on that road.
+// The south edge is the shopping front, not a second vehicle road.
 const traffic = [];
 (function outerCarriageways() {
   function worn(seed, base, specks) {
@@ -11147,19 +11350,15 @@ const traffic = [];
     return mesh;
   }
   const x0 = -52, x1 = SITE_W + 52, xc = (x0 + x1) / 2, xw = x1 - x0;
-  // North: the walking strip is the ground itself. Kerb, then the carriageway.
+  // The walking strip against the wall is the ground itself. Kerb, then the carriageway.
   slab(xw, 0.16, 0.38, xc, 0.1, -3.05, kerbMat);
   slab(xw, 0.07, 12.4, xc, 0.05, -9.6, asphalt);
-  // South.
-  slab(xw, 0.16, 0.38, xc, 0.1, 123.05, kerbMat);
-  slab(xw, 0.07, 12.4, xc, 0.05, 129.6, asphalt);
   function dashes(z, xStart) {
     for (let x = xStart; x < x1 - 6; x += 9) {
       slab(3.4, 0.02, 0.16, x, 0.1, z, paint);
     }
   }
   dashes(-9.6, x0 + 6);
-  dashes(129.6, x0 + 8);
   // Bodies and glass share the opaque pass. A window is a solid pane, so the
   // cabin behind it is never drawn.
   function fadeSolid(mat) {
@@ -11313,6 +11512,10 @@ const traffic = [];
   const chrome = solid(0xd8dee6, 0.18, 0.86);
   const blackTrim = solid(0x16181a, 0.58, 0.14);
   const box = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
+  // Indexed, so a body can wear a different texture on each face.
+  const boxFaces = new THREE.BoxGeometry(1, 1, 1);
+  const tireCyl = new THREE.CylinderGeometry(1, 1, 1, 8);
+  tireCyl.rotateX(Math.PI / 2);
   const roundCache = new Map();
   function roundedBox(w, h, d, radius, seg) {
     const r = Math.max(0.001, Math.min(radius, w / 2, h / 2, d / 2));
@@ -11483,13 +11686,19 @@ const traffic = [];
       bucket.n += count;
     }
     function put(sx, sy, sz, x, y, z, mat, rot) {
-      const min = Math.min(sx, sy, sz);
-      const bevel = Math.min(0.04, min * 0.24);
-      if (bevel < 0.012) append(box, mat, x, y - axle, z, rot, [sx, sy, sz]);
-      else append(roundedBox(sx, sy, sz, bevel, 2), mat, x, y - axle, z, rot, null);
+      append(box, mat, x, y - axle, z, rot, [sx, sy, sz]);
     }
-    function soft(sx, sy, sz, x, y, z, mat, bevel, rot) {
-      append(roundedBox(sx, sy, sz, Math.min(bevel, sx / 2, sy / 2, sz / 2), 3), mat, x, y - axle, z, rot, null);
+    function soft(sx, sy, sz, x, y, z, mat) {
+      put(sx, sy, sz, x, y, z, mat);
+    }
+    // One solid box. mats is +X nose, -X tail, +Y roof, -Y belly, +Z right, -Z left.
+    function block(sx, sy, sz, x, y, z, mats) {
+      const mesh = new THREE.Mesh(boxFaces, mats);
+      mesh.scale.set(sx, sy, sz);
+      mesh.position.set(x, y - axle, z);
+      mesh.castShadow = false;
+      shell.add(mesh);
+      return mesh;
     }
     function stem(rad, lenY, x, y, z, mat, rot) {
       append(cyl, mat, x, y - axle, z, rot, [rad, lenY, rad]);
@@ -11508,6 +11717,7 @@ const traffic = [];
       });
       const skip = new Set(ride.tails.concat(ride.riders));
       if (ride.signMesh) skip.add(ride.signMesh);
+      if (ride.signFaces) for (let s = 0; s < ride.signFaces.length; s++) skip.add(ride.signFaces[s]);
       const wheels = new Set(ride.wheels);
       const groups = [];
       for (let gi = 0; gi < shell.children.length; gi++) {
@@ -11576,10 +11786,24 @@ const traffic = [];
       bakeDirect(w);
       ride.wheels.push(w);
     }
+    function wheelBox(x, z, radius, width) {
+      const w = new THREE.Group();
+      w.userData.radius = radius;
+      w.position.set(x, radius, z);
+      root.add(w);
+      const tire = new THREE.Mesh(tireCyl, rubber);
+      tire.scale.set(radius, radius, width);
+      w.add(tire);
+      const hub = new THREE.Mesh(tireCyl, steel);
+      hub.scale.set(radius * 0.42, radius * 0.42, width * 0.62);
+      w.add(hub);
+      bakeDirect(w);
+      ride.wheels.push(w);
+    }
     function dual(x, z, radius, width) {
       const s = Math.sign(z) || 1;
-      wheel(x, z, radius, width, false, false);
-      wheel(x, z + s * (width + 0.05), radius, width, false, true);
+      wheelBox(x, z, radius, width);
+      wheelBox(x, z + s * (width + 0.05), radius, width);
     }
     function arch(x, z, radius) {
       const side = Math.sign(z) || 1;
@@ -11658,112 +11882,214 @@ const traffic = [];
       append(cyl, mat, (x0 + x1) / 2, (y0 + y1) / 2 - axle, (z0 + z1) / 2, { x: e.x, y: e.y, z: e.z }, [rad, len, rad]);
     }
     return {
-      root: root, ride: ride, put: put, soft: soft, stem: stem, piece: piece, finish: finish,
-      wheel: wheel, dual: dual, arch: arch, head: head, rider: rider, steerAt: steerAt,
+      root: root, ride: ride, put: put, soft: soft, stem: stem, piece: piece, block: block, finish: finish,
+      wheel: wheel, wheelBox: wheelBox, dual: dual, arch: arch, head: head, rider: rider, steerAt: steerAt,
       lamp: lamp, pairLamps: pairLamps, plates: plates, blob: blob, mirror: mirror, bar: bar
     };
+  }
+  function smearSign(g, radiusPx, draw) {
+    const w = g.canvas.width, h = g.canvas.height;
+    const src = document.createElement("canvas");
+    src.width = w;
+    src.height = h;
+    draw(src.getContext("2d"), w, h);
+    g.save();
+    g.filter = "blur(" + radiusPx.toFixed(1) + "px)";
+    g.drawImage(src, 0, 0);
+    g.restore();
+  }
+  function minibusBoard(draw, w, h, opts) {
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    draw(c.getContext("2d"), w, h);
+    const tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 4;
+    tex.needsUpdate = true;
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex, color: 0xffffff,
+      roughness: opts && opts.rough != null ? opts.rough : 0.5,
+      metalness: opts && opts.metal || 0,
+      emissive: opts && opts.emissive || 0x000000,
+      emissiveIntensity: opts && opts.emI || 0,
+      emissiveMap: opts && opts.lit ? tex : null,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+    });
+    mat.userData.streetGrade = "ride";
+    fadeSolid(mat);
+    return mat;
+  }
+  function busBoard(draw, w, h, opts) {
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    draw(c.getContext("2d"), w, h);
+    const tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 4;
+    tex.generateMipmaps = false;
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex, color: 0xffffff,
+      roughness: opts && opts.rough != null ? opts.rough : 0.55,
+      metalness: opts && opts.metal || 0,
+      emissive: opts && opts.emissive || 0x000000,
+      emissiveIntensity: opts && opts.emI || 0,
+      emissiveMap: opts && opts.lit ? tex : null,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+    });
+    mat.userData.streetGrade = "ride";
+    fadeSolid(mat);
+    return mat;
+  }
+  const bodySkins = new Map();
+  function bodySkin(key, draw, rough) {
+    const hit = bodySkins.get(key);
+    if (hit) return hit;
+    const c = document.createElement("canvas");
+    c.width = 128;
+    c.height = 64;
+    draw(c.getContext("2d"), 128, 64);
+    const tex = new THREE.CanvasTexture(c);
+    tex.encoding = THREE.sRGBEncoding;
+    tex.anisotropy = 2;
+    tex.needsUpdate = true;
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex, color: 0xffffff, roughness: rough == null ? 0.62 : rough, metalness: 0.04
+    });
+    mat.userData.streetGrade = "ride";
+    fadeSolid(mat);
+    bodySkins.set(key, mat);
+    return mat;
+  }
+  function cssColor(mat) {
+    return "#" + mat.color.getHexString();
+  }
+  function glassPane(g, x, y, w, h) {
+    g.fillStyle = "#1a262c";
+    g.fillRect(x, y, w, h);
+    g.fillStyle = "rgba(214, 224, 228, 0.34)";
+    g.fillRect(x, y + h * 0.22, w, Math.max(2, h * 0.14));
+  }
+  function doorSide(g, w, h, body) {
+    g.fillStyle = body;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = "rgba(0,0,0,0.38)";
+    g.fillRect(w * 0.34, h * 0.1, 2, h * 0.8);
+    g.fillRect(w * 0.67, h * 0.1, 2, h * 0.8);
+    g.fillStyle = "#d5dbe0";
+    g.fillRect(w * 0.28, h * 0.5, w * 0.045, 3);
+    g.fillRect(w * 0.6, h * 0.5, w * 0.045, 3);
+  }
+  function sideRow(g, w, h, body, n, top, tall, belt, skirt) {
+    g.fillStyle = body;
+    g.fillRect(0, 0, w, h);
+    if (skirt) {
+      g.fillStyle = skirt;
+      g.fillRect(0, h * (1 - skirt.h), w, h * skirt.h);
+    }
+    if (belt) {
+      g.fillStyle = belt.color;
+      g.fillRect(0, h * belt.y, w, h * belt.h);
+    }
+    const y0 = h * top;
+    const hh = h * tall;
+    const gap = w * 0.04;
+    const pane = (w - gap * 2) / n;
+    for (let i = 0; i < n; i++) glassPane(g, gap + i * pane + pane * 0.1, y0, pane * 0.8, hh);
+  }
+  function noseFace(g, w, h, body, screenTop, screenH, grille, stripe) {
+    g.fillStyle = body;
+    g.fillRect(0, 0, w, h);
+    if (screenH > 0) glassPane(g, w * 0.1, h * screenTop, w * 0.8, h * screenH);
+    if (stripe) {
+      g.fillStyle = stripe;
+      g.fillRect(0, h * 0.46, w, h * 0.08);
+    }
+    if (grille) {
+      g.fillStyle = "#141618";
+      g.fillRect(w * 0.2, h * 0.52, w * 0.6, h * 0.24);
+      g.strokeStyle = "#a4aaae";
+      g.lineWidth = 2;
+      for (let i = 1; i <= 3; i++) {
+        const y = h * 0.52 + h * 0.24 * i / 4;
+        g.beginPath();
+        g.moveTo(w * 0.24, y);
+        g.lineTo(w * 0.76, y);
+        g.stroke();
+      }
+    }
+    g.fillStyle = "#3a3c3e";
+    g.fillRect(0, h * 0.84, w, h * 0.16);
+  }
+  function tailFace(g, w, h, body, stripe) {
+    g.fillStyle = body;
+    g.fillRect(0, 0, w, h);
+    glassPane(g, w * 0.18, h * 0.16, w * 0.64, h * 0.34);
+    if (stripe) {
+      g.fillStyle = stripe;
+      g.fillRect(0, h * 0.46, w, h * 0.08);
+    }
+    g.fillStyle = "#3a3c3e";
+    g.fillRect(0, h * 0.82, w, h * 0.18);
+  }
+  function panelSide(g, w, h, body) {
+    g.fillStyle = body;
+    g.fillRect(0, 0, w, h);
+    g.strokeStyle = "rgba(20,16,12,0.35)";
+    g.lineWidth = 2;
+    g.strokeRect(w * 0.06, h * 0.14, w * 0.4, h * 0.68);
+    g.strokeRect(w * 0.52, h * 0.14, w * 0.4, h * 0.68);
+  }
+  function plankFace(g, w, h, base) {
+    g.fillStyle = base;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = "rgba(30,20,12,0.22)";
+    for (let i = 1; i < 6; i++) g.fillRect(0, h * i / 6, w, 2);
+  }
+  function glowPair(r, x, y, z, mat, h, w, tail) {
+    const a = r.piece(0.05, h, w, x, y, z, mat, 3);
+    const b = r.piece(0.05, h, w, x, y, -z, mat, 3);
+    if (tail) r.ride.tails.push(a, b);
   }
   function sedan(paint, opt) {
     const taxi = opt && opt.taxi;
     const r = rig(taxi ? 4.85 : 4.45, 0.33);
-    const p = r.put;
-    const roofPaint = taxi ? taxiRoof : (opt && opt.vinyl ? blackTrim : paint);
-    const frameMat = taxi ? blackTrim : paint;
-    // Square 1980s three-box. The tub runs up to the belt, so the doors are
-    // bodywork and the glass sits in the opening above them.
-    r.soft(4.05, 0.62, 1.58, 0, 0.64, 0, paint, 0.05);
-    r.soft(1.35, 0.08, 1.42, 1.15, 0.98, 0, paint, 0.02, { z: -0.06 });
-    r.soft(1.05, 0.07, 1.4, -1.28, 0.96, 0, paint, 0.02, { z: 0.05 });
-    r.soft(1.62, 0.1, 1.42, 0.02, 1.38, 0, roofPaint, 0.06);
-    [[0.78, 0.7], [0.02, 0.7], [-0.74, 0.7]].forEach(pair => {
-      p(0.07, 0.46, 0.07, pair[0], 1.16, pair[1], frameMat);
-      p(0.07, 0.46, 0.07, pair[0], 1.16, -pair[1], frameMat);
+    const roofMat = taxi ? taxiRoof : (opt && opt.vinyl ? blackTrim : paint);
+    const body = cssColor(paint);
+    const key = (taxi ? "taxi:" : "car:") + body + ":" + cssColor(roofMat);
+    const side = bodySkin(key + ":door", (g, w, h) => doorSide(g, w, h, body));
+    const nose = bodySkin(key + ":nose", (g, w, h) => noseFace(g, w, h, body, 0, 0, true, null));
+    const tail = bodySkin(key + ":tail", (g, w, h) => tailFace(g, w, h, body, null));
+    const cabSide = bodySkin(key + ":cab", (g, w, h) => sideRow(g, w, h, body, 2, 0.1, 0.68, null, null));
+    const screen = bodySkin(key + ":screen", (g, w, h) => noseFace(g, w, h, body, 0.06, 0.76, false, null));
+    const back = bodySkin(key + ":back", (g, w, h) => {
+      g.fillStyle = body;
+      g.fillRect(0, 0, w, h);
+      glassPane(g, w * 0.12, h * 0.14, w * 0.76, h * 0.62);
     });
-    p(0.22, 0.42, 0.08, -0.7, 1.16, 0.7, frameMat);
-    p(0.22, 0.42, 0.08, -0.7, 1.16, -0.7, frameMat);
-    p(1.45, 0.05, 0.07, 0.02, 1.32, 0.68, frameMat);
-    p(1.45, 0.05, 0.07, 0.02, 1.32, -0.68, frameMat);
-    p(3.3, 0.025, 0.02, 0, 0.9, 0.8, chrome);
-    p(3.3, 0.025, 0.02, 0, 0.9, -0.8, chrome);
+    // Solid tub and a solid cabin. The glass is painted on the cabin, not an opening.
+    r.block(4.2, 0.72, 1.68, 0, 0.68, 0, [nose, tail, paint, blackTrim, side, side]);
+    r.block(2.05, 0.5, 1.48, 0.1, 1.16, 0, [screen, back, roofMat, paint, cabSide, cabSide]);
+    glowPair(r, 2.12, 0.62, 0.52, headMat, 0.12, 0.28, false);
+    glowPair(r, -2.12, 0.58, 0.52, tailOff, 0.14, 0.26, true);
+    r.plates(2.14, -2.14, taxi ? 0.4 : 0.34);
+    r.wheelBox(1.32, 0.9, 0.33, 0.2);
+    r.wheelBox(1.32, -0.9, 0.33, 0.2);
+    r.wheelBox(-1.32, 0.9, 0.33, 0.2);
+    r.wheelBox(-1.32, -0.9, 0.33, 0.2);
+    r.blob(1.7);
     if (taxi) {
-      p(3.15, 0.012, 0.012, 0, 0.86, 0.805, blackTrim);
-      p(3.15, 0.012, 0.012, 0, 0.86, -0.805, blackTrim);
-    }
-    p(0.1, 0.14, 1.62, 2.08, 0.38, 0, chrome);
-    p(0.045, 0.06, 1.4, 2.1, 0.38, 0, blackTrim);
-    p(0.09, 0.13, 1.56, -2.08, 0.4, 0, chrome);
-    p(0.04, 0.05, 1.32, -2.1, 0.4, 0, blackTrim);
-    // A Crown taxi wears a wide slatted grille and rectangular lamps. A private car stays narrower.
-    const grilleH = taxi ? 0.32 : 0.28;
-    const grilleW = taxi ? 0.86 : 0.72;
-    const grilleY = taxi ? 0.62 : 0.7;
-    p(0.06, grilleH, grilleW, 2.06, grilleY, 0, grilleMat);
-    if (taxi) {
-      for (let i = 0; i < 4; i++) p(0.02, 0.012, grilleW * 0.82, 2.09, 0.52 + i * 0.065, 0, chrome);
-    } else {
-      const slats = 5;
-      for (let i = 0; i < slats; i++) p(0.03, grilleH * 0.78, 0.02, 2.08, grilleY, -grilleW * 0.38 + i * (grilleW * 0.76 / (slats - 1)), chrome);
-    }
-    p(0.04, 0.08, 0.1, 2.09, grilleY + 0.02, 0, chrome);
-    if (taxi) {
-      p(0.04, 0.14, 0.4, 2.06, 0.64, 0.64, chrome);
-      p(0.04, 0.14, 0.4, 2.06, 0.64, -0.64, chrome);
-      r.piece(0.03, 0.09, 0.32, 2.1, 0.64, 0.64, headMat, 3);
-      r.piece(0.03, 0.09, 0.32, 2.1, 0.64, -0.64, headMat, 3);
-      r.piece(0.03, 0.08, 0.1, 2.1, 0.64, 0.9, markerMat, 3);
-      r.piece(0.03, 0.08, 0.1, 2.1, 0.64, -0.9, markerMat, 3);
-    } else {
-      p(0.05, 0.14, 0.32, 2.07, 0.68, 0.58, chrome);
-      p(0.05, 0.14, 0.32, 2.07, 0.68, -0.58, chrome);
-      r.piece(0.03, 0.1, 0.24, 2.1, 0.68, 0.58, headMat, 3);
-      r.piece(0.03, 0.1, 0.24, 2.1, 0.68, -0.58, headMat, 3);
-      r.lamp(0.045, 0.07, 2.1, 0.56, 0.74, markerMat, false);
-      r.lamp(0.045, 0.07, 2.1, 0.56, -0.74, markerMat, false);
-    }
-    r.piece(0.035, 0.1, 0.16, -2.1, 0.72, 0.58, markerMat, 3);
-    r.piece(0.035, 0.1, 0.16, -2.1, 0.72, -0.58, markerMat, 3);
-    const t1 = r.piece(0.04, 0.14, 0.22, -2.1, 0.54, 0.56, tailOff, 3);
-    const t2 = r.piece(0.04, 0.14, 0.22, -2.1, 0.54, -0.56, tailOff, 3);
-    r.ride.tails.push(t1, t2);
-    r.plates(2.12, -2.12, taxi ? 0.4 : 0.32);
-    const wind = r.piece(0.035, 0.42, 1.22, 0.78, 1.14, 0, glass, 2);
-    wind.rotation.z = 0.38;
-    const rear = r.piece(0.035, 0.36, 1.16, -0.72, 1.14, 0, glass, 2);
-    rear.rotation.z = -0.32;
-    r.piece(0.58, 0.3, 0.025, 0.4, 1.14, 0.75, glass, 2);
-    r.piece(0.5, 0.28, 0.025, -0.28, 1.14, 0.75, glass, 2);
-    r.piece(0.58, 0.3, 0.025, 0.4, 1.14, -0.75, glass, 2);
-    r.piece(0.5, 0.28, 0.025, -0.28, 1.14, -0.75, glass, 2);
-    [0.42, -0.32].forEach(x => {
-      p(0.07, 0.025, 0.02, x, 0.78, 0.8, chrome);
-      p(0.07, 0.025, 0.02, x, 0.78, -0.8, chrome);
-    });
-    r.mirror(0.7, 1.12, 0.74);
-    r.mirror(0.7, 1.12, -0.74);
-    p(0.016, 0.28, 0.012, 0.95, 1.16, 0.2, blackTrim, { z: -0.5 });
-    p(0.016, 0.28, 0.012, 0.95, 1.16, -0.18, blackTrim, { z: -0.5 });
-    r.stem(0.006, 0.42, 1.2, 1.02, -0.55, steel, { z: 0.55 });
-    if (taxi) {
-      const sign = new THREE.Mesh(roundedBox(0.56, 0.13, 0.22, 0.03, 2), opt.forHire ? signOn : signOff);
-      sign.position.set(0.32, 1.5 - 0.33, 0);
+      const sign = new THREE.Mesh(box, opt.forHire ? signOn : signOff);
+      sign.scale.set(0.56, 0.12, 0.22);
+      sign.position.set(0.28, 1.5 - 0.33, 0);
       sign.renderOrder = 3;
       r.ride.shell.add(sign);
       r.ride.signMesh = sign;
       r.ride.forHire = !!opt.forHire;
       r.ride.hireT = 14 + Math.random() * 18;
       r.ride.cruise = 9.1;
-    } else r.ride.cruise = 8.4;
-    r.arch(1.28, 0.8, 0.33);
-    r.arch(1.28, -0.8, 0.33);
-    r.arch(-1.32, 0.8, 0.33);
-    r.arch(-1.32, -0.8, 0.33);
-    r.wheel(1.28, 0.86, 0.33, 0.18, false);
-    r.wheel(1.28, -0.86, 0.33, 0.18, false);
-    r.wheel(-1.32, 0.86, 0.33, 0.18, false);
-    r.wheel(-1.32, -0.86, 0.33, 0.18, false);
-    r.blob(1.7);
-    r.finish();
-    if (taxi) {
       if (!sedan.taxiBoards) {
         function taxiBoard(draw, w, h, opts) {
           const c = document.createElement("canvas");
@@ -11839,57 +12165,30 @@ const traffic = [];
         r.ride.shell.add(mesh);
         return mesh;
       }
-      board(0.34, 0.2, 0.4, 0.74, 0.84, boards.door, 0);
-      board(0.34, 0.2, 0.4, 0.74, -0.84, boards.door, Math.PI);
+      board(0.42, 0.22, 0.35, 0.78, 0.86, boards.door, 0);
+      board(0.42, 0.22, 0.35, 0.78, -0.86, boards.door, Math.PI);
       board(0.36, 0.11, 2.16, 0.4, 0, boards.plate, Math.PI / 2);
       const faceMat = opt.forHire ? boards.signOn : boards.signOff;
       const faces = [
-        board(0.48, 0.1, 0.32, 1.5, 0.125, faceMat, 0),
-        board(0.48, 0.1, 0.32, 1.5, -0.125, faceMat, Math.PI)
+        board(0.48, 0.1, 0.28, 1.5, 0.125, faceMat, 0),
+        board(0.48, 0.1, 0.28, 1.5, -0.125, faceMat, Math.PI)
       ];
       r.ride.signFaces = faces;
       r.ride.signFaceOn = boards.signOn;
       r.ride.signFaceOff = boards.signOff;
-    }
+    } else r.ride.cruise = 8.4;
+    r.finish();
     return r;
-  }
-  // A few centimetres of smear on the sign face. Wide enough that a route
-  // and a place name stay a blind, and not so wide that the board goes blank.
-  function smearSign(g, radiusPx, draw) {
-    const w = g.canvas.width, h = g.canvas.height;
-    const src = document.createElement("canvas");
-    src.width = w;
-    src.height = h;
-    draw(src.getContext("2d"), w, h);
-    g.save();
-    g.filter = "blur(" + radiusPx.toFixed(1) + "px)";
-    g.drawImage(src, 0, 0);
-    g.restore();
-  }
-  function minibusBoard(draw, w, h, opts) {
-    const c = document.createElement("canvas");
-    c.width = w;
-    c.height = h;
-    draw(c.getContext("2d"), w, h);
-    const tex = new THREE.CanvasTexture(c);
-    tex.anisotropy = 4;
-    tex.needsUpdate = true;
-    const mat = new THREE.MeshStandardMaterial({
-      map: tex, color: 0xffffff,
-      roughness: opts && opts.rough != null ? opts.rough : 0.5,
-      metalness: opts && opts.metal || 0,
-      emissive: opts && opts.emissive || 0x000000,
-      emissiveIntensity: opts && opts.emI || 0,
-      emissiveMap: opts && opts.lit ? tex : null,
-      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
-    });
-    mat.userData.streetGrade = "ride";
-    fadeSolid(mat);
-    return mat;
   }
   function minibus() {
     const r = rig(7.05, 0.4);
-    const p = r.put;
+    const body = cssColor(miniCream);
+    const red = cssColor(busRed);
+    const belt = { color: red, y: 0.55, h: 0.07 };
+    const side = bodySkin("mini:side", (g, w, h) => sideRow(g, w, h, body, 5, 0.16, 0.34, belt, null));
+    const nose = bodySkin("mini:nose", (g, w, h) => noseFace(g, w, h, body, 0.08, 0.34, true, red));
+    const tail = bodySkin("mini:tail", (g, w, h) => tailFace(g, w, h, body, red));
+    r.block(6.4, 1.9, 2.04, -0.02, 1.36, 0, [nose, tail, miniCream, blackTrim, side, side]);
     if (!minibus.boards) {
       minibus.boards = {
         plb: minibusBoard((g, w, h) => {
@@ -11947,69 +12246,18 @@ const traffic = [];
       mesh.renderOrder = 4;
       r.ride.shell.add(mesh);
     }
-    // Cream Coaster. The red is a belt on the sides and across the nose, not the body.
-    r.soft(6.2, 0.74, 2.02, -0.08, 0.86, 0, miniCream, 0.06);
-    r.soft(6.35, 0.26, 2.04, -0.02, 2.18, 0, miniCream, 0.11);
-    r.soft(0.36, 1.78, 1.98, 3.16, 1.4, 0, miniCream, 0.08);
-    r.soft(0.32, 1.7, 1.94, -3.28, 1.42, 0, miniCream, 0.06);
-    p(6.35, 0.12, 0.04, -0.02, 1.22, 1.025, busRed);
-    p(6.35, 0.12, 0.04, -0.02, 1.22, -1.025, busRed);
-    r.piece(0.028, 0.12, 1.62, 3.36, 1.22, 0, busRed, 1);
-    r.piece(0.028, 0.12, 1.58, -3.46, 1.22, 0, busRed, 1);
-    const pitches = [-2.4, -1.4, -0.4, 0.6, 1.6, 2.5];
-    pitches.forEach((x, i) => {
-      p(0.07, 0.7, 0.045, x, 1.66, 1.04, blackTrim);
-      p(0.07, 0.7, 0.045, x, 1.66, -1.04, blackTrim);
-      if (i < pitches.length - 1 && x < 1.7) {
-        r.piece(0.78, 0.58, 0.03, x + 0.5, 1.66, 1.045, sideGlass, 2);
-        r.piece(0.78, 0.58, 0.03, x + 0.5, 1.66, -1.045, sideGlass, 2);
-      }
-    });
-    p(5.35, 0.035, 0.02, -0.05, 1.96, 1.05, blackTrim);
-    p(5.35, 0.035, 0.02, -0.05, 1.36, 1.05, blackTrim);
-    p(5.35, 0.035, 0.02, -0.05, 1.96, -1.05, blackTrim);
-    p(5.35, 0.035, 0.02, -0.05, 1.36, -1.05, blackTrim);
-    board(1.15, 0.1, -0.05, 1.22, 1.06, boards.plb, 0);
-    board(1.15, 0.1, -0.05, 1.22, -1.06, boards.plb, Math.PI);
-    board(0.26, 0.22, 0.78, 1.24, -1.06, boards.route, Math.PI);
-    p(0.08, 0.16, 1.95, 3.42, 0.48, 0, chrome);
-    p(0.05, 0.07, 1.7, 3.44, 0.48, 0, blackTrim);
-    p(0.08, 0.14, 1.9, -3.42, 0.52, 0, chrome);
-    r.plates(3.46, -3.46, 0.34);
-    const frame = r.piece(0.03, 0.74, 1.86, 3.35, 1.6, 0, blackTrim, 1);
-    frame.rotation.z = -0.08;
-    const wind = r.piece(0.04, 0.62, 1.7, 3.39, 1.6, 0, glass, 2);
-    wind.rotation.z = -0.08;
-    r.piece(0.03, 0.66, 1.58, -3.44, 1.62, 0, blackTrim, 1);
-    r.piece(0.04, 0.55, 1.45, -3.48, 1.62, 0, glass, 2);
-    p(0.12, 0.2, 1.5, 3.32, 2.04, 0, miniCream);
-    // 小牌箱: a short box on the brow, not a full-width blind.
-    p(0.12, 0.2, 0.58, 3.4, 2.12, 0, blackTrim);
-    board(0.5, 0.15, 3.47, 2.12, 0, boards.dest, -Math.PI / 2);
-    for (let i = 0; i < 4; i++) p(0.025, 0.016, 0.36, 3.4, 0.9 - i * 0.028, 0, grilleMat);
-    board(0.52, 0.08, 3.43, 1.04, 0, boards.badge, -Math.PI / 2);
-    r.pairLamps(3.42, 0.76, 0.68, headMat, true, 0.18);
-    r.lamp(0.05, 0.08, 3.42, 0.62, 0.9, markerMat, false);
-    r.lamp(0.05, 0.08, 3.42, 0.62, -0.9, markerMat, false);
-    r.pairLamps(-3.48, 0.78, 0.72, tailOff, true, 0.15);
-    r.piece(0.05, 0.06, 0.08, 2.85, 2.26, 0.72, markerMat, 3);
-    r.piece(0.05, 0.06, 0.08, 2.85, 2.26, -0.72, markerMat, 3);
-    r.mirror(2.55, 1.72, 0.98);
-    r.mirror(2.55, 1.72, -0.98);
-    // Sliding door on the left, the kerb side of a right-hand-drive minibus.
-    p(0.02, 1.15, 0.025, 0.42, 1.22, -1.06, blackTrim);
-    p(0.02, 1.15, 0.025, -0.62, 1.22, -1.06, blackTrim);
-    p(1.06, 0.02, 0.025, -0.1, 0.66, -1.06, blackTrim);
-    p(1.06, 0.02, 0.025, -0.1, 1.78, -1.06, blackTrim);
-    p(0.1, 0.025, 0.02, 0.05, 1.05, -1.07, chrome);
-    r.arch(2.05, 1.08, 0.4);
-    r.arch(2.05, -1.08, 0.4);
-    r.arch(-2.15, 1.08, 0.4);
-    r.arch(-2.15, -1.08, 0.4);
-    r.wheel(2.05, 1.1, 0.4, 0.22, false);
-    r.wheel(2.05, -1.1, 0.4, 0.22, false);
-    r.wheel(-2.15, 1.1, 0.4, 0.22, false);
-    r.wheel(-2.15, -1.1, 0.4, 0.22, false);
+    board(1.7, 0.14, -0.1, 1.42, 1.05, boards.plb, 0);
+    board(1.7, 0.14, -0.1, 1.42, -1.05, boards.plb, Math.PI);
+    board(0.28, 0.24, 1.15, 1.48, -1.05, boards.route, Math.PI);
+    board(0.62, 0.2, 3.24, 2.05, 0, boards.dest, -Math.PI / 2);
+    board(0.55, 0.1, 3.24, 1.15, 0, boards.badge, -Math.PI / 2);
+    glowPair(r, 3.24, 0.72, 0.62, headMat, 0.16, 0.28, false);
+    glowPair(r, -3.24, 0.72, 0.62, tailOff, 0.16, 0.26, true);
+    r.plates(3.26, -3.26, 0.42);
+    r.wheelBox(2.05, 1.08, 0.4, 0.22);
+    r.wheelBox(2.05, -1.08, 0.4, 0.22);
+    r.wheelBox(-2.15, 1.08, 0.4, 0.22);
+    r.wheelBox(-2.15, -1.08, 0.4, 0.22);
     r.ride.cruise = 8.3;
     r.blob(2.05);
     r.finish();
@@ -12017,54 +12265,31 @@ const traffic = [];
   }
   function van(paint) {
     const r = rig(4.95, 0.34);
-    const p = r.put;
-    // High-roof van. The cargo and the cab share one roof, with a short nose ahead of the screen.
-    r.soft(2.4, 1.26, 1.86, -1.02, 1.14, 0, paint, 0.05);
-    r.soft(3.5, 0.12, 1.76, -0.42, 1.8, 0, paint, 0.05);
-    p(2.15, 0.028, 0.03, -1.0, 1.88, 0.38, steel);
-    p(2.15, 0.028, 0.03, -1.0, 1.88, -0.38, steel);
-    p(0.02, 0.82, 0.02, -0.45, 1.18, -0.94, blackTrim);
-    p(0.02, 0.82, 0.02, -1.4, 1.18, -0.94, blackTrim);
-    p(0.82, 0.02, 0.02, -0.92, 1.56, -0.94, blackTrim);
-    p(0.02, 0.88, 0.02, -2.18, 1.22, 0.3, blackTrim);
-    p(0.02, 0.88, 0.02, -2.18, 1.22, -0.3, blackTrim);
-    r.soft(1.5, 0.56, 1.82, 0.78, 0.72, 0, paint, 0.04);
-    [[0.22, 0.86], [1.32, 0.86]].forEach(pair => {
-      p(0.07, 0.74, 0.07, pair[0], 1.38, pair[1], paint);
-      p(0.07, 0.74, 0.07, pair[0], 1.38, -pair[1], paint);
+    const body = cssColor(paint);
+    const key = "van:" + body;
+    const cargoSide = bodySkin(key + ":panel", (g, w, h) => panelSide(g, w, h, body));
+    const cargoRear = bodySkin(key + ":rear", (g, w, h) => {
+      g.fillStyle = body;
+      g.fillRect(0, 0, w, h);
+      g.fillStyle = "rgba(0,0,0,0.4)";
+      g.fillRect(w * 0.5 - 1, h * 0.1, 2, h * 0.78);
+      glassPane(g, w * 0.16, h * 0.12, w * 0.24, h * 0.16);
+      glassPane(g, w * 0.6, h * 0.12, w * 0.24, h * 0.16);
+      g.fillStyle = "#3a3c3e";
+      g.fillRect(0, h * 0.88, w, h * 0.12);
     });
-    p(0.08, 0.08, 1.55, 1.36, 1.7, 0, paint);
-    r.soft(0.72, 0.14, 1.52, 1.68, 0.98, 0, paint, 0.03, { z: -0.1 });
-    p(0.08, 0.14, 1.66, 2.12, 0.42, 0, blackTrim);
-    p(0.08, 0.13, 1.7, -2.2, 0.48, 0, blackTrim);
-    r.plates(2.14, -2.22, 0.3);
-    const wind = r.piece(0.035, 0.5, 1.4, 1.38, 1.36, 0, glass, 2);
-    wind.rotation.z = 0.26;
-    r.piece(0.88, 0.42, 0.03, 0.78, 1.28, 0.92, sideGlass, 2);
-    r.piece(0.88, 0.42, 0.03, 0.78, 1.28, -0.92, sideGlass, 2);
-    r.piece(0.035, 0.42, 1.15, -2.22, 1.32, 0, glass, 2);
-    for (let i = 0; i < 4; i++) p(0.025, 0.014, 0.46, 2.06, 0.74 - i * 0.028, 0, grilleMat);
-    r.pairLamps(2.08, 0.62, 0.52, headMat, true, 0.14);
-    r.lamp(0.04, 0.07, 2.08, 0.58, 0.74, markerMat, false);
-    r.lamp(0.04, 0.07, 2.08, 0.58, -0.74, markerMat, false);
-    r.pairLamps(-2.18, 0.7, 0.6, tailOff, true, 0.13);
-    r.mirror(1.12, 1.38, 0.9);
-    r.mirror(1.12, 1.38, -0.9);
-    // Rub rail and the sliding door of a Hiace-shaped van.
-    p(3.5, 0.045, 0.025, -0.35, 0.98, 0.95, blackTrim);
-    p(3.5, 0.045, 0.025, -0.35, 0.98, -0.95, blackTrim);
-    p(0.02, 0.95, 0.02, -0.2, 1.22, -0.96, blackTrim);
-    p(0.02, 0.95, 0.02, -1.15, 1.22, -0.96, blackTrim);
-    p(0.08, 0.025, 0.02, 0.85, 0.98, 0.94, chrome);
-    p(0.08, 0.025, 0.02, 0.85, 0.98, -0.94, chrome);
-    r.arch(1.32, 0.98, 0.34);
-    r.arch(1.32, -0.98, 0.34);
-    r.arch(-1.48, 0.98, 0.34);
-    r.arch(-1.48, -0.98, 0.34);
-    r.wheel(1.32, 1.0, 0.34, 0.18, false);
-    r.wheel(1.32, -1.0, 0.34, 0.18, false);
-    r.wheel(-1.48, 1.0, 0.34, 0.18, false);
-    r.wheel(-1.48, -1.0, 0.34, 0.18, false);
+    const cabSide = bodySkin(key + ":cab", (g, w, h) => sideRow(g, w, h, body, 1, 0.12, 0.46, null, null));
+    const screen = bodySkin(key + ":screen", (g, w, h) => noseFace(g, w, h, body, 0.08, 0.4, true, null));
+    const plain = bodySkin(key + ":plain", (g, w, h) => { g.fillStyle = body; g.fillRect(0, 0, w, h); });
+    r.block(2.7, 1.42, 1.86, -0.95, 1.16, 0, [plain, cargoRear, paint, blackTrim, cargoSide, cargoSide]);
+    r.block(1.65, 0.95, 1.72, 1.22, 1.05, 0, [screen, plain, paint, blackTrim, cabSide, cabSide]);
+    glowPair(r, 2.04, 0.62, 0.5, headMat, 0.12, 0.24, false);
+    glowPair(r, -2.32, 0.7, 0.55, tailOff, 0.14, 0.24, true);
+    r.plates(2.08, -2.34, 0.38);
+    r.wheelBox(1.35, 0.98, 0.34, 0.2);
+    r.wheelBox(1.35, -0.98, 0.34, 0.2);
+    r.wheelBox(-1.5, 0.98, 0.34, 0.2);
+    r.wheelBox(-1.5, -0.98, 0.34, 0.2);
     r.ride.cruise = 7.6;
     r.blob(1.9);
     r.finish();
@@ -12072,90 +12297,67 @@ const traffic = [];
   }
   function lorry(paint, covered) {
     const r = rig(6.5, 0.42);
-    const p = r.put;
-    r.soft(1.75, 0.7, 2.0, 1.85, 0.95, 0, paint, 0.05);
-    r.soft(1.5, 0.12, 1.9, 1.82, 1.95, 0, paint, 0.06);
-    [[2.55, 0.92], [1.15, 0.92]].forEach(pair => {
-      p(0.07, 0.82, 0.07, pair[0], 1.58, pair[1], paint);
-      p(0.07, 0.82, 0.07, pair[0], 1.58, -pair[1], paint);
+    const body = cssColor(paint);
+    const key = "lorry:" + body + (covered ? ":c" : ":o");
+    const cabSide = bodySkin(key + ":cab", (g, w, h) => sideRow(g, w, h, body, 1, 0.12, 0.42, null, null));
+    const screen = bodySkin(key + ":screen", (g, w, h) => noseFace(g, w, h, body, 0.08, 0.36, true, null));
+    const plain = bodySkin(key + ":plain", (g, w, h) => { g.fillStyle = body; g.fillRect(0, 0, w, h); });
+    const wood = cssColor(bedWood);
+    const bed = bodySkin("bed:" + wood, (g, w, h) => plankFace(g, w, h, wood));
+    const canvas = cssColor(canvasMat);
+    const tarp = bodySkin("tarp:" + canvas, (g, w, h) => {
+      g.fillStyle = canvas;
+      g.fillRect(0, 0, w, h);
+      g.strokeStyle = "rgba(20,24,18,0.35)";
+      g.lineWidth = 2;
+      g.beginPath();
+      g.moveTo(0, h * 0.35); g.lineTo(w, h * 0.35);
+      g.moveTo(0, h * 0.65); g.lineTo(w, h * 0.65);
+      g.stroke();
     });
-    p(1.15, 0.06, 0.08, 1.85, 1.88, 0.95, paint);
-    p(1.15, 0.06, 0.08, 1.85, 1.88, -0.95, paint);
-    p(0.06, 0.72, 1.72, 1.02, 1.55, 0, paint);
-    for (let i = 0; i < 7; i++) {
-      p(0.38, 0.07, 1.84, -2.45 + i * 0.42, 1.02, 0, i % 2 ? bedWood : crateDark);
+    r.block(1.85, 1.15, 2.0, 1.85, 1.15, 0, [screen, plain, paint, blackTrim, cabSide, cabSide]);
+    r.block(3.7, 0.28, 1.9, -1.0, 0.95, 0, [bed, bed, bedWood, blackTrim, bed, bed]);
+    if (covered) r.block(3.15, 0.7, 1.86, -1.15, 1.42, 0, [tarp, tarp, canvasMat, canvasMat, tarp, tarp]);
+    else {
+      r.block(0.7, 0.5, 0.7, -0.55, 1.32, 0.15, [crateMat, crateMat, crateMat, crateDark, crateMat, crateMat]);
+      r.block(0.6, 0.42, 0.55, -1.45, 1.28, -0.2, [crateDark, crateDark, crateDark, crateMat, crateDark, crateDark]);
+      r.block(0.55, 0.36, 0.5, -2.15, 1.26, 0.18, [crateMat, crateMat, crateDark, crateMat, crateMat, crateMat]);
     }
-    p(0.08, 0.36, 1.8, -2.7, 1.2, 0, bedWood);
-    if (covered) {
-      r.soft(3.05, 0.72, 1.96, -1.15, 1.46, 0, canvasMat, 0.1);
-      p(3.0, 0.04, 0.04, -1.15, 1.78, 0, blackTrim);
-    } else {
-      p(3.15, 0.08, 0.08, -1.15, 1.38, 0.9, bedWood);
-      p(3.15, 0.08, 0.08, -1.15, 1.38, -0.9, bedWood);
-      for (let i = 0; i < 6; i++) {
-        p(0.07, 0.32, 0.07, -2.4 + i * 0.52, 1.22, 0.9, bedWood);
-        p(0.07, 0.32, 0.07, -2.4 + i * 0.52, 1.22, -0.9, bedWood);
-      }
-      p(0.72, 0.55, 0.7, -0.4, 1.42, 0.15, crateMat);
-      p(0.55, 0.42, 0.55, -1.2, 1.34, -0.22, crateDark);
-      p(0.62, 0.5, 0.5, -1.9, 1.38, 0.22, crateMat);
-      p(0.4, 0.3, 0.4, -0.55, 1.85, 0.1, crateDark);
-    }
-    p(0.1, 0.18, 2.02, 2.75, 0.5, 0, chrome);
-    p(0.05, 0.08, 1.7, 2.78, 0.5, 0, blackTrim);
-    r.plates(2.78, -2.74, 0.38);
-    for (let i = 0; i < 4; i++) p(0.02, 0.03, 0.72, 2.8, 0.86 + i * 0.09, 0, grilleMat);
-    p(0.42, 0.05, 1.86, 2.52, 1.88, 0, blackTrim);
-    const wind = r.piece(0.04, 0.58, 1.72, 2.68, 1.5, 0, glass, 2);
-    wind.rotation.z = -0.06;
-    r.piece(0.62, 0.55, 0.03, 1.85, 1.58, 1.02, sideGlass, 2);
-    r.piece(0.62, 0.55, 0.03, 1.85, 1.58, -1.02, sideGlass, 2);
-    r.pairLamps(2.74, 0.7, 0.7, headMat, true, 0.18);
-    r.lamp(0.05, 0.09, 2.74, 0.68, 0.98, markerMat, false);
-    r.lamp(0.05, 0.09, 2.74, 0.68, -0.98, markerMat, false);
-    r.pairLamps(-2.72, 0.72, 0.78, tailOff, true, 0.16);
-    p(0.04, 0.32, 0.18, -1.7, 0.48, 0.95, blackTrim);
-    p(0.04, 0.32, 0.18, -1.7, 0.48, -0.95, blackTrim);
-    r.mirror(2.2, 1.65, 0.98);
-    r.mirror(2.2, 1.65, -0.98);
-    r.arch(1.7, 1.08, 0.42);
-    r.arch(1.7, -1.08, 0.42);
-    r.wheel(1.7, 1.1, 0.42, 0.22, false);
-    r.wheel(1.7, -1.1, 0.42, 0.22, false);
-    r.dual(-1.4, 0.9, 0.42, 0.18);
-    r.dual(-1.4, -0.9, 0.42, 0.18);
+    glowPair(r, 2.8, 0.72, 0.62, headMat, 0.14, 0.26, false);
+    glowPair(r, -2.85, 0.7, 0.7, tailOff, 0.14, 0.28, true);
+    r.plates(2.84, -2.88, 0.48);
+    r.wheelBox(1.7, 1.08, 0.42, 0.22);
+    r.wheelBox(1.7, -1.08, 0.42, 0.22);
+    r.dual(-1.45, 0.95, 0.42, 0.18);
+    r.dual(-1.45, -0.95, 0.42, 0.18);
     r.ride.cruise = 6.7;
     r.blob(2.1);
     r.finish();
     return r;
   }
-  function busBoard(draw, w, h, opts) {
-    const c = document.createElement("canvas");
-    c.width = w;
-    c.height = h;
-    draw(c.getContext("2d"), w, h);
-    const tex = new THREE.CanvasTexture(c);
-    tex.anisotropy = 4;
-    tex.generateMipmaps = false;
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.needsUpdate = true;
-    const mat = new THREE.MeshStandardMaterial({
-      map: tex, color: 0xffffff,
-      roughness: opts && opts.rough != null ? opts.rough : 0.55,
-      metalness: opts && opts.metal || 0,
-      emissive: opts && opts.emissive || 0x000000,
-      emissiveIntensity: opts && opts.emI || 0,
-      emissiveMap: opts && opts.lit ? tex : null,
-      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
-    });
-    mat.userData.streetGrade = "ride";
-    fadeSolid(mat);
-    return mat;
-  }
   function bus() {
     const r = rig(10.7, 0.48);
-    const p = r.put;
+    const cream = cssColor(kmbCream);
+    const orange = cssColor(kmbOrange);
+    const lowSidePaint = bodySkin("kmb:low", (g, w, h) => {
+      g.fillStyle = cream;
+      g.fillRect(0, 0, w, h);
+      g.fillStyle = orange;
+      g.fillRect(0, h * 0.76, w, h * 0.24);
+      const n = 6, top = 0.16, tall = 0.42;
+      const y0 = h * top, hh = h * tall, gap = w * 0.03, pane = (w - gap * 2) / n;
+      for (let i = 0; i < n; i++) glassPane(g, gap + i * pane + pane * 0.1, y0, pane * 0.8, hh);
+    });
+    const upSide = bodySkin("kmb:up", (g, w, h) => sideRow(g, w, h, cream, 6, 0.12, 0.62, null, null));
+    const nose = bodySkin("kmb:nose", (g, w, h) => noseFace(g, w, h, cream, 0.1, 0.32, true, null));
+    const tail = bodySkin("kmb:tail", (g, w, h) => tailFace(g, w, h, cream, null));
+    const upNose = bodySkin("kmb:unose", (g, w, h) => {
+      g.fillStyle = cream;
+      g.fillRect(0, 0, w, h);
+      glassPane(g, w * 0.12, h * 0.18, w * 0.76, h * 0.55);
+    });
+    r.block(9.7, 1.7, 2.46, -0.1, 1.28, 0, [nose, tail, kmbCream, blackTrim, lowSidePaint, lowSidePaint]);
+    r.block(9.15, 1.5, 2.28, -0.15, 2.88, 0, [upNose, upNose, kmbOrange, kmbCream, upSide, upSide]);
     if (!bus.boards) {
       bus.boards = {
         dest: busBoard((g, w, h) => {
@@ -12223,110 +12425,16 @@ const traffic = [];
       mesh.renderOrder = 4;
       r.ride.shell.add(mesh);
     }
-    // Cream Jubilant. Orange is the roof, the dome, and the skirt, not the body.
-    r.soft(9.5, 0.78, 2.42, -0.15, 0.9, 0, kmbCream, 0.06);
-    r.soft(9.15, 0.16, 2.4, -0.15, 2.02, 0, kmbCream, 0.02);
-    r.soft(9.35, 0.18, 2.28, -0.12, 3.64, 0, kmbOrange, 0.1);
-    r.soft(0.42, 1.62, 2.38, 4.72, 1.32, 0, kmbCream, 0.07);
-    r.soft(0.38, 1.5, 2.26, 4.62, 2.98, 0, kmbCream, 0.07);
-    r.soft(0.34, 1.55, 2.36, -4.96, 1.32, 0, kmbCream, 0.05);
-    r.soft(0.32, 1.48, 2.24, -4.96, 2.98, 0, kmbCream, 0.05);
-    r.soft(0.7, 0.34, 2.2, 4.42, 3.56, 0, kmbOrange, 0.14);
-    p(9.15, 0.07, 0.05, -0.12, 3.5, 1.2, kmbOrange);
-    p(9.15, 0.07, 0.05, -0.12, 3.5, -1.2, kmbOrange);
-    p(0.07, 0.24, 2.02, 4.98, 3.54, 0, kmbOrange);
-    p(9.5, 0.3, 0.04, -0.12, 0.64, 1.23, kmbOrange);
-    p(9.5, 0.3, 0.04, -0.12, 0.64, -1.23, kmbOrange);
-    p(0.1, 0.28, 2.34, 5.02, 0.58, 0, kmbOrange);
-    p(0.08, 0.26, 2.3, -5.16, 0.6, 0, kmbOrange);
-    p(9.3, 0.02, 0.018, -0.12, 0.8, 1.25, blackTrim);
-    p(9.3, 0.02, 0.018, -0.12, 0.8, -1.25, blackTrim);
-    const low = [-3.7, -2.55, -1.4, -0.25, 0.9, 2.05, 3.2];
-    low.forEach((x, i) => {
-      p(0.08, 0.56, 0.08, x, 1.73, 1.18, kmbCream);
-      p(0.08, 0.56, 0.08, x, 1.73, -1.18, kmbCream);
-      if (i < low.length - 1 && x < 2.4) {
-        r.piece(0.9, 0.46, 0.03, x + 0.575, 1.73, 1.25, sideGlass, 2);
-        r.piece(0.9, 0.46, 0.03, x + 0.575, 1.73, -1.25, sideGlass, 2);
-      }
-    });
-    p(7.15, 0.03, 0.02, -0.45, 1.98, 1.27, blackTrim);
-    p(7.15, 0.03, 0.02, -0.45, 1.48, 1.27, blackTrim);
-    p(7.15, 0.03, 0.02, -0.45, 1.98, -1.27, blackTrim);
-    p(7.15, 0.03, 0.02, -0.45, 1.48, -1.27, blackTrim);
-    const up = [-4.15, -2.9, -1.65, -0.4, 0.85, 2.1, 3.35];
-    up.forEach((x, i) => {
-      p(0.07, 0.98, 0.08, x, 2.78, 1.15, kmbCream);
-      p(0.07, 0.98, 0.08, x, 2.78, -1.15, kmbCream);
-      if (i < up.length - 1 && x < 2.5) {
-        r.piece(1.0, 0.86, 0.03, x + 0.625, 2.78, 1.22, sideGlass, 2);
-        r.piece(1.0, 0.86, 0.03, x + 0.625, 2.78, -1.22, sideGlass, 2);
-      }
-    });
-    p(7.55, 0.03, 0.02, -0.4, 3.24, 1.24, blackTrim);
-    p(7.55, 0.03, 0.02, -0.4, 2.34, 1.24, blackTrim);
-    p(7.55, 0.03, 0.02, -0.4, 3.24, -1.24, blackTrim);
-    p(7.55, 0.03, 0.02, -0.4, 2.34, -1.24, blackTrim);
-    board(2.4, 0.58, -0.3, 1.1, 1.27, boards.sideR, 0);
-    board(2.4, 0.58, -0.3, 1.1, -1.27, boards.sideL, Math.PI);
-    // Entrance on the left, ahead of the front wheel.
-    p(0.025, 1.12, 0.03, 3.72, 1.4, -1.28, blackTrim);
-    p(0.025, 1.12, 0.03, 4.48, 1.4, -1.28, blackTrim);
-    p(0.78, 0.025, 0.03, 4.1, 0.84, -1.28, blackTrim);
-    p(0.78, 0.025, 0.03, 4.1, 1.96, -1.28, blackTrim);
-    p(0.02, 1.08, 0.02, 4.1, 1.4, -1.29, blackTrim);
-    r.piece(0.58, 0.36, 0.02, 4.1, 1.72, -1.31, glass, 2);
-    r.piece(0.52, 0.4, 0.025, 4.05, 1.72, 1.28, sideGlass, 2);
-    p(0.025, 0.46, 0.02, 3.78, 1.72, 1.29, blackTrim);
-    p(0.025, 0.46, 0.02, 4.32, 1.72, 1.29, blackTrim);
-    p(0.56, 0.025, 0.02, 4.05, 1.94, 1.29, blackTrim);
-    p(0.56, 0.025, 0.02, 4.05, 1.5, 1.29, blackTrim);
-    r.plates(5.1, -5.18, 0.56);
-    board(0.52, 0.16, 5.16, 0.56, 0, boards.plate, Math.PI / 2);
-    const wind = [];
-    wind.push(r.piece(0.03, 0.045, 1.72, 4.96, 2.02, 0, blackTrim, 2));
-    wind.push(r.piece(0.03, 0.045, 1.72, 4.96, 1.4, 0, blackTrim, 2));
-    wind.push(r.piece(0.03, 0.64, 0.045, 4.96, 1.71, 0, blackTrim, 2));
-    wind.push(r.piece(0.03, 0.64, 0.04, 4.96, 1.71, 0.86, blackTrim, 2));
-    wind.push(r.piece(0.03, 0.64, 0.04, 4.96, 1.71, -0.86, blackTrim, 2));
-    wind.push(r.piece(0.035, 0.54, 0.74, 5.01, 1.71, 0.44, glass, 2));
-    wind.push(r.piece(0.035, 0.54, 0.74, 5.01, 1.71, -0.44, glass, 2));
-    wind.forEach(mesh => { mesh.rotation.z = -0.05; });
-    const wipeL = r.piece(0.012, 0.36, 0.012, 5.04, 1.62, 0.22, blackTrim, 3);
-    const wipeR = r.piece(0.012, 0.36, 0.012, 5.04, 1.62, -0.22, blackTrim, 3);
-    wipeL.rotation.z = -0.35;
-    wipeR.rotation.z = 0.35;
-    p(0.06, 0.48, 2.02, 4.9, 2.24, 0, blackTrim);
-    board(1.9, 0.42, 5.04, 2.24, 0, boards.dest, Math.PI / 2);
-    r.piece(0.03, 0.04, 1.72, 4.92, 3.2, 0, blackTrim, 2);
-    r.piece(0.03, 0.04, 1.72, 4.92, 2.48, 0, blackTrim, 2);
-    r.piece(0.03, 0.76, 0.045, 4.92, 2.84, 0, blackTrim, 2);
-    r.piece(0.03, 0.76, 0.04, 4.92, 2.84, 0.86, blackTrim, 2);
-    r.piece(0.03, 0.76, 0.04, 4.92, 2.84, -0.86, blackTrim, 2);
-    r.piece(0.03, 0.66, 0.72, 4.96, 2.84, 0.42, glass, 2);
-    r.piece(0.03, 0.66, 0.72, 4.96, 2.84, -0.42, glass, 2);
-    board(0.46, 0.16, 5.04, 3.34, 0, boards.fleet, Math.PI / 2);
-    p(0.05, 0.58, 1.4, 4.98, 1.02, 0, blackTrim);
-    p(0.035, 0.5, 1.24, 5.03, 1.02, 0, grilleMat);
-    for (let i = 0; i < 7; i++) p(0.012, 0.012, 1.16, 5.06, 0.82 + i * 0.068, 0, steel);
-    r.pairLamps(5.06, 1.02, 0.9, headMat, true, 0.16);
-    r.piece(0.04, 0.08, 0.08, 5.07, 1.02, 1.12, markerMat, 3);
-    r.piece(0.04, 0.08, 0.08, 5.07, 1.02, -1.12, markerMat, 3);
-    r.piece(0.04, 0.48, 1.35, -5.1, 1.55, 0, glass, 2);
-    r.piece(0.04, 0.55, 1.3, -5.08, 2.9, 0, glass, 2);
-    p(0.04, 0.2, 0.72, -5.14, 0.95, 0, grilleMat);
-    for (let i = 0; i < 4; i++) p(0.015, 0.012, 0.62, -5.17, 0.88 + i * 0.042, 0, steel);
-    r.pairLamps(-5.12, 0.95, 0.9, tailOff, true, 0.16);
-    r.piece(0.06, 0.07, 0.1, 4.35, 3.72, 0.85, markerMat, 3);
-    r.piece(0.06, 0.07, 0.1, 4.35, 3.72, -0.85, markerMat, 3);
-    r.piece(0.06, 0.07, 0.1, -4.5, 3.72, 0.85, markerMat, 3);
-    r.piece(0.06, 0.07, 0.1, -4.5, 3.72, -0.85, markerMat, 3);
-    r.mirror(4.35, 1.95, 1.18);
-    r.mirror(4.35, 1.95, -1.18);
-    r.arch(3.05, 1.28, 0.48);
-    r.arch(3.05, -1.28, 0.48);
-    r.wheel(3.05, 1.32, 0.48, 0.24, false);
-    r.wheel(3.05, -1.32, 0.48, 0.24, false);
+    board(2.2, 0.5, -0.2, 1.15, 1.26, boards.sideR, 0);
+    board(2.2, 0.5, -0.2, 1.15, -1.26, boards.sideL, Math.PI);
+    board(1.7, 0.36, 4.9, 2.15, 0, boards.dest, Math.PI / 2);
+    board(0.42, 0.14, 4.9, 3.15, 0, boards.fleet, Math.PI / 2);
+    board(0.5, 0.14, 4.95, 0.62, 0, boards.plate, Math.PI / 2);
+    glowPair(r, 4.9, 0.85, 0.85, headMat, 0.16, 0.28, false);
+    glowPair(r, -4.95, 0.85, 0.85, tailOff, 0.16, 0.3, true);
+    r.plates(5.0, -5.05, 0.5);
+    r.wheelBox(3.05, 1.28, 0.48, 0.24);
+    r.wheelBox(3.05, -1.28, 0.48, 0.24);
     r.dual(-3.2, 1.12, 0.48, 0.2);
     r.dual(-3.2, -1.12, 0.48, 0.2);
     r.ride.cruise = 6.5;
@@ -12360,6 +12468,7 @@ const traffic = [];
     g.font = "700 26px 'WenQuanYi Micro Hei', 'Droid Sans Fallback', sans-serif";
     g.fillText("九巴服務  日日進步", markX + wing * 8, h * 0.78);
   }
+
   function bike(shirt) {
     const r = rig(2.05, 0.32);
     const p = r.put;
@@ -12421,13 +12530,11 @@ const traffic = [];
     r.finish();
     return r;
   }
-  // Left-hand traffic. The kerb beside the wall is the driver's left:
-  // westbound against the north wall, eastbound against the south wall.
+  // Left-hand traffic on Tung Tau Tsuen Road. Westbound is the lane against
+  // the wall. Eastbound is the outer lane. Nothing drives the south edge.
   const fleet = [
     { z: -6.8, dir: -1, bikeZ: -4.9, row: ["minibus", "taxi", "car", "minibus"] },
-    { z: -12.3, dir: 1, bikeZ: -14.35, row: ["bus", "taxi", "van", "lorry"] },
-    { z: 126.8, dir: 1, bikeZ: 124.85, row: ["minibus", "car", "taxi", "van"] },
-    { z: 132.3, dir: -1, bikeZ: 134.35, row: ["bus", "taxi", "car", "lorry"] }
+    { z: -12.3, dir: 1, bikeZ: -14.35, row: ["bus", "taxi", "van", "lorry"] }
   ];
   const carPaints = [carWhite, ivory, carBlue, carMaroon];
   const bikeShirts = [shirtA, shirtB, shirtC, shirtB];
@@ -13570,6 +13677,23 @@ function branchVisible(obj) {
   for (let n = obj; n; n = n.parent) if (!n.visible) return false;
   return true;
 }
+function recordFromHit(hit) {
+  const ud = hit.object.userData;
+  if (!ud) return null;
+  if (ud.bayData) return ud.bayData[hit.instanceId];
+  const spans = ud.pickSpans;
+  if (!spans) return ud;
+  const tri = hit.faceIndex;
+  let lo = 0, hi = spans.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const s = spans[mid];
+    if (tri < s.start) hi = mid - 1;
+    else if (tri >= s.start + s.count) lo = mid + 1;
+    else return s.data;
+  }
+  return null;
+}
 function nearestLabel(ev) {
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
@@ -13604,8 +13728,7 @@ renderer.domElement.addEventListener("pointerup", (ev) => {
     return;
   }
   if (!massHit) return;
-  const bay = massHit.object.userData && massHit.object.userData.bayData;
-  const u = bay ? bay[massHit.instanceId] : massHit.object.userData;
+  const u = recordFromHit(massHit);
   if (!u) return;
   if (portraitSheet()) closeLegend();
   showPick(u);
@@ -13867,17 +13990,13 @@ const lampBulbs = [];
   vfx.add(bulb);
   lampBulbs.push(bulb);
 });
-// Tung Tau Tsuen Road and Carpenter Road. A slim galvanised pole on the
-// pavement, a short arm, and a white head just past the kerb. On at night
-// and in the rain. Not a surveyed lamp map.
+// Tung Tau Tsuen Road only. A slim galvanised pole on the north pavement, a
+// short arm, and a white head just past the kerb. On at night and in the rain.
+// Not a surveyed lamp map, and not repeated along the south edge.
 const streetLamps = { bulbMat: null, count: 0 };
 (function addCarriageLamps() {
   const posts = [];
-  for (let x = -16; x <= 236; x += 36) {
-    posts.push({ x: x, z: -1.7, aim: -1 });
-    const sx = x + 18;
-    if (sx < 250) posts.push({ x: sx, z: 121.35, aim: 1 });
-  }
+  for (let x = -16; x <= 236; x += 36) posts.push({ x: x, z: -1.7, aim: -1 });
   // The head stops about a metre into the carriageway. The old arm reached
   // the middle of the road.
   const REACH = 2.7;
@@ -20337,8 +20456,9 @@ function squareMovers() {
   for (let i = 0; i < drips.length; i++) applySquare(drips[i], false);
 }
 // Tenement shells share a facade texture. Bake each block's tint and UV
-// shift into one mesh per quadrant so the walls are a handful of draws,
-// and keep the original meshes only for the click test.
+// shift into one mesh per quadrant so the walls are a handful of draws.
+// A click reads which source block owned the triangle. The source shells
+// are not kept.
 function packMasses() {
   scene.updateMatrixWorld(true);
   const buckets = new Map();
@@ -20374,6 +20494,7 @@ function packMasses() {
     const uv = new Float32Array(nv * 2);
     const col = new Float32Array(nv * 3);
     const idx = new Uint32Array(ni);
+    const spans = [];
     let vOff = 0, iOff = 0;
     bucket.list.forEach(mesh => {
       const g = mesh.geometry;
@@ -20404,6 +20525,9 @@ function packMasses() {
           uv[(vOff + p) * 2] = ua[p * 2] * rx + ox;
           uv[(vOff + p) * 2 + 1] = ua[p * 2 + 1] * ry + oy;
         }
+      }
+      if (bucket.kind === 1 && mesh.userData && mesh.userData.rooms) {
+        spans.push({ start: iOff / 3, count: ia.length / 3, data: mesh.userData });
       }
       for (let p = 0; p < ia.length; p++) idx[iOff + p] = ia[p] + vOff;
       iOff += ia.length;
@@ -20438,6 +20562,10 @@ function packMasses() {
     }
     const merged = new THREE.Mesh(geo, mat);
     merged.userData.packed = 1;
+    if (spans.length) {
+      merged.userData.pickSpans = spans;
+      pickables.push(merged);
+    }
     if (bucket.kind === 2) merged.userData.roof = 1;
     merged.castShadow = bucket.kind === 1;
     merged.receiveShadow = bucket.kind === 1;
@@ -20453,10 +20581,28 @@ function packMasses() {
     const src = mesh.material && mesh.material.map;
     if (src && facades.indexOf(src) < 0 && !gone.has(src)) {
       gone.add(src);
+      src.image = null;
+      src.mipmaps = [];
       src.dispose();
+    }
+    const geo = mesh.geometry;
+    const packKind = geo && geo.userData && geo.userData.pack;
+    // The packed roofs still draw with this material. Wall materials are
+    // one block each, so those can go with the shell.
+    if (mesh.material && mesh.material !== addMass.roofMat) mesh.material.dispose();
+    mesh.material = null;
+    // The packed mesh holds the vertices that are drawn. Roofs keep their
+    // box, because the children read its width and depth. Wall shells do not.
+    if (geo && packKind === 1) {
+      mesh.geometry = null;
+      geo.dispose();
     }
     if (mesh.parent) mesh.parent.remove(mesh);
   });
+  const dropped = new Set(drop);
+  for (let i = pickables.length - 1; i >= 0; i--) {
+    if (dropped.has(pickables[i])) pickables.splice(i, 1);
+  }
 }
 packMasses();
 function scopeInstances(mesh) {
@@ -21311,11 +21457,12 @@ function stepAirliner(now) {
   airliner.userData.cabin.emissiveIntensity = 0.06 + lightAmount() * 0.95;
 }
 // Children on the roofs, from the Kai Tak years: the roof was the playground.
-// Boys in singlets and shorts, girls in white shirts and dark skirts or a
-// cotton dress, one writing at a low board, one holding a spare aerial.
-// They are out only while the sun is up.
+// Several roofs at once. A group plays, chases, or stops for the eastbound
+// pass. The pose is written from scratch each frame: the old idle pose kept
+// adding to the neck and, while they were still crouched, to the hips, so a
+// child spun and rose off the tar. Nobody sits. There is no chair up here.
 const roofKids = [];
-const roofProps = [];
+const roofGroups = [];
 function raiseRoofChildren() {
   const rand = mulberry32(20261105);
   const obstacles = [];
@@ -21323,56 +21470,36 @@ function raiseRoofChildren() {
     const list = roofQ[key] || [];
     for (let i = 0; i < list.length; i++) {
       const it = list[i];
-      let r = 0.9;
-      if (key === "yagi" || key === "pot") r = 0.42;
-      else if (it.sx && it.sz) r = 0.5 * Math.hypot(it.sx, it.sz) + 0.22;
+      let r = 0.85;
+      if (key === "yagi" || key === "pot") r = 0.38;
+      else if (it.sx && it.sz) r = 0.45 * Math.hypot(it.sx, it.sz) + 0.16;
       obstacles.push({ x: it.x, z: it.z, r: r });
     }
   });
-  function blocked(x, z, rad) {
-    for (let i = 0; i < obstacles.length; i++) {
-      const o = obstacles[i];
-      if ((o.x - x) * (o.x - x) + (o.z - z) * (o.z - z) < (o.r + rad) * (o.r + rad)) return true;
-    }
-    return false;
-  }
   const roofs = [];
   for (let i = 0; i < roofMeshes.length; i++) {
     const mesh = roofMeshes[i];
     const p = mesh.geometry.parameters;
-    if (!p || p.width < 6.4 || p.depth < 5.6) continue;
+    if (!p || p.width < 5.4 || p.depth < 4.8) continue;
     const top = mesh.position.y + p.height * 0.5;
-    if (top < 10) continue;
+    if (top < 9) continue;
+    const inset = 0.7;
+    if (p.width < inset * 2 + 1.6 || p.depth < inset * 2 + 1.6) continue;
     roofs.push({
       x: mesh.position.x, z: mesh.position.z,
-      w: p.width, d: p.depth, y: top + 0.02,
+      y: top + 0.02,
+      minX: mesh.position.x - p.width * 0.5 + inset,
+      maxX: mesh.position.x + p.width * 0.5 - inset,
+      minZ: mesh.position.z - p.depth * 0.5 + inset,
+      maxZ: mesh.position.z + p.depth * 0.5 - inset,
       area: p.width * p.depth
     });
   }
-  roofs.sort(function (a, b) { return b.area - a.area || a.x - b.x; });
-  const chosen = [];
-  for (let i = 0; i < roofs.length && chosen.length < 5; i++) {
-    const roof = roofs[i];
-    let far = true;
-    for (let j = 0; j < chosen.length; j++) {
-      const dx = chosen[j].roof.x - roof.x, dz = chosen[j].roof.z - roof.z;
-      if (dx * dx + dz * dz < 18 * 18) far = false;
-    }
-    if (!far) continue;
-    const spots = [];
-    for (let n = 0; n < 56 && spots.length < 4; n++) {
-      const x = roof.x + (rand() - 0.5) * (roof.w - 1.9);
-      const z = roof.z + (rand() - 0.5) * (roof.d - 1.9);
-      if (blocked(x, z, 0.48)) continue;
-      let ok = true;
-      for (let s = 0; s < spots.length; s++) {
-        const dx = spots[s].x - x, dz = spots[s].z - z;
-        if (dx * dx + dz * dz < 0.72 * 0.72) ok = false;
-      }
-      if (ok) spots.push({ x: x, z: z });
-    }
-    if (spots.length < 3) continue;
-    chosen.push({ roof: roof, spots: spots });
+  for (let i = roofs.length - 1; i > 0; i--) {
+    const j = (rand() * (i + 1)) | 0;
+    const swap = roofs[i];
+    roofs[i] = roofs[j];
+    roofs[j] = swap;
   }
   const styles = [
     { top: 0xd27a8a, sleeve: "skin", pants: 0x3d6a78, hair: "short", skin: 0, shoes: 0x1a1816, scale: 0.6, shorts: true },
@@ -21384,124 +21511,270 @@ function raiseRoofChildren() {
     { top: 0xe6d2c4, sleeve: "skin", pants: 0xc4a090, hair: "bun", skin: 4, shoes: 0x7a3030, scale: 0.62, shorts: true },
     { top: 0xf7f4ee, sleeve: "short", pants: 0x1a1c28, hair: "bob", skin: 0, shoes: 0x1a1816, scale: 0.76, skirt: true }
   ];
-  const boardGeo = new THREE.BoxGeometry(0.58, 0.045, 0.4);
-  const boardLeg = new THREE.BoxGeometry(0.04, 0.26, 0.04);
-  const paperGeo = new THREE.BoxGeometry(0.26, 0.008, 0.18);
-  const boardMat = clothMat(0x6e5340, 0.94, "cloth");
-  const paperMat = clothMat(0xf4f0e6, 0.78, "cloth");
-  chosen.forEach(function (group, gi) {
-    let ax = 0, az = 0;
-    for (let s = 0; s < group.spots.length; s++) { ax += group.spots[s].x; az += group.spots[s].z; }
-    ax /= group.spots.length;
-    az /= group.spots.length;
-    const writer = gi === 0;
-    if (writer) {
-      const face = Math.atan2(group.spots[0].x - ax, group.spots[0].z - az);
-      const bx = ax + Math.sin(face) * 0.42;
-      const bz = az + Math.cos(face) * 0.42;
-      if (!blocked(bx, bz, 0.3)) {
-        const board = new THREE.Group();
-        const top = figMesh(boardGeo, boardMat);
-        top.position.y = 0.3;
-        board.add(top);
-        [[-0.24, -0.14], [0.24, -0.14], [-0.24, 0.14], [0.24, 0.14]].forEach(function (p) {
-          const leg = figMesh(boardLeg, boardMat);
-          leg.position.set(p[0], 0.13, p[1]);
-          board.add(leg);
-        });
-        const paper = figMesh(paperGeo, paperMat);
-        paper.position.y = 0.328;
-        paper.rotation.y = 0.15;
-        board.add(paper);
-        board.position.set(bx, group.roof.y, bz);
-        board.visible = false;
-        vfx.add(board);
-        roofProps.push(board);
-        group.board = { x: bx, z: bz };
-      }
+  function clearSpot(roof, x, z, taken) {
+    if (x < roof.minX || x > roof.maxX || z < roof.minZ || z > roof.maxZ) return false;
+    for (let i = 0; i < obstacles.length; i++) {
+      const o = obstacles[i];
+      if (Math.abs(o.x - roof.x) > 8 || Math.abs(o.z - roof.z) > 8) continue;
+      const dx = o.x - x, dz = o.z - z;
+      if (dx * dx + dz * dz < (o.r + 0.42) * (o.r + 0.42)) return false;
     }
-    group.spots.forEach(function (spot, si) {
+    for (let i = 0; i < taken.length; i++) {
+      const dx = taken[i].x - x, dz = taken[i].z - z;
+      if (dx * dx + dz * dz < 0.85 * 0.85) return false;
+    }
+    return true;
+  }
+  for (let i = 0; i < roofs.length && roofGroups.length < 8; i++) {
+    const roof = roofs[i];
+    let far = true;
+    for (let j = 0; j < roofGroups.length; j++) {
+      const dx = roofGroups[j].x - roof.x, dz = roofGroups[j].z - roof.z;
+      if (dx * dx + dz * dz < 16 * 16) far = false;
+    }
+    if (!far) continue;
+    const local = [];
+    for (let k = 0; k < obstacles.length; k++) {
+      const o = obstacles[k];
+      if (o.x > roof.minX - 0.4 && o.x < roof.maxX + 0.4 && o.z > roof.minZ - 0.4 && o.z < roof.maxZ + 0.4) local.push(o);
+    }
+    const spots = [];
+    for (let n = 0; n < 48 && spots.length < 3; n++) {
+      const x = roof.minX + rand() * (roof.maxX - roof.minX);
+      const z = roof.minZ + rand() * (roof.maxZ - roof.minZ);
+      if (clearSpot(roof, x, z, spots)) spots.push({ x: x, z: z });
+    }
+    if (spots.length < 2) continue;
+    const group = {
+      x: roof.x, z: roof.z, y: roof.y,
+      minX: roof.minX, maxX: roof.maxX, minZ: roof.minZ, maxZ: roof.maxZ,
+      obstacles: local, kids: [], mode: "play", until: 0, it: 0, tagAt: 0,
+      rand: mulberry32((roof.x * 13 + roof.z * 17 + roof.y) | 0)
+    };
+    const gi = roofGroups.length;
+    spots.forEach(function (spot, si) {
       const src = styles[(gi * 3 + si * 2) % styles.length];
       const spec = { gait: "walk" };
       for (const k in src) spec[k] = src[k];
-      let desk = false;
-      if (writer && si === 0 && group.board) {
-        spec.top = 0xf3f0ea;
-        spec.sleeve = "short";
-        spec.pants = 0x1a2744;
-        spec.hair = "bob";
-        spec.skin = 1;
-        spec.shoes = 0x1a1816;
-        spec.scale = 0.7;
-        spec.skirt = true;
-        spec.shorts = false;
-        spec.stick = false;
-        desk = true;
-        spot.x = ax - (group.board.x - ax);
-        spot.z = az - (group.board.z - az);
-      } else if (si === 1 && !spec.skirt) {
-        spec.stick = true;
-      }
+      if (si === 0 && !spec.skirt && gi % 2 === 0) spec.stick = true;
       const fig = makeCitizen(spec);
       fig.visible = false;
-      fig.userData.roof = {
-        homeX: spot.x, homeZ: spot.z, y: group.roof.y,
-        cx: ax, cz: az, desk: desk, stick: !!spec.stick,
-        group: gi, slot: si
-      };
+      fig.userData.roof = { x: spot.x, z: spot.z, y: roof.y, group: group, goalX: spot.x, goalZ: spot.z };
       fig.userData.scale = spec.scale || 1;
-      fig.userData.offset = gi * 1.7 + si * 0.55;
-      fig.userData.act = desk ? "write" : "talk";
-      fig.userData.wait = 8;
-      fig.userData.bias = si % 2 ? 0.35 : -0.35;
-      fig.userData.biasEase = fig.userData.bias;
-      fig.userData.ease = 0;
-      fig.position.set(spot.x, group.roof.y, spot.z);
+      fig.userData.offset = gi * 1.7 + si * 0.8;
+      fig.position.set(spot.x, roof.y, spot.z);
       vfx.add(fig);
       roofKids.push(fig);
+      group.kids.push(fig);
     });
-  });
+    roofGroups.push(group);
+  }
+}
+function roofPick(group) {
+  const roof = group;
+  for (let n = 0; n < 8; n++) {
+    const x = roof.minX + group.rand() * (roof.maxX - roof.minX);
+    const z = roof.minZ + group.rand() * (roof.maxZ - roof.minZ);
+    let blocked = false;
+    for (let i = 0; i < roof.obstacles.length; i++) {
+      const o = roof.obstacles[i];
+      const dx = o.x - x, dz = o.z - z;
+      if (dx * dx + dz * dz < (o.r + 0.4) * (o.r + 0.4)) blocked = true;
+    }
+    if (!blocked) return { x: x, z: z };
+  }
+  return { x: (roof.minX + roof.maxX) * 0.5, z: (roof.minZ + roof.maxZ) * 0.5 };
+}
+function roofClamp(group, home) {
+  const kids = group.obstacles;
+  for (let i = 0; i < kids.length; i++) {
+    const o = kids[i];
+    let ox = home.x - o.x, oz = home.z - o.z;
+    let od = Math.hypot(ox, oz);
+    const min = o.r + 0.34;
+    if (od < min) {
+      if (od < 0.001) { ox = 1; oz = 0; od = 1; }
+      home.x = o.x + ox / od * min;
+      home.z = o.z + oz / od * min;
+    }
+  }
+  if (home.x < group.minX) home.x = group.minX;
+  if (home.x > group.maxX) home.x = group.maxX;
+  if (home.z < group.minZ) home.z = group.minZ;
+  if (home.z > group.maxZ) home.z = group.maxZ;
+}
+function roofSteer(group, home, tx, tz, speed, dt) {
+  let dx = tx - home.x, dz = tz - home.z;
+  let dist = Math.hypot(dx, dz);
+  if (dist < 0.001) { dx = 1; dz = 0; dist = 1; }
+  dx /= dist;
+  dz /= dist;
+  const list = group.obstacles;
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i];
+    const ox = o.x - home.x, oz = o.z - home.z;
+    const od = Math.hypot(ox, oz);
+    const reach = o.r + 0.7;
+    if (od < reach && od > 0.001) {
+      const push = (reach - od) / reach;
+      dx -= ox / od * push * 1.6;
+      dz -= oz / od * push * 1.6;
+    }
+  }
+  const edge = 0.4;
+  if (home.x < group.minX + edge) dx += 1.1;
+  if (home.x > group.maxX - edge) dx -= 1.1;
+  if (home.z < group.minZ + edge) dz += 1.1;
+  if (home.z > group.maxZ - edge) dz -= 1.1;
+  const len = Math.hypot(dx, dz) || 1;
+  home.x += dx / len * speed * dt;
+  home.z += dz / len * speed * dt;
+  roofClamp(group, home);
+  return Math.atan2(dx, dz);
+}
+// Legs and neck are assigned, not added to. A child glance is a few degrees.
+function poseRoofBody(rig, ud, now, moving, lookX, lookY) {
+  const phase = now * (2.2 + moving * 5.6) + ud.offset * 3;
+  const s = Math.sin(phase);
+  const c = Math.cos(phase);
+  const hipAmp = 0.4 * moving;
+  const kneeAmp = 0.95 * moving;
+  const aL = s * hipAmp;
+  const aR = -s * hipAmp;
+  const kL = 0.06 + Math.max(0, -c) * kneeAmp;
+  const kR = 0.06 + Math.max(0, c) * kneeAmp;
+  rig.legL.pivot.rotation.x = aL;
+  rig.legR.pivot.rotation.x = aR;
+  rig.legL.knee.rotation.x = kL;
+  rig.legR.knee.rotation.x = kR;
+  rig.legL.ankle.rotation.x = -(aL + kL);
+  rig.legR.ankle.rotation.x = -(aR + kR);
+  function drop(hipAng, kneeAng) {
+    return THIGH_L * Math.cos(hipAng) + SHIN_L * Math.cos(hipAng + kneeAng);
+  }
+  rig.hip.position.y = Math.max(drop(aL, kL), drop(aR, kR)) + 0.04;
+  if (moving > 0.65) {
+    const hop = Math.max(0, Math.sin(phase * 2));
+    rig.hip.position.y += hop * hop * 0.03;
+  }
+  rig.hip.position.x = (kL - kR) * 0.04 * moving;
+  rig.hip.rotation.set(0.03, s * 0.07 * moving, 0);
+  rig.torso.rotation.set(0.04, -s * 0.12 * moving, 0);
+  rig.head.rotation.set(lookX, lookY, 0);
+  const armS = Math.sin(phase - 0.22);
+  function hang(arm, swing) {
+    const fore = Math.max(0, -swing);
+    const back = Math.max(0, swing);
+    arm.spread.rotation.z = arm.restZ;
+    arm.pivot.rotation.x = -fore * 0.9 + back * 0.32;
+    arm.elbow.rotation.x = -0.28 - fore * 0.7;
+    arm.elbow.rotation.z = 0;
+  }
+  const armAmp = 0.55 * moving;
+  hang(rig.armL, -armS * armAmp);
+  hang(rig.armR, armS * armAmp);
+  if (lookX < -0.35) {
+    rig.armR.pivot.rotation.x = -1.2;
+    rig.armR.spread.rotation.z = 0.2;
+    rig.armR.elbow.rotation.x = -0.45;
+  }
 }
 function stepRoofKids(now) {
+  if (stepRoofKids.prev == null) stepRoofKids.prev = now;
+  const dt = Math.min(0.05, Math.max(0, now - stepRoofKids.prev));
+  stepRoofKids.prev = now;
   const day = 1 - THREE.MathUtils.smoothstep(darkness, 0.26, 0.48);
   const show = day > 0.06;
   const plane = !!(airliner.visible);
   const px = airliner.position.x, py = airliner.position.y, pz = airliner.position.z;
-  for (let i = 0; i < roofProps.length; i++) roofProps[i].visible = show;
+  for (let g = 0; g < roofGroups.length; g++) {
+    const group = roofGroups[g];
+    if (now >= group.until) {
+      const roll = group.rand();
+      group.mode = plane && roll < 0.42 ? "watch" : (roll < 0.72 ? "chase" : "play");
+      if (!plane && group.mode === "watch") group.mode = "play";
+      group.until = now + 9 + group.rand() * 8;
+      if (group.mode === "chase") group.it = (group.rand() * group.kids.length) | 0;
+      if (group.mode === "play") {
+        for (let k = 0; k < group.kids.length; k++) {
+          const goal = roofPick(group);
+          const home = group.kids[k].userData.roof;
+          home.goalX = goal.x;
+          home.goalZ = goal.z;
+        }
+      }
+    }
+  }
   for (let i = 0; i < roofKids.length; i++) {
     const fig = roofKids[i];
     fig.visible = show;
     if (!show) continue;
-    const home = fig.userData.roof;
-    const rig = fig.userData.rig;
     const ud = fig.userData;
-    const watch = plane && !home.desk && ((home.slot + Math.floor(now / 7 + home.group)) % 3 !== 2);
-    if (!home.desk) {
-      const w = Math.sin(now * 0.33 + ud.offset) * 0.14;
-      fig.position.set(
-        home.homeX + Math.cos(ud.offset) * w,
-        home.y,
-        home.homeZ + Math.sin(ud.offset * 1.3) * w
-      );
-    } else fig.position.set(home.homeX, home.y, home.homeZ);
-    let yaw;
-    if (watch) yaw = Math.atan2(px - fig.position.x, pz - fig.position.z);
-    else yaw = Math.atan2(home.cx - fig.position.x, home.cz - fig.position.z);
-    const dyaw = Math.atan2(Math.sin(yaw - fig.rotation.y), Math.cos(yaw - fig.rotation.y));
-    fig.rotation.y += dyaw * 0.18;
-    const play = ["squat", "talk", "point", "gaze"][Math.floor(now / 4.6 + ud.offset) % 4];
-    ud.act = home.desk ? "write" : (watch ? "gaze" : (home.stick ? "rest" : play));
-    ud.bias = home.slot % 2 ? 0.35 : -0.35;
-    poseIdle(rig, ud, now, 1, false);
-    if (home.stick && rig.stick) poseToward(rig.armR, -0.5, 0.78, -1.25, 0.08, 1);
-    if (watch) {
-      const dx = px - fig.position.x;
-      const dz = pz - fig.position.z;
-      const up = Math.atan2(py - fig.position.y - 0.85, Math.hypot(dx, dz));
-      rig.head.rotation.x = -Math.min(1.0, Math.max(0.2, up));
-      rig.head.rotation.y *= 0.25;
-      if (!home.stick) poseToward(rig.armR, -1.3, 0.16, -0.4, 0.04, 1);
+    const home = ud.roof;
+    const group = home.group;
+    const rig = ud.rig;
+    let mode = group.mode;
+    if (mode === "watch" && !plane) mode = "play";
+    let yaw = fig.rotation.y;
+    let moving = 0;
+    let lookX = Math.sin(now * 0.7 + ud.offset) * 0.06;
+    let lookY = Math.sin(now * 0.45 + ud.offset * 2) * 0.18;
+    if (mode === "watch") {
+      yaw = Math.atan2(px - home.x, pz - home.z);
+      const up = Math.atan2(py - home.y - 0.7, Math.hypot(px - home.x, pz - home.z));
+      lookX = -Math.min(0.95, Math.max(0.2, up));
+      lookY = Math.sin(now * 0.6 + ud.offset) * 0.08;
+      moving = 0;
+    } else if (mode === "chase") {
+      const it = group.kids[group.it] || fig;
+      const quarry = it.userData.roof;
+      if (fig === it) {
+        let best = null, bestD = 1e9, bestI = 0;
+        for (let k = 0; k < group.kids.length; k++) {
+          if (group.kids[k] === fig) continue;
+          const other = group.kids[k].userData.roof;
+          const d = Math.hypot(other.x - home.x, other.z - home.z);
+          if (d < bestD) { bestD = d; best = other; bestI = k; }
+        }
+        if (best && bestD < 0.46 && now > group.tagAt) {
+          group.it = bestI;
+          group.tagAt = now + 1.6;
+        }
+        yaw = roofSteer(group, home, best ? best.x : group.x, best ? best.z : group.z, 1.25, dt);
+        moving = 1;
+      } else {
+        const awayX = home.x - quarry.x, awayZ = home.z - quarry.z;
+        const ad = Math.hypot(awayX, awayZ) || 1;
+        const tx = home.x + awayX / ad * 1.4 - awayZ / ad * 0.55;
+        const tz = home.z + awayZ / ad * 1.4 + awayX / ad * 0.55;
+        yaw = roofSteer(group, home, tx, tz, 1.15, dt);
+        moving = 1;
+      }
+      for (let k = 0; k < group.kids.length; k++) {
+        const other = group.kids[k].userData.roof;
+        if (other === home) continue;
+        const dx = home.x - other.x, dz = home.z - other.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 0.42 && d > 0.001) {
+          home.x += dx / d * (0.42 - d);
+          home.z += dz / d * (0.42 - d);
+        }
+      }
+      roofClamp(group, home);
+    } else {
+      let gx = home.goalX, gz = home.goalZ;
+      if (Math.hypot(gx - home.x, gz - home.z) < 0.4) {
+        const goal = roofPick(group);
+        home.goalX = gx = goal.x;
+        home.goalZ = gz = goal.z;
+      }
+      yaw = roofSteer(group, home, gx, gz, 0.72, dt);
+      moving = 0.72;
     }
+    fig.position.set(home.x, home.y, home.z);
+    const dy = Math.atan2(Math.sin(yaw - fig.rotation.y), Math.cos(yaw - fig.rotation.y));
+    fig.rotation.y += dy * Math.min(1, dt * 7);
+    poseRoofBody(rig, ud, now, moving, lookX, lookY);
   }
 }
 raiseRoofChildren();
@@ -21841,11 +22114,90 @@ function renderRoofReflection() {
 // and the bowed bezel. The city itself is drawn straight to the screen.
 // Resampling it through an offscreen pass picked the wrong texture level, so a
 // wall read as a flat mask until the camera came close.
+function applyAniso(tex) {
+  const props = renderer.properties.get(tex);
+  const glTex = props && props.__webglTexture;
+  if (!glTex) {
+    tex.needsUpdate = true;
+    return;
+  }
+  const gl = renderer.getContext();
+  const ext = gl.getExtension("EXT_texture_filter_anisotropic")
+    || gl.getExtension("WEBKIT_EXT_texture_filter_anisotropic");
+  if (!ext) return;
+  gl.bindTexture(gl.TEXTURE_2D, glTex);
+  gl.texParameterf(gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(tex.anisotropy, renderer.capabilities.getMaxAnisotropy()));
+}
+// Sign and wall paintings are canvases. Once the GPU has the pixels, the
+// canvas and its mip pyramid are a second copy. A lost WebGL context cannot
+// rebuild them from the stub left behind.
+function releaseCanvasSources() {
+  const seen = new Set();
+  function consider(tex) {
+    if (!tex || !tex.isTexture || seen.has(tex.uuid) || (tex.userData && tex.userData.srcReleased)) return;
+    seen.add(tex.uuid);
+    const img = tex.image;
+    if (!img || typeof img.getContext !== "function") return;
+    let props = renderer.properties.get(tex);
+    if (!props || !props.__webglTexture) {
+      try { renderer.initTexture(tex); } catch (err) { return; }
+      props = renderer.properties.get(tex);
+    }
+    if (!props || !props.__webglTexture) return;
+    if (!tex.userData) tex.userData = {};
+    const w = img.width, h = img.height;
+    const mips = tex.mipmaps || [];
+    for (let i = 0; i < mips.length; i++) {
+      const c = mips[i];
+      if (c && c !== img && typeof c.getContext === "function") {
+        try { c.width = 0; c.height = 0; } catch (err) {}
+      }
+    }
+    try { img.width = 0; img.height = 0; } catch (err) {}
+    tex.userData.srcReleased = 1;
+    tex.image = { width: w, height: h, complete: true };
+    tex.mipmaps = [];
+  }
+  scene.traverse(function (obj) {
+    const mats = obj.material;
+    if (!mats) return;
+    const list = Array.isArray(mats) ? mats : [mats];
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      if (!m) continue;
+      consider(m.map);
+      consider(m.emissiveMap);
+      consider(m.normalMap);
+      consider(m.roughnessMap);
+      consider(m.alphaMap);
+      consider(m.aoMap);
+    }
+  });
+  Object.keys(shopCache).forEach(function (k) {
+    const v = shopCache[k];
+    if (!v) return;
+    if (v.isTexture) consider(v);
+    if (v.isMaterial) {
+      consider(v.map);
+      consider(v.emissiveMap);
+      consider(v.alphaMap);
+    }
+    if (v.mat && v.mat.isMaterial) {
+      consider(v.mat.map);
+      consider(v.mat.emissiveMap);
+    }
+  });
+}
+let canvasSourcesReleased = false;
 function renderFrame() {
   renderWetReflection();
   renderRoofReflection();
   renderer.setRenderTarget(null);
   renderer.render(scene, camera);
+  if (!canvasSourcesReleased) {
+    canvasSourcesReleased = true;
+    releaseCanvasSources();
+  }
 }
 function bakeFleet() {
   for (let i = 0; i < traffic.length; i++) {
@@ -21872,6 +22224,7 @@ function bakeFleet() {
     }
     const skip = new Set(ride.tails.concat(ride.riders));
     if (ride.signMesh) skip.add(ride.signMesh);
+    if (ride.signFaces) for (let s = 0; s < ride.signFaces.length; s++) skip.add(ride.signFaces[s]);
     bakeDirect(shell, skip);
   }
 }
@@ -22331,7 +22684,10 @@ function syncPace() {
           const tex = maps[m];
           if (tex && tex.anisotropy > max) {
             tex.anisotropy = max;
-            tex.needsUpdate = true;
+            // A released canvas is already on the GPU. Uploading again would
+            // read the empty stub and wipe the picture. The sampler is enough.
+            if (tex.userData && tex.userData.srcReleased) applyAniso(tex);
+            else tex.needsUpdate = true;
           }
         }
       }
