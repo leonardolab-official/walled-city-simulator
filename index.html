@@ -4404,9 +4404,12 @@ function addShopMesh(geo, mat, x, y, z, rot, sx, sy, sz, data) {
     data: data || null, az: addShopMesh.az,
     pinX: addShopMesh.pinX, pinZ: addShopMesh.pinZ,
     blade: addShopMesh.blade || null,
-    spin: addShopMesh.spin || 0
+    spin: addShopMesh.spin || 0,
+    // 0 streams with the walk camera. Outer roads and loose boards stay put.
+    stay: addShopMesh.stay === 0 ? 0 : 1
   });
 }
+addShopMesh.stay = 1;
 function flushShops() {
   const groups = {};
   for (let i = 0; i < shopQueue.length; i++) {
@@ -4473,6 +4476,9 @@ function flushShops() {
       }
     }
     if (g.items.some(it => it.blade)) mesh.userData.blades = g.items.map(it => it.blade || null);
+    const stay = new Uint8Array(g.items.length);
+    for (let i = 0; i < g.items.length; i++) stay[i] = g.items[i].stay ? 1 : 0;
+    mesh.userData.shopStay = stay;
     city.add(mesh);
   });
   shopQueue.length = 0;
@@ -4941,6 +4947,8 @@ function noteShopkeeper(bay, face, kind, data) {
 function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   const guard = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.5, 0.12, 0);
   if (massCovers(guard.x, guard.z, bay.x, bay.z, bay.w, bay.d)) return;
+  const frontage = probeFace(bay.x, bay.z, bay.w, bay.d, face, 0.5);
+  addShopMesh.stay = (frontage.kind === "outer" || frontage.kind === "margin") ? 1 : 0;
   // The tenement leans on its north edge. Every board, light and step of this bay uses that same lean.
   // pin is the block centre. After the row anchors settle, the shop takes that block's shift.
   addShopMesh.az = lotZ == null ? bay.z : lotZ;
@@ -4971,6 +4979,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
       if (variant !== "shut") rng();
     }
     addShopMesh.pinX = addShopMesh.pinZ = null;
+    addShopMesh.stay = 1;
     return;
   }
   noteLaneMouth(bay, face);
@@ -5346,6 +5355,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     fitOpenShop(kind, putIn, openW, span, bay, face);
   }
   addShopMesh.pinX = addShopMesh.pinZ = null;
+  addShopMesh.stay = 1;
 }
 // Girard, Suddaby, City of Darkness: the stair is a slot about 0.8 m beside the
 // shop, not a second shopfront. Steps start at the threshold. The collapsible
@@ -5387,6 +5397,8 @@ function stairStripMat(side) {
 function placeStair(bay, face, data, lotZ, pinX, pinZ, stair) {
   const guard = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.5, 0.12, 0);
   if (massCovers(guard.x, guard.z, bay.x, bay.z, bay.w, bay.d)) return;
+  const frontage = probeFace(bay.x, bay.z, bay.w, bay.d, face, 0.5);
+  addShopMesh.stay = (frontage.kind === "outer" || frontage.kind === "margin") ? 1 : 0;
   noteLaneMouth(bay, face);
   addShopMesh.az = lotZ == null ? bay.z : lotZ;
   addShopMesh.pinX = pinX;
@@ -5484,6 +5496,7 @@ function placeStair(bay, face, data, lotZ, pinX, pinZ, stair) {
   put(shopGeo.bulb, bulbMat, 0.58, bulbOut, 2.02, 1, 1, 1);
   put(shopGeo.box, shopFinish.metal, 0.58, bulbOut, 2.14, 0.012, 0.2, 0.012);
   addShopMesh.pinX = addShopMesh.pinZ = null;
+  addShopMesh.stay = 1;
 }
 function streetFaces(x, z, w, d) {
   const hits = [];
@@ -21248,6 +21261,158 @@ function scopeInstances(mesh) {
 city.traverse(obj => {
   if (obj.isInstancedMesh && obj.visible && obj.count > 0) scopeInstances(obj);
 });
+// Inside shopfronts and stair mouths. Outer roads are not in this list.
+// An inside piece exists only in walk mode, and only while it sits in the frame.
+const shopStreams = [];
+const shopCam = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), walk: false };
+// scopeInstances replaces each batch sphere with the whole quadrant. The walk
+// test needs the piece itself, read from the shared vertex buffer.
+const shopUnit = new WeakMap();
+function shopPieceBounds(geo) {
+  const attr = geo && geo.attributes && geo.attributes.position;
+  if (!attr) return { cx: 0, cy: 0, cz: 0, r: 0.25 };
+  const hit = shopUnit.get(attr);
+  if (hit) return hit;
+  const a = attr.array;
+  let minX = 1e9, minY = 1e9, minZ = 1e9, maxX = -1e9, maxY = -1e9, maxZ = -1e9;
+  for (let i = 0; i < a.length; i += 3) {
+    const x = a[i], y = a[i + 1], z = a[i + 2];
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (z < minZ) minZ = z;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+    if (z > maxZ) maxZ = z;
+  }
+  const cx = (minX + maxX) * 0.5, cy = (minY + maxY) * 0.5, cz = (minZ + maxZ) * 0.5;
+  let r2 = 0;
+  for (let i = 0; i < a.length; i += 3) {
+    const dx = a[i] - cx, dy = a[i + 1] - cy, dz = a[i + 2] - cz;
+    const d = dx * dx + dy * dy + dz * dz;
+    if (d > r2) r2 = d;
+  }
+  const bounds = { cx: cx, cy: cy, cz: cz, r: Math.sqrt(r2) || 0.2 };
+  shopUnit.set(attr, bounds);
+  return bounds;
+}
+function captureShopStreams() {
+  const m = new THREE.Matrix4();
+  const scl = new THREE.Vector3();
+  city.children.forEach(mesh => {
+    const stay = mesh.userData && mesh.userData.shopStay;
+    if (!stay || !mesh.isInstancedMesh || mesh.count < 1 || stay.length !== mesh.count) return;
+    let inside = false;
+    for (let i = 0; i < stay.length; i++) if (!stay[i]) { inside = true; break; }
+    if (!inside) return;
+    const n = mesh.count;
+    const px = new Float32Array(n);
+    const py = new Float32Array(n);
+    const pz = new Float32Array(n);
+    const pr = new Float32Array(n);
+    const ub = shopPieceBounds(mesh.geometry);
+    for (let i = 0; i < n; i++) {
+      mesh.getMatrixAt(i, m);
+      scl.setFromMatrixScale(m);
+      const e = m.elements;
+      px[i] = e[0] * ub.cx + e[4] * ub.cy + e[8] * ub.cz + e[12];
+      py[i] = e[1] * ub.cx + e[5] * ub.cy + e[9] * ub.cz + e[13];
+      pz[i] = e[2] * ub.cx + e[6] * ub.cy + e[10] * ub.cz + e[14];
+      pr[i] = ub.r * Math.max(Math.abs(scl.x), Math.abs(scl.y), Math.abs(scl.z), 0.05);
+    }
+    const bay = mesh.userData.bayData || null;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.userData.shopStream = {
+      stay: stay, px: px, py: py, pz: pz, pr: pr, n: n,
+      base: mesh.instanceMatrix.array.slice(0, n * 16),
+      shown: new Uint8Array(n),
+      bay: bay ? bay.slice() : null,
+      packedBay: bay ? new Array(n) : null
+    };
+    shopStreams.push(mesh);
+  });
+  for (let i = 0; i < shopStreams.length; i++) packShopStay(shopStreams[i]);
+}
+function packShopStay(mesh) {
+  const s = mesh.userData.shopStream;
+  const src = s.base;
+  const dst = mesh.instanceMatrix.array;
+  let n = 0;
+  for (let i = 0; i < s.n; i++) {
+    s.shown[i] = 0;
+    if (s.stay[i] !== 1) continue;
+    const a = i * 16;
+    const b = n * 16;
+    for (let k = 0; k < 16; k++) dst[b + k] = src[a + k];
+    if (s.packedBay) s.packedBay[n] = s.bay[i];
+    n++;
+  }
+  if (n < 1) {
+    mesh.count = 0;
+    mesh.visible = false;
+  } else {
+    mesh.visible = true;
+    mesh.count = n;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (s.packedBay) mesh.userData.bayData = s.packedBay;
+  }
+}
+function packShopMesh(mesh) {
+  const s = mesh.userData.shopStream;
+  const src = s.base;
+  const dst = mesh.instanceMatrix.array;
+  const cam = camera.position;
+  let n = 0;
+  for (let i = 0; i < s.n; i++) {
+    let show = s.stay[i] === 1;
+    if (!show) {
+      const dx = s.px[i] - cam.x;
+      const dy = s.py[i] - cam.y;
+      const dz = s.pz[i] - cam.z;
+      const held = s.shown[i];
+      const reach = held ? 108 : 96;
+      keeperView.sphere.center.set(s.px[i], s.py[i], s.pz[i]);
+      keeperView.sphere.radius = s.pr[i] + (held ? 2.6 : 0.55);
+      show = dx * dx + dy * dy + dz * dz < reach * reach
+        && keeperView.frustum.intersectsSphere(keeperView.sphere);
+    }
+    s.shown[i] = show ? 1 : 0;
+    if (!show) continue;
+    const a = i * 16;
+    const b = n * 16;
+    for (let k = 0; k < 16; k++) dst[b + k] = src[a + k];
+    if (s.packedBay) s.packedBay[n] = s.bay[i];
+    n++;
+  }
+  if (n < 1) {
+    mesh.count = 0;
+    mesh.visible = false;
+  } else {
+    mesh.visible = true;
+    mesh.count = n;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (s.packedBay) mesh.userData.bayData = s.packedBay;
+  }
+}
+function syncShopFronts() {
+  if (!shopStreams.length) return;
+  if (!walkMode) {
+    if (shopCam.walk) {
+      for (let i = 0; i < shopStreams.length; i++) packShopStay(shopStreams[i]);
+      shopCam.walk = false;
+    }
+    return;
+  }
+  camera.updateMatrixWorld();
+  const turned = Math.abs(shopCam.quat.dot(camera.quaternion));
+  if (shopCam.walk && shopCam.pos.distanceToSquared(camera.position) < 0.08 && turned > 0.9996) return;
+  shopCam.walk = true;
+  shopCam.pos.copy(camera.position);
+  shopCam.quat.copy(camera.quaternion);
+  keeperView.mat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  keeperView.frustum.setFromProjectionMatrix(keeperView.mat);
+  for (let i = 0; i < shopStreams.length; i++) packShopMesh(shopStreams[i]);
+}
+captureShopStreams();
 // Cage frames and people stay drawn at every distance. Hiding them above a
 // camera height made the city pop from a flat shell into a full model.
 function packStatic() {
@@ -23474,6 +23639,7 @@ syncPace();
   holdCameraAboveFloor();
   syncCityFolk(now);
   syncKeepers(now);
+  syncShopFronts();
   for (let ki = 0; ki < keepers.length; ki++) stepKeeper(keepers[ki], now);
   sky.position.copy(camera.position);
   stepRainSound(now);
