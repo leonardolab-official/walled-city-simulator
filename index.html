@@ -1528,6 +1528,25 @@ const WET_VERT = [
   "vWetN = normalize(mat3(modelMatrix) * objectNormal);",
   "vWetV = cameraPosition - wetWorld.xyz;"
 ].join("\n");
+// Same dissolve as the ground sheet: solid through 8 m past the lot, gone
+// by 52 m. Wet pavement and the rain share it, so neither runs on past the
+// blurred edge into the empty sky.
+function lotKeepGlsl(gw) {
+  const k = SHEAR_K.toFixed(6);
+  const w = SITE_W.toFixed(1);
+  const d = SITE_D.toFixed(1);
+  return [
+    "vec2 lotGw = " + gw + ";",
+    "float lotXEdge = " + k + " * lotGw.y;",
+    "float lotOutX = max(max(lotXEdge - lotGw.x, lotGw.x - (lotXEdge + " + w + ")), 0.0);",
+    "float lotOutZ = max(max(-lotGw.y, lotGw.y - " + d + "), 0.0);",
+    "float lotOutside = length(vec2(lotOutX, lotOutZ));",
+    "float lotWobble = sin(lotGw.x * 0.085) * 2.4 + sin(lotGw.y * 0.07 + lotGw.x * 0.04) * 1.8;",
+    "float lotEdge = smoothstep(8.0, 52.0, lotOutside + lotWobble);",
+    "lotEdge = lotEdge * lotEdge * (3.0 - 2.0 * lotEdge);",
+    "float lotKeep = 1.0 - lotEdge;"
+  ].join("\n");
+}
 // Runs before the lights, in linear space. Puddles darken and polish the
 // surface. The rings tilt the normal so a lamp catches a moving crest.
 function wetSurfaceChunk(xzVarying, scale) {
@@ -1542,6 +1561,9 @@ function wetSurfaceChunk(xzVarying, scale) {
     "float faceUp = smoothstep(0.45, 0.85, vWetN.y);",
     "float wetMask = wetK * faceUp;",
     "vec2 gw = " + xzVarying + ";",
+    lotKeepGlsl("gw"),
+    "wetK *= lotKeep;",
+    "wetMask *= lotKeep;",
     "if (wetK > 0.001) {",
     "  if (wetMask > 0.001) {",
     "    float pn = wetFbm(gw * " + puddle + " + vec2(3.1, 7.7));",
@@ -1560,6 +1582,10 @@ function wetSurfaceChunk(xzVarying, scale) {
     "    roughnessFactor = mix(roughnessFactor, 0.38, wetK);",
     "  }",
     "}",
+    // The sheet's roughness and metal are already the wet ones. Put the dry
+    // surface back once the floor has left the city, or the fade stays glossy.
+    "roughnessFactor = mix(1.0, roughnessFactor, lotKeep);",
+    "metalnessFactor *= lotKeep;",
     ""
   ].join("\n");
 }
@@ -1573,7 +1599,7 @@ const WET_GLINT = [
   // Same weights as the night-street mirror: a puddle reflects even when
   // you are looking down, and a graze picks up still more of the street.
   "float cover = mix(0.22, 0.92, wetPud) * (0.35 + 0.65 * fres + 0.25);",
-  "cover *= face * clamp(uWet, 0.0, 1.0) * step(0.5, uWetReflOn);",
+  "cover *= face * clamp(uWet, 0.0, 1.0) * step(0.5, uWetReflOn) * lotKeep;",
   "if (cover > 0.001) {",
   // The mirror was sampled with the screen pixel, so the picture rode with
   // the lens. Project this point of the pavement through the mirrored camera
@@ -1729,6 +1755,7 @@ ground.material.onBeforeCompile = shader => {
     "float wobble = sin(gw.x * 0.085) * 2.4 + sin(gw.y * 0.07 + gw.x * 0.04) * 1.8;",
     "float edgeT = smoothstep(8.0, 52.0, outside + wobble);",
     "edgeT = edgeT * edgeT * (3.0 - 2.0 * edgeT);",
+    "gl_FragColor.rgb *= mix(mix(1.0, 1.7, clamp(uWet, 0.0, 1.0)), 1.0, lotKeep);",
     "gl_FragColor.a *= 1.0 - edgeT;",
     "#ifdef USE_FOG",
     "  float fogFactor = smoothstep(fogNear * 2.4, fogFar, fogDepth);",
@@ -14893,6 +14920,7 @@ const rain = new THREE.Mesh(rainGeo, new THREE.ShaderMaterial({
     "    mod(aSeed.y * uSpanZ, uSpanZ) - uSpanZ * 0.5",
     "  );",
     "  vec3 worldP = (modelMatrix * vec4(local, 1.0)).xyz;",
+    "  " + lotKeepGlsl("worldP.xz"),
     "  vLit = vec3(1.0);",
     "  if (uNight > 0.001) vLit = mix(vec3(1.0), lampLit(worldP), uNight);",
     "  vec3 down = normalize(vec3(uLean, -1.0, 0.0));",
@@ -14904,7 +14932,7 @@ const rain = new THREE.Mesh(rainGeo, new THREE.ShaderMaterial({
     "  float len = (0.18 + aSeed.w * 0.28) * uLen;",
     "  len = min(len, max(0.06, dc * 0.04));",
     "  float w = max(0.0072, dc * 0.00085);",
-    "  vFade = smoothstep(0.28, 0.9, dc) * min(1.0, 0.011 / w) * smoothstep(0.0, 0.4, yOff);",
+    "  vFade = smoothstep(0.28, 0.9, dc) * min(1.0, 0.011 / w) * smoothstep(0.0, 0.4, yOff) * lotKeep;",
     "  vec3 q = worldP + rt * position.x * w * 2.0 - down * (position.y + 0.5) * len;",
     "  vC = vec2(position.x * 2.0, position.y + 0.5);",
     "  gl_Position = projectionMatrix * viewMatrix * vec4(q, 1.0);",
@@ -14964,6 +14992,7 @@ const splash = new THREE.Mesh(splashGeo, new THREE.ShaderMaterial({
     "  vec2 world0 = vec2(aSeed.x, aSeed.y) * span;",
     "  vec2 rel = mod(world0 - cameraPosition.xz + halfS, span) - halfS;",
     "  vec3 p = vec3(cameraPosition.x + rel.x, uBot + 0.02, cameraPosition.z + rel.y);",
+    "  " + lotKeepGlsl("p.xz"),
     "  vLit = vec3(1.0);",
     "  if (uNight > 0.001) vLit = mix(vec3(1.0), lampLit(p), uNight);",
     "  float s = (0.032 + vT * 0.085) * (0.6 + aSeed.w * 0.4);",
@@ -14979,7 +15008,7 @@ const splash = new THREE.Mesh(splashGeo, new THREE.ShaderMaterial({
     "  vC = position.xy * 2.0;",
     "  vec3 q = p + rt * vC.x * s + axis * (vC.y * s * 0.72 + s * 0.22);",
     "  float edge = (1.0 - smoothstep(halfS.x * 0.82, halfS.x, abs(rel.x))) * (1.0 - smoothstep(halfS.y * 0.82, halfS.y, abs(rel.y)));",
-    "  vFade = edge * smoothstep(0.35, 1.15, dc);",
+    "  vFade = edge * smoothstep(0.35, 1.15, dc) * lotKeep;",
     "  gl_Position = projectionMatrix * viewMatrix * vec4(q, 1.0);",
     "}"
   ].join("\n"),
