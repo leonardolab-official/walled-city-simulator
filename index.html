@@ -8927,6 +8927,44 @@ const alleyFlyerMats = (function buildAlleyFlyers() {
 })();
 function hangAlleyFlyers(list) {
   if (!list.length) return;
+  // The lot line is not the plaster. A sheet left on that line, or past the
+  // end of a wall, hangs in the lane. Keep one only when the ground shell is
+  // right behind it, and sit it on that face.
+  city.updateMatrixWorld(true);
+  const flyerWalls = [];
+  for (let ci = 0; ci < city.children.length; ci++) {
+    const o = city.children[ci];
+    if (!o.isMesh || !o.geometry || !o.geometry.userData || o.geometry.userData.pack !== 1) continue;
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    flyerWalls.push({ mesh: o, box: o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld) });
+  }
+  const flyerRay = new THREE.Raycaster();
+  const flyerOrigin = new THREE.Vector3();
+  const flyerDir = new THREE.Vector3();
+  const flyerN = new THREE.Vector3();
+  function plasterFace(x, y, z, ox, oz) {
+    const near = [];
+    for (let w = 0; w < flyerWalls.length; w++) {
+      const b = flyerWalls[w].box;
+      if (x < b.min.x - 0.8 || x > b.max.x + 0.8) continue;
+      if (z < b.min.z - 0.8 || z > b.max.z + 0.8) continue;
+      if (y < b.min.y - 0.5 || y > b.max.y + 0.5) continue;
+      near.push(flyerWalls[w].mesh);
+    }
+    if (!near.length) return null;
+    flyerOrigin.set(x + ox * 0.2, y, z + oz * 0.2);
+    flyerDir.set(-ox, 0, -oz);
+    flyerRay.set(flyerOrigin, flyerDir);
+    flyerRay.far = 0.42;
+    const hits = flyerRay.intersectObjects(near, false);
+    if (!hits.length) return null;
+    const hit = hits[0];
+    if (!hit.face) return null;
+    flyerN.copy(hit.face.normal).transformDirection(hit.object.matrixWorld);
+    if (flyerN.x * ox + flyerN.z * oz < 0.72) return null;
+    if (hit.distance > 0.36) return null;
+    return hit.point;
+  }
   function openInset(anchor, face) {
     for (let i = 0; i < walkSolids.length; i++) {
       const b = walkSolids[i];
@@ -8991,10 +9029,16 @@ function hangAlleyFlyers(list) {
     const bite = -inset + proud;
     const x = best.axis === "x" ? best.face + best.sign * bite : f.x;
     const z = best.axis === "z" ? best.face + best.sign * bite : f.z;
-    if (onMouth(x, z)) continue;
+    const ox = best.axis === "x" ? best.sign : 0;
+    const oz = best.axis === "z" ? best.sign : 0;
+    const stuck = plasterFace(x, f.y, z, ox, oz);
+    if (!stuck) continue;
+    const px = stuck.x + ox * proud;
+    const pz = stuck.z + oz * proud;
+    if (onMouth(px, pz)) continue;
     const rot = best.axis === "x" ? (best.sign > 0 ? Math.PI / 2 : -Math.PI / 2) : (best.sign > 0 ? 0 : Math.PI);
     addShopMesh.spin = f.tilt || 0;
-    addShopMesh(alleyFlyerGeo, mat, x, f.y, z, rot, fw, fh, 1);
+    addShopMesh(alleyFlyerGeo, mat, px, f.y, pz, rot, fw, fh, 1);
     hung++;
   }
   addShopMesh.stay = prevStay;
