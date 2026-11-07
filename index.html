@@ -4433,10 +4433,13 @@ function addShopMesh(geo, mat, x, y, z, rot, sx, sy, sz, data) {
     blade: addShopMesh.blade || null,
     spin: addShopMesh.spin || 0,
     // 0 streams with the walk camera. Outer roads and loose boards stay put.
-    stay: addShopMesh.stay === 0 ? 0 : 1
+    stay: addShopMesh.stay === 0 ? 0 : 1,
+    // 0 all day, 1 only while the shop is open, 2 only while the gate is shut.
+    hours: addShopMesh.hours || 0
   });
 }
 addShopMesh.stay = 1;
+addShopMesh.hours = 0;
 function flushShops() {
   const groups = {};
   for (let i = 0; i < shopQueue.length; i++) {
@@ -4504,8 +4507,13 @@ function flushShops() {
     }
     if (g.items.some(it => it.blade)) mesh.userData.blades = g.items.map(it => it.blade || null);
     const stay = new Uint8Array(g.items.length);
-    for (let i = 0; i < g.items.length; i++) stay[i] = g.items[i].stay ? 1 : 0;
+    const hours = new Uint8Array(g.items.length);
+    for (let i = 0; i < g.items.length; i++) {
+      stay[i] = g.items[i].stay ? 1 : 0;
+      hours[i] = g.items[i].hours || 0;
+    }
     mesh.userData.shopStay = stay;
+    mesh.userData.shopHours = hours;
     city.add(mesh);
   });
   shopQueue.length = 0;
@@ -5002,24 +5010,14 @@ function noteShopkeeper(bay, face, kind, data) {
   if (kind === "barber" && !thin && stance === "sit") stance = "idle";
   // A chair is about a quarter metre wide. A slit narrower than that stays standing.
   if (stance === "sit" && span < 0.9) stance = "idle";
-  if (stance === "sit") {
-    const room = Math.min(1.62, Math.max(0.34, bay.room == null ? 0.7 : bay.room));
-    const backFace = -(room - 0.05);
-    // Knees reach about 0.34 m toward the street. The chair back needs the
-    // wall behind it. A recess that cannot hold both stays a standing idle.
-    const deepest = backFace - SHOP_SEAT + 0.16;
-    const near = thin ? -0.55 : -0.70;
-    if (deepest > near) stance = "idle";
-    else {
-      // The bench is at along 0.62 and about 0.42 m deep. A chair on that
-      // spot sits inside the timber. Keep the seat to the side, far enough
-      // forward that the street sees the sitter and not only a head.
-      const preferred = glass ? -1.02 : -0.78;
-      depth = Math.max(deepest, preferred) + SHOP_SEAT;
-      yaw = thin ? 0 : yaw * 0.2;
-      if (!glass) along = thin ? 0.24 : Math.min(along, 0.34);
-    }
-  }
+  // The real spot is chosen once the counters, gates and the next shop's
+  // crates are in the queue. This pose is only the fallback.
+  const roomFit = Math.min(1.62, Math.max(0.34, bay.room == null ? 0.7 : bay.room));
+  const seat = {
+    face: face, x: bay.x, z: bay.z, w: bay.w, d: bay.d, span: span,
+    room: roomFit, roomW: bay.roomW || 0,
+    lotX: data.x, lotZ: data.z, lotW: data.w, lotD: data.d
+  };
   const spot = facePose(bay.x, bay.z, bay.w, bay.d, face, along, depth - SHOP_SEAT, 0.33);
   if (massCovers(spot.x, spot.z, data.x, data.z, data.w, data.d)) return;
   // Positive yaw turns the face toward -along on every front but the east one.
@@ -5028,8 +5026,275 @@ function noteShopkeeper(bay, face, kind, data) {
   shopPosts.push({
     x: spot.x, y: 0.33, z: spot.z, rot: rot, kind: kind,
     fx: Math.sin(rot), fz: Math.cos(rot),
-    stance: stance, span: span
+    stance: stance, span: span, seat: seat
   });
+}
+// Keepers used to stand in the mouth, turned toward the party wall, so a
+// working arm crossed the gate into the next shop's crates. Sitters and
+// standers both face the street from the deepest clear spot in their own room.
+function settleSeatedKeepers() {
+  const BACK = 0.14, KNEE = 0.44, HALF = 0.18, GAP = 0.04;
+  const solids = [];
+  const CELL = 2.2;
+  const grid = Object.create(null);
+  function boundsOf(geo) {
+    let box = geo.userData && geo.userData.seatBox;
+    if (box) return box;
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    box = {
+      cx: (bb.min.x + bb.max.x) * 0.5, cy: (bb.min.y + bb.max.y) * 0.5, cz: (bb.min.z + bb.max.z) * 0.5,
+      hx: (bb.max.x - bb.min.x) * 0.5, hy: (bb.max.y - bb.min.y) * 0.5, hz: (bb.max.z - bb.min.z) * 0.5
+    };
+    if (!geo.userData) geo.userData = {};
+    geo.userData.seatBox = box;
+    return box;
+  }
+  function addSolid(it) {
+    if (!it.geo) return;
+    const b = boundsOf(it.geo);
+    const sx = Math.abs(it.sx == null ? 1 : it.sx);
+    const sy = Math.abs(it.sy == null ? 1 : it.sy);
+    const sz = Math.abs(it.sz == null ? 1 : it.sz);
+    const hx = b.hx * sx, hy = b.hy * sy, hz = b.hz * sz;
+    if (hx < 0.004 || hy < 0.004 || hz < 0.004) return;
+    const rot = it.rot || 0;
+    const ce = Math.cos(rot), se = Math.sin(rot);
+    const lx = b.cx * (it.sx == null ? 1 : it.sx);
+    const ly = b.cy * (it.sy == null ? 1 : it.sy);
+    const lz = b.cz * (it.sz == null ? 1 : it.sz);
+    const x = it.x + lx * ce + lz * se;
+    const y = it.y + ly;
+    const z = it.z - lx * se + lz * ce;
+    const y0 = y - hy, y1 = y + hy;
+    if (y1 < 0.34 || y0 > 1.72) return;
+    // A counter top is a thin board. A seated lap passes under it. A standing
+    // chest does not, so the board stays in the list and the stance decides.
+    const slab = hy < 0.05 && hx > hy * 2 && hz > hy * 2 && y > 0.72 && y < 1.05;
+    const solid = {
+      x: x, z: z, y0: y0, y1: y1,
+      xx: ce, xz: -se, zx: se, zz: ce,
+      ex: hx + GAP, ez: hz + GAP,
+      slab: slab, seen: 0
+    };
+    solids.push(solid);
+    const ax = Math.abs(ce) * solid.ex + Math.abs(se) * solid.ez;
+    const az = Math.abs(se) * solid.ex + Math.abs(ce) * solid.ez;
+    const i0 = Math.floor((x - ax) / CELL), i1 = Math.floor((x + ax) / CELL);
+    const k0 = Math.floor((z - az) / CELL), k1 = Math.floor((z + az) / CELL);
+    for (let iz = k0; iz <= k1; iz++) {
+      for (let ix = i0; ix <= i1; ix++) {
+        const key = ix + ":" + iz;
+        (grid[key] || (grid[key] = [])).push(solid);
+      }
+    }
+  }
+  for (let i = 0; i < shopQueue.length; i++) addSolid(shopQueue[i]);
+  let stamp = 1;
+  function hit(a, b) {
+    if (a.y1 < b.y0 || b.y1 < a.y0) return false;
+    const dx = b.x - a.x, dz = b.z - a.z;
+    function sep(nx, nz) {
+      const dist = Math.abs(dx * nx + dz * nz);
+      const ra = a.ex * Math.abs(a.xx * nx + a.xz * nz) + a.ez * Math.abs(a.zx * nx + a.zz * nz);
+      const rb = b.ex * Math.abs(b.xx * nx + b.xz * nz) + b.ez * Math.abs(b.zx * nx + b.zz * nz);
+      return dist > ra + rb;
+    }
+    if (sep(a.xx, a.xz) || sep(a.zx, a.zz) || sep(b.xx, b.xz) || sep(b.zx, b.zz)) return false;
+    return true;
+  }
+  function volume(x, z, rot, z0, z1, halfX, y0, y1) {
+    const ce = Math.cos(rot), se = Math.sin(rot);
+    const mid = (z0 + z1) * 0.5;
+    return {
+      x: x + mid * se, z: z + mid * ce, y0: y0, y1: y1,
+      xx: ce, xz: -se, zx: se, zz: ce,
+      ex: halfX, ez: (z1 - z0) * 0.5
+    };
+  }
+  // stand: feet at the post, hands reaching toward the street. A seated body
+  // keeps the chair-and-knee box. Slabs are counter tops; only a standing
+  // chest treats them as solid.
+  function bodyHits(x, z, rot, o, stop) {
+    const front = o.front == null ? (o.stand ? 0.16 : 0.12) : o.front;
+    const torso = o.stand
+      ? volume(x, z, rot, -o.back, front, o.half, 0.90, 1.68)
+      : volume(x, z, rot, -o.back, front, o.half, 0.64, 1.42);
+    // Arms use the full shoulder width. A narrower box let a working hand sit in the rack.
+    const arms = o.stand ? volume(x, z, rot, 0.02, o.fore, o.half, 0.70, 1.30) : null;
+    const legs = o.stand
+      ? volume(x, z, rot, -o.back, 0.10, o.half * 0.7, 0.36, 1.02)
+      : volume(x, z, rot, 0.0, o.fore, o.half * 0.8, 0.36, 0.78);
+    const reach = o.fore + 0.25;
+    const i0 = Math.floor((x - reach) / CELL), i1 = Math.floor((x + reach) / CELL);
+    const k0 = Math.floor((z - reach) / CELL), k1 = Math.floor((z + reach) / CELL);
+    stamp++;
+    let n = 0, torsoN = 0;
+    for (let iz = k0; iz <= k1; iz++) {
+      for (let ix = i0; ix <= i1; ix++) {
+        const list = grid[ix + ":" + iz];
+        if (!list) continue;
+        for (let s = 0; s < list.length; s++) {
+          const solid = list[s];
+          if (solid.seen === stamp) continue;
+          solid.seen = stamp;
+          if (!o.stand && solid.slab) continue;
+          // A counter top is a slab. Hands may rest over it. The chest, and a
+          // hand in a rack or a crate, still count.
+          const body = hit(torso, solid) || hit(legs, solid);
+          const arm = arms && hit(arms, solid);
+          if (body || (arm && !solid.slab)) {
+            n++;
+            if (body) torsoN++;
+            if (stop) return n;
+          }
+        }
+      }
+    }
+    bodyHits.torso = torsoN;
+    return n;
+  }
+  function inOtherMass(x, z, rot, seat, o) {
+    const ce = Math.cos(rot), se = Math.sin(rot);
+    const pts = [[-o.half, -o.back], [o.half, -o.back], [-o.half * 0.7, o.fore], [o.half * 0.7, o.fore], [0, 0]];
+    for (let i = 0; i < pts.length; i++) {
+      const lx = pts[i][0], lz = pts[i][1];
+      const px = x + lx * ce + lz * se;
+      const pz = z - lx * se + lz * ce;
+      if (massCovers(px, pz, seat.lotX, seat.lotZ, seat.lotW, seat.lotD)) return true;
+    }
+    return false;
+  }
+  // Folded gates sit near out -0.50. Hands stay behind that line.
+  const GATE = -0.58;
+  function fitBox(o, out) {
+    if (!o.stand) return o;
+    const front0 = o.front == null ? 0.16 : o.front;
+    const reach = GATE - out;
+    if (reach >= o.fore && reach >= front0) return o;
+    return {
+      stand: true, half: o.half, back: o.back,
+      fore: Math.max(0.08, Math.min(o.fore, reach)),
+      front: Math.max(0.06, Math.min(front0, reach - 0.02)),
+      capped: true
+    };
+  }
+  function search(seat, span, left, right, o, allowHits) {
+    const gapW = right - left;
+    // A recess narrower than the shoulders still gets a keeper. Slim the test
+    // to the opening instead of leaving them in the party wall.
+    if (o.stand && gapW < o.half * 2 + 0.02) {
+      const half = (gapW - 0.04) / 2;
+      if (!(half >= 0.11)) return null;
+      o = { stand: true, half: half, back: o.back, fore: o.fore, front: o.front };
+    } else if (!(span > 0) || gapW < o.half * 2 + 0.02) return null;
+    const backFace = -(seat.room - 0.05);
+    const backFoot = backFace - SHOP_SEAT + o.back + GAP + 0.03;
+    const gateFoot = o.stand ? -0.98 : -1.02;
+    let lo = Math.min(backFoot, gateFoot);
+    let hi = Math.max(backFoot, gateFoot);
+    // A shallow recess ends before the gate line. Stay at its back wall.
+    if (backFoot > gateFoot) { lo = backFoot; hi = backFoot; }
+    const mid = (left + right) * 0.5;
+    let fallback = null, fallN = 1e9, fallTorso = 1e9, fallDeep = 0, fallD = 1e9;
+    for (let depth = lo; depth <= hi + 1e-4; depth += 0.08) {
+      const out = Math.min(depth, hi);
+      const fit = fitBox(o, out);
+      let best = null, bestD = 1e9;
+      for (let alongM = left + o.half; alongM <= right - o.half + 1e-4; alongM += 0.08) {
+        const spot = facePose(seat.x, seat.z, seat.w, seat.d, seat.face, alongM / span, out, 0.33);
+        if (inOtherMass(spot.x, spot.z, spot.rot, seat, fit)) continue;
+        const n = bodyHits(spot.x, spot.z, spot.rot, fit, !allowHits);
+        const d = Math.abs(alongM - mid);
+        if (n === 0 && d < bestD) { bestD = d; best = spot; best.fit = fit; }
+        if (allowHits) {
+          // A chest inside a rack is worse than a hand over a counter. If the
+          // chest hits everywhere, step toward the mouth instead of the back wall.
+          const torsoN = bodyHits.torso || 0;
+          const depthBetter = torsoN === 0 ? out < fallDeep - 1e-6 : out > fallDeep + 1e-6;
+          if (torsoN < fallTorso || (torsoN === fallTorso && (n < fallN || (n === fallN && (depthBetter || (Math.abs(out - fallDeep) < 1e-6 && d < fallD)))))) {
+            fallTorso = torsoN; fallN = n; fallDeep = out; fallD = d; fallback = spot; fallback.fit = fit;
+          }
+        }
+      }
+      if (best) return best;
+    }
+    return allowHits ? fallback : null;
+  }
+  function applySpot(post, spot) {
+    post.x = spot.x;
+    post.z = spot.z;
+    post.rot = spot.rot;
+    post.fx = Math.sin(spot.rot);
+    post.fz = Math.cos(spot.rot);
+  }
+  const sitBox = { stand: false, half: HALF, back: BACK, fore: KNEE };
+  // A working hand reaches about 0.35 m. An idle arm hangs closer to 0.14 m.
+  const workBox = { stand: true, half: 0.20, back: 0.12, fore: 0.36, front: 0.16 };
+  const idleBox = { stand: true, half: 0.18, back: 0.12, fore: 0.16, front: 0.14 };
+  const stats = { seated: 0, standing: 0, overlaps: 0, unplaced: 0, solids: solids.length };
+  for (let i = 0; i < shopPosts.length; i++) {
+    const post = shopPosts[i];
+    const seat = post.seat;
+    if (!seat) continue;
+    const span = (seat.face === "n" || seat.face === "s") ? seat.w : seat.d;
+    let margin = 0.24;
+    if (span - margin * 2 < 0.62) margin = Math.max(0.05, (span - 0.62) / 2);
+    const openW = Math.max(0.55, span - margin * 2);
+    const roomW = (seat.room > 0.7 && seat.roomW)
+      ? Math.min(seat.roomW - 0.04, openW + 0.16)
+      : openW * 0.96;
+    const wallHalf = (roomW * 0.5 - 0.03) / span;
+    let left = (0.5 - wallHalf) * span + 0.05;
+    let right = (0.5 + wallHalf) * span - 0.05;
+    if (right - left < 0.42) {
+      left = margin + 0.06;
+      right = span - margin - 0.06;
+    }
+    let spot = null;
+    if (post.stance === "sit") spot = search(seat, span, left, right, sitBox, false);
+    if (spot) {
+      applySpot(post, spot);
+      stats.seated++;
+    } else {
+      if (post.stance === "sit") post.stance = "idle";
+      // Idle arms hang. Search those first, or a working reach pushes the
+      // keeper forward into the rack they could have stood beside.
+      if (post.stance === "idle") spot = search(seat, span, left, right, idleBox, false);
+      else {
+        spot = search(seat, span, left, right, workBox, false);
+        if (!spot || (spot.fit && spot.fit.capped)) {
+          const hung = search(seat, span, left, right, idleBox, false);
+          if (hung) {
+            spot = hung;
+            post.stance = "idle";
+          }
+        }
+      }
+      if (!spot) {
+        spot = search(seat, span, left, right, idleBox, true);
+        if (spot) post.stance = "idle";
+      }
+      if (!spot) {
+        const backFace = -(seat.room - 0.05);
+        const guess = facePose(seat.x, seat.z, seat.w, seat.d, seat.face, 0.5, backFace - SHOP_SEAT + 0.22, 0.33);
+        if (!inOtherMass(guess.x, guess.z, guess.rot, seat, idleBox)) {
+          guess.fit = idleBox;
+          spot = guess;
+          post.stance = "idle";
+        }
+      }
+      if (spot) {
+        const fit = spot.fit || idleBox;
+        if (fit.capped) post.stance = "idle";
+        applySpot(post, spot);
+        stats.standing++;
+        if (bodyHits(post.x, post.z, post.rot, fit) > 0) stats.overlaps++;
+      } else stats.unplaced++;
+    }
+    post.seat = null;
+  }
+  return stats;
 }
 function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   const guard = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.5, 0.12, 0);
@@ -5066,6 +5331,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
       if (variant !== "shut") rng();
     }
     addShopMesh.pinX = addShopMesh.pinZ = null;
+    addShopMesh.hours = 0;
     addShopMesh.stay = 1;
     return;
   }
@@ -5079,6 +5345,19 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   function put(geo, mat, along, out, y, sx, sy, sz, pick) {
     const p = facePose(bay.x, bay.z, bay.w, bay.d, face, along, out - SHOP_SEAT, y);
     addShopMesh(geo, mat, p.x, p.y, p.z, p.rot, sx, sy, sz, pick);
+  }
+  // The folded stack is the open gate. The same plates, drawn across the mouth, are the shut gate.
+  function shopGate(foldAlong, centerAlong, width, y0, y1, variant) {
+    addShopMesh.hours = 1;
+    putFoldedStack(put, span, foldAlong, y0, y1, variant);
+    addShopMesh.hours = 2;
+    putFoldingGate(put, span, centerAlong, width, y0, y1, variant, -0.05);
+    addShopMesh.hours = 0;
+  }
+  function byDay(fn) {
+    addShopMesh.hours = 1;
+    fn();
+    addShopMesh.hours = 0;
   }
   function laneFree(along, out) {
     const p = facePose(bay.x, bay.z, bay.w, bay.d, face, along, out - SHOP_SEAT, 0);
@@ -5305,7 +5584,8 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     put(shopGeo.box, shopFinish.timber, doorAlong + doorW / (2 * span), -0.05, frameY, 0.045, frameH, 0.05);
     put(shopGeo.box, shopFinish.timber, doorAlong, -0.05, head - 0.02, doorW + 0.05, 0.045, 0.05);
     const fold = 0.14;
-    putFoldedStack(put, span, doorAlong - (doorW * 0.5 - fold * 0.5) / span, 0.38, head - 0.06, 0);
+    // Day: the gate is a bundle at the jamb. After 11 it draws across the door.
+    shopGate(doorAlong - (doorW * 0.5 - fold * 0.5) / span, doorAlong, doorW, 0.38, head - 0.06, 0);
     const rest = openW - unit;
     if (rest > 0.16) {
       const wallAlong = inset + (unit + rest * 0.5) / span;
@@ -5318,9 +5598,10 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     if (rest > 0.4) roller(0.36, 1.9, Math.max(0.3, rest - 0.06), 1 - inset - rest / (2 * span));
     const fold = 0.16;
     const gateV = variant === 2 ? 2 : variant === 1 ? 1 : 0;
-    putFoldedStack(put, span, inset + fold / (2 * span), 0.36, 1.9, gateV);
+    const mouthCenter = inset + mouth / (2 * span);
+    shopGate(inset + fold / (2 * span), mouthCenter, mouth, 0.36, 1.9, gateV);
   }
-  if (lined && open && kind !== "mahjong" && kind !== "paikau") {
+  if (lined && open && kind !== "mahjong" && kind !== "paikau") byDay(function () {
     const cw = Math.min(1.15, Math.max(0.55, openW * 0.42));
     putIn(shopGeo.box, shopFinish.timber, 0.62, -0.42, 0.86, cw, 0.04, 0.42);
     putIn(shopGeo.box, shopFinish.timber, 0.62, -0.23, 0.60, cw, 0.48, 0.03);
@@ -5335,11 +5616,11 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
         put(shopGeo.box, shopFinish.timber, 0.42, backOut + 0.12, floorTop + 0.24, counterW, 0.46, 0.03);
       }
     }
-  }
-  if (open && (kind === "mahjong" || kind === "paikau")) {
+  });
+  if (open && (kind === "mahjong" || kind === "paikau")) byDay(function () {
     const curtain = solidMat(kind === "mahjong" ? "mjCloth" : "pkCloth", kind === "mahjong" ? 0x1c6b3c : 0x1a3058, 0.92, 0);
     put(shopGeo.plane, curtain, 0.22, -0.12, 1.25, Math.min(0.55, openW * 0.36), 1.35, 1);
-  }
+  });
   const pose = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.5, 0.2 - SHOP_SEAT, 1.23);
   const hitsTemple = pose.x > TEMPLE_X - 0.3 && pose.x < TEMPLE_X + TEMPLE_W + 0.5 && pose.z > TEMPLE_Z + TEMPLE_D - 0.3 && pose.z < TEMPLE_Z + TEMPLE_D + 1.8;
   const proj = hitsTemple ? 0 : Math.min(wide ? 0.62 : 0.36, Math.max(0, alley * 0.16));
@@ -5348,7 +5629,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     addShopMesh(shopGeo.box, awningMat(spec.awning, Math.floor(rng() * 3)), ap.x, ap.y, ap.z, ap.rot, Math.max(0.6, bay.span * 0.86), 0.045, proj);
     [0.28, 0.72].forEach(along => put(shopGeo.box, shopFinish.timber, along, proj * 0.5, 2.28, 0.035, 0.028, Math.max(0.12, proj)));
   }
-  if (lined && spec.tube && variant !== "shut" && kind !== "door") {
+  if (lined && spec.tube && variant !== "shut" && kind !== "door") byDay(function () {
     // The tube stays inside the opening. One hung at the lot line read as a bar in the lane.
     const tubeMat = solidMat("tube-" + spec.tube.toString(16), spec.tube, 0.35, 0, spec.dim ? 0.22 : 0.48, spec.dim ? 0.55 : 0.95);
     const len = front ? Math.min(1.05, Math.max(0.5, front.unit * 0.62)) : Math.min(Math.max(0.62, openW * 0.42), 1.15);
@@ -5366,7 +5647,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
         put(shopGeo.box, shopFinish.metal, along, out, housingTop + drop * 0.5, 0.012, drop, 0.012);
       }
     });
-  }
+  });
   if (kind === "door" && variant === 0) {
     const bulbMat = solidMat("bulb", 0xffd2a0, 0.4, 0, 0.35, 0.95);
     const bp = facePose(bay.x, bay.z, bay.w, bay.d, face, dMid, -0.16 - SHOP_SEAT, 2.02);
@@ -5386,13 +5667,14 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   }
   if (variant === "shut" || kind === "door") {
     addShopMesh.pinX = addShopMesh.pinZ = null;
+    addShopMesh.hours = 0;
     return;
   }
   const duckMat = solidMat("duck", 0x7a2e18, 0.48, 0.08);
   const potMat = solidMat("pot", 0x3c4042, 0.76, 0.14);
   const crateAlt = rng() > 0.5;
   const stoolCols = [0xa33a30, 0x24506a, 0x1e4a3a];
-  if (lined && spec.hanging && variant !== "shut") {
+  if (lined && spec.hanging && variant !== "shut") byDay(function () {
     const railY = 1.78;
     const railD = 0.03;
     const railOut = backFace + railD * 0.5 - 0.008;
@@ -5402,11 +5684,11 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
       const hp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.34 + i * 0.12, railOut - SHOP_SEAT, 1.56);
       addShopMesh(shopGeo.duck, duckMat, hp.x, hp.y, hp.z, 0, 0.85, 1.7, 0.75);
     }
-  }
-  if (spec.workshop && (kind === "fishball" || kind === "noodle" || kind === "tofu") && laneFree(0.62, 0.3)) {
+  });
+  if (spec.workshop && (kind === "fishball" || kind === "noodle" || kind === "tofu") && laneFree(0.62, 0.3)) byDay(function () {
     const pp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.62, 0.12 - SHOP_SEAT, 0);
     addShopMesh(shopGeo.pot, potMat, pp.x, sitY(pp.x, pp.z, -0.14), pp.z, 0, 1, 1, 1);
-  }
+  });
   if (spec.crates && alley >= 2.1 && laneFree(0.78, 0.32)) {
     const cp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.78, Math.min(0.24, alley * 0.1) - SHOP_SEAT, 0);
     addShopMesh(shopGeo.crate, crateAlt ? shopFinish.cratePlastic : shopFinish.crateWood, cp.x, sitY(cp.x, cp.z, -0.48, 0.28), cp.z, 0, 0.42, 0.28, 0.34);
@@ -5422,17 +5704,18 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
       addShopMesh(shopGeo.stool, stoolMat, sp.x, sitY(sp.x, sp.z, 0), sp.z, 0, 1, 1, 1);
     });
   }
-  if (lined && (kind === "grocery" || kind === "cafe" || kind === "pharmacy" || kind === "rice") && variant !== "shut") {
+  if (lined && (kind === "grocery" || kind === "cafe" || kind === "pharmacy" || kind === "rice") && variant !== "shut") byDay(function () {
     const lamp = solidMat("shrine", 0xc43a32, 0.4, 0, 0.18, 0.42);
     const lp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.22, backFace + 0.022 - SHOP_SEAT, 1.85);
     addShopMesh(shopGeo.box, lamp, lp.x, lp.y, lp.z, 0, 0.08, 0.08, 0.06);
-  }
+  });
   if (lined) {
     noteShopkeeper(bay, face, kind, data);
     putIn.raw = put;
-    fitOpenShop(kind, putIn, openW, span, bay, face);
+    byDay(function () { fitOpenShop(kind, putIn, openW, span, bay, face); });
   }
   addShopMesh.pinX = addShopMesh.pinZ = null;
+  addShopMesh.hours = 0;
   addShopMesh.stay = 1;
 }
 // Girard, Suddaby, City of Darkness: the stair is a slot about 0.8 m beside the
@@ -8986,12 +9269,14 @@ function hangAlleyFlyers(list) {
     return false;
   }
   const prevStay = addShopMesh.stay;
+  const prevHours = addShopMesh.hours;
   const prevSpin = addShopMesh.spin;
   const prevAz = addShopMesh.az;
   const prevPinX = addShopMesh.pinX;
   const prevPinZ = addShopMesh.pinZ;
   const prevBlade = addShopMesh.blade;
   addShopMesh.stay = 0;
+  addShopMesh.hours = 0;
   addShopMesh.az = null;
   addShopMesh.pinX = addShopMesh.pinZ = null;
   addShopMesh.blade = null;
@@ -9042,6 +9327,7 @@ function hangAlleyFlyers(list) {
     hung++;
   }
   addShopMesh.stay = prevStay;
+  addShopMesh.hours = prevHours || 0;
   addShopMesh.spin = prevSpin || 0;
   addShopMesh.az = prevAz;
   addShopMesh.pinX = prevPinX;
@@ -9923,6 +10209,7 @@ function dressOuterBlades() {
   clutterStats.blades = nBlade;
 }
 dressOuterBlades();
+settleSeatedKeepers();
 flushShops();
 
 const brick = new THREE.MeshStandardMaterial({ map: greyBrickMap(1, 1), color: 0x6a645c, roughness: 0.96, metalness: 0, clippingPlanes: clips });
@@ -19607,7 +19894,8 @@ function prepareKeeperPosts() {
     const phase = lotRoll(post.x, post.z, 0xA11 + i) * Math.PI * 2;
     const phase2 = lotRoll(post.z, post.x, 0xB22 + i) * Math.PI * 2;
     const rate = 0.64 + lotRoll(post.x + 3, post.z + 5, 0xC33 + i) * 0.82;
-    const spin = (lotRoll(post.x, post.z, 0xD44 + i) - 0.5) * 0.18;
+    // Square to the gate. A twist put the hands through the jamb into the next bay.
+    const spin = 0;
     const rot = post.rot + spin;
     keeperPosts.push({
       x: post.x, y: post.y, z: post.z, rot: rot, kind: post.kind,
@@ -19706,8 +19994,21 @@ function keeperSeen(post, radius, reach) {
 }
 // Walk mode only. A shop in the frame gains its keeper; one that leaves
 // loses it. Two builds a frame, nearest first, so a turn does not hitch.
+// Open from 7:00 until 23:00. After 11 the gate is shut and the keeper goes home.
+function shopsOpenNow() {
+  const hour = ((stepSky.clock % 1) + 1) % 1 * 24;
+  return hour >= 7 && hour < 23;
+}
+let shopsAreOpen = true;
+let shopsHourFlip = false;
+function noteShopHours() {
+  const open = shopsOpenNow();
+  shopsHourFlip = open !== shopsAreOpen;
+  if (shopsHourFlip) shopsAreOpen = open;
+}
 function syncKeepers(now) {
-  if (!walkMode) {
+  noteShopHours();
+  if (!walkMode || !shopsAreOpen) {
     if (keepers.length) dropKeepers();
     return;
   }
@@ -22089,10 +22390,14 @@ function captureShopStreams() {
   const scl = new THREE.Vector3();
   city.children.forEach(mesh => {
     const stay = mesh.userData && mesh.userData.shopStay;
+    const hours = mesh.userData && mesh.userData.shopHours;
     if (!stay || !mesh.isInstancedMesh || mesh.count < 1 || stay.length !== mesh.count) return;
-    let inside = false;
-    for (let i = 0; i < stay.length; i++) if (!stay[i]) { inside = true; break; }
-    if (!inside) return;
+    let inside = false, timed = false;
+    for (let i = 0; i < stay.length; i++) {
+      if (!stay[i]) inside = true;
+      if (hours && hours[i]) timed = true;
+    }
+    if (!inside && !timed) return;
     const n = mesh.count;
     const px = new Float32Array(n);
     const py = new Float32Array(n);
@@ -22111,7 +22416,7 @@ function captureShopStreams() {
     const bay = mesh.userData.bayData || null;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.userData.shopStream = {
-      stay: stay, px: px, py: py, pz: pz, pr: pr, n: n,
+      stay: stay, hours: hours || null, px: px, py: py, pz: pz, pr: pr, n: n,
       base: mesh.instanceMatrix.array.slice(0, n * 16),
       shown: new Uint8Array(n),
       bay: bay ? bay.slice() : null,
@@ -22121,18 +22426,26 @@ function captureShopStreams() {
   });
   for (let i = 0; i < shopStreams.length; i++) packShopStay(shopStreams[i]);
 }
+function shopHourOn(flag) {
+  if (!flag) return true;
+  return flag === 1 ? shopsAreOpen : !shopsAreOpen;
+}
 function packShopStay(mesh) {
   const s = mesh.userData.shopStream;
   const src = s.base;
   const dst = mesh.instanceMatrix.array;
   let n = 0;
   for (let i = 0; i < s.n; i++) {
+    const flag = s.hours ? s.hours[i] : 0;
+    // A timed piece (open interior, or the gate drawn across a shut mouth)
+    // exists only while walking and in frame. The aerial view keeps the shell.
     s.shown[i] = 0;
-    if (s.stay[i] !== 1) continue;
+    if (flag || s.stay[i] !== 1) continue;
     const a = i * 16;
     const b = n * 16;
     for (let k = 0; k < 16; k++) dst[b + k] = src[a + k];
     if (s.packedBay) s.packedBay[n] = s.bay[i];
+    s.shown[i] = 1;
     n++;
   }
   if (n < 1) {
@@ -22152,7 +22465,12 @@ function packShopMesh(mesh) {
   const cam = camera.position;
   let n = 0;
   for (let i = 0; i < s.n; i++) {
-    let show = s.stay[i] === 1;
+    const flag = s.hours ? s.hours[i] : 0;
+    if (flag && !shopHourOn(flag)) {
+      s.shown[i] = 0;
+      continue;
+    }
+    let show = !flag && s.stay[i] === 1;
     if (!show) {
       const dx = s.px[i] - cam.x;
       const dy = s.py[i] - cam.y;
@@ -22184,8 +22502,10 @@ function packShopMesh(mesh) {
 }
 function syncShopFronts() {
   if (!shopStreams.length) return;
+  const flipped = shopsHourFlip;
+  shopsHourFlip = false;
   if (!walkMode) {
-    if (shopCam.walk) {
+    if (shopCam.walk || flipped) {
       for (let i = 0; i < shopStreams.length; i++) packShopStay(shopStreams[i]);
       shopCam.walk = false;
     }
@@ -22193,7 +22513,7 @@ function syncShopFronts() {
   }
   camera.updateMatrixWorld();
   const turned = Math.abs(shopCam.quat.dot(camera.quaternion));
-  if (shopCam.walk && shopCam.pos.distanceToSquared(camera.position) < 0.08 && turned > 0.9996) return;
+  if (!flipped && shopCam.walk && shopCam.pos.distanceToSquared(camera.position) < 0.08 && turned > 0.9996) return;
   shopCam.walk = true;
   shopCam.pos.copy(camera.position);
   shopCam.quat.copy(camera.quaternion);
