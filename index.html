@@ -17891,37 +17891,48 @@ function skullRecipe(box) {
   box(-13, -3, -2, -11, 3, 3);
   box(11, -3, -2, 13, 3, 3);
 }
+// The old crop stopped at the top edge of the cube, so the temples and the
+// forehead were bare skin and a child read as an old man. The hairline now
+// sits just above the brow, and the sides meet the fringe.
 function hairShort(box) {
-  box(-11, 9, -8, 11, 13, 7);
-  box(-10, 6, 7, 10, 9, 10);
-  box(-12, -1, -11, 12, 9, -8);
-  box(-13, 0, -6, -11, 8, 3);
-  box(11, 0, -6, 13, 8, 3);
+  box(-12, 9, -9, 12, 14, 8);
+  box(-11, 4, 7, 11, 9, 11);
+  box(-13, 2, -2, -11, 9, 8);
+  box(11, 2, -2, 13, 9, 8);
+  box(-13, 1, -11, -11, 9, -2);
+  box(11, 1, -11, 13, 9, -2);
+  box(-12, -1, -12, 12, 9, -8);
 }
 function hairBob(box) {
-  box(-12, 8, -9, 12, 14, 7);
-  box(-10, 6, 7, 10, 9, 11);
-  box(-13, -8, -11, 13, 9, -6);
-  box(-13, -8, -6, -11, 9, 5);
-  box(11, -8, -6, 13, 9, 5);
+  box(-13, 9, -10, 13, 15, 8);
+  box(-12, 4, 7, 12, 9, 12);
+  box(-14, -7, -8, -11, 9, 8);
+  box(11, -7, -8, 14, 9, 8);
+  box(-13, -9, -13, 13, 9, -8);
 }
 function hairBun(box) {
-  hairShort(box);
-  box(-3, 1, -15, 3, 7, -10);
+  box(-12, 9, -9, 12, 14, 8);
+  box(-11, 5, 7, 11, 9, 10);
+  box(-13, 2, -2, -11, 9, 8);
+  box(11, 2, -2, 13, 9, 8);
+  box(-13, -2, -12, 13, 9, -8);
+  box(-5, 1, -17, 5, 10, -11);
 }
 function hairGrey(box) {
-  box(-7, 9, -6, 7, 12, 2);
-  box(-12, 2, -11, 12, 9, -7);
-  box(-13, 3, -5, -11, 8, 1);
-  box(11, 3, -5, 13, 8, 1);
+  // The front of the crown stays skin. Sides rise to meet the back, so it
+  // reads as one older cut instead of a loose scrap of hair.
+  box(-11, 9, -9, 11, 12, 0);
+  box(-12, 0, -12, 12, 9, -7);
+  box(-13, -1, -9, -11, 9, 5);
+  box(11, -1, -9, 13, 9, 5);
 }
 function capRecipe(box) {
   box(-12, 7, -9, 12, 12, 7);
   box(-9, 6, 6, 9, 8, 12);
 }
 function burnRecipe(box) {
-  box(-12, -4, 3, -11, 2, 6);
-  box(11, -4, 3, 12, 2, 6);
+  box(-13, -1, 1, -11, 7, 7);
+  box(11, -1, 1, 13, 7, 7);
 }
 function lipRecipe(box) {
   box(-3, -4, 6, 4, -2, 8);
