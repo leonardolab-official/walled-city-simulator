@@ -51,7 +51,8 @@
   #col-left:has(#legend.open) { overflow: auto; }
   #col-left > *, #col-right > * { flex-shrink: 0; }
   #col-right { grid-area: right; align-self: start; justify-self: end; align-items: flex-end; width: max-content; max-width: min(340px, 100%); }
-  #col-right:has(#card.open) { width: min(340px, 100%); }
+  #col-right:has(#card.open) { width: min(340px, 100%); scrollbar-width: none; }
+  #col-right:has(#card.open)::-webkit-scrollbar { display: none; width: 0; height: 0; }
   header.panel {
     position: static; align-self: flex-start; width: max-content; max-width: 100%; padding: 8px 12px 9px;
     background: #120806; color: #ff4a38;
@@ -237,8 +238,9 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
+    scrollbar-width: none;
   }
+  #card .card-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }
   #card-walk { flex: none; }
   #legend.open { width: min(320px, calc(100vw - 32px)); max-width: min(320px, calc(100vw - 32px)); }
   #dock-wrap {
@@ -355,6 +357,8 @@
   #ui:not(.walk-bare) #toggle-legend { display: none; }
   #ui.walk-bare #dock-wrap { display: none; }
   #ui.walk-bare #toggle-legend { display: none; }
+  /* The place note is a view-mode sheet. Walking keeps the street clear. */
+  #ui.walk-bare #card { display: none; }
   #card-walk {
     width: 100%;
     margin-top: 12px;
@@ -1147,13 +1151,13 @@ scene.background = new THREE.Color(0x8b9094);
 scene.fog = new THREE.Fog(0x8b9094, 280, 900);
 
 const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.4, 8000);
-camera.position.set(1.91, 95.31, 246.11);
+camera.position.set(160, 78, -110);
 // Roof tanks and aerials live on layer 2 so a roof puddle can draw them
 // without also drawing the rooms the mirrored eye is sitting inside.
 camera.layers.enable(2);
 
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
-controls.target.set(80, 16, 86);
+controls.target.set(104, 1, 46);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI * 0.49;
 controls.minDistance = 8;
@@ -3077,18 +3081,18 @@ const SHOP_FONT = '"PingFang HK", "Songti TC", "PMingLiU", "Noto Serif CJK JP", 
 const SHOP_KIND = {
   dentist:    { use: "clinic", words: ["牙科", "牙醫", "鑲牙", "脫牙"], blade: "#f3efe4", ink: "#9d1c1c", fascia: "#f4f0e6", inkF: "#8d1a1a", glass: true, stack: 5, tube: 0xe7f1f4 },
   doctor:     { use: "clinic", words: ["醫務", "西醫"], blade: "#f4f7f5", ink: "#9d1c1c", fascia: "#f7f7f4", inkF: "#9d1c1c", glass: true, stack: 3, tube: 0xe7f1f4 },
-  pharmacy:   { use: "clinic", words: ["藥房"], blade: "#f3efe4", ink: "#6a1c14", fascia: "#6a2a24", inkF: "#f3e6c8", half: true, tube: 0xf0e6c8 },
-  bonesetter: { use: "clinic", words: ["跌打"], blade: "#f0e2c8", ink: "#6a1c14", fascia: "#8d2a22", inkF: "#f3e6c8", half: true, tube: 0xf0e2c0 },
+  pharmacy:   { use: "clinic", words: ["藥房"], blade: "#f3efe4", ink: "#6a1c14", fascia: "#6a2a24", inkF: "#f3e6c8", tube: 0xf0e6c8 },
+  bonesetter: { use: "clinic", words: ["跌打"], blade: "#f0e2c8", ink: "#6a1c14", fascia: "#8d2a22", inkF: "#f3e6c8", tube: 0xf0e2c0 },
   herbal:     { use: "clinic", words: ["涼茶"], blade: "#1e3a32", ink: "#e6d48a", fascia: "#1c3830", inkF: "#e7d48a", tube: 0xf2e6b0 },
-  grocery:    { use: "shop", words: ["士多"], blade: "#f2efe6", ink: "#1c1a17", fascia: "#a33a30", inkF: "#f6f1e4", awning: "canvas", half: true, crates: true, tube: 0xe4eef2 },
-  rice:       { use: "shop", words: ["米舖"], blade: "#e6dcc4", ink: "#2a2418", fascia: "#b09058", inkF: "#2a2114", awning: "canvas", half: true, sacks: true, tube: 0xf0e6c8 },
-  cafe:       { use: "shop", words: ["冰室"], blade: "#f4f1ea", ink: "#1a3a6b", fascia: "#1e4a3a", inkF: "#f3efe2", awning: "canvas", half: true, stools: true, tube: 0xffe2b8 },
-  barber:     { use: "shop", words: ["理髮"], blade: "#f7f4ee", ink: "#142033", fascia: "#2a3340", inkF: "#f4efe6", awning: "canvas", half: true, tube: 0xf2efe6 },
-  electrical: { use: "shop", words: ["電器"], blade: "#eef3f6", ink: "#16324a", fascia: "#24506a", inkF: "#f2f6f8", half: true, tube: 0xe4eef2 },
-  hardware:   { use: "factory", words: ["五金"], blade: "#d7d2c8", ink: "#1c1a17", fascia: "#3e4650", inkF: "#f0e6c8", awning: "zinc", half: true, tube: 0xe4e6e2 },
+  grocery:    { use: "shop", words: ["士多"], blade: "#f2efe6", ink: "#1c1a17", fascia: "#a33a30", inkF: "#f6f1e4", awning: "canvas", crates: true, tube: 0xe4eef2 },
+  rice:       { use: "shop", words: ["米舖"], blade: "#e6dcc4", ink: "#2a2418", fascia: "#b09058", inkF: "#2a2114", awning: "canvas", sacks: true, tube: 0xf0e6c8 },
+  cafe:       { use: "shop", words: ["冰室"], blade: "#f4f1ea", ink: "#1a3a6b", fascia: "#1e4a3a", inkF: "#f3efe2", awning: "canvas", stools: true, tube: 0xffe2b8 },
+  barber:     { use: "shop", words: ["理髮"], blade: "#f7f4ee", ink: "#142033", fascia: "#2a3340", inkF: "#f4efe6", awning: "canvas", tube: 0xf2efe6 },
+  electrical: { use: "shop", words: ["電器"], blade: "#eef3f6", ink: "#16324a", fascia: "#24506a", inkF: "#f2f6f8", tube: 0xe4eef2 },
+  hardware:   { use: "factory", words: ["五金"], blade: "#d7d2c8", ink: "#1c1a17", fascia: "#3e4650", inkF: "#f0e6c8", awning: "zinc", tube: 0xe4e6e2 },
   mahjong:    { use: "shop", words: ["麻雀"], blade: "#1a6b3c", ink: "#f4f1ea", fascia: "#145c34", inkF: "#f3efe2", dim: true, tube: 0xa8c4ae },
   paikau:     { use: "shop", words: ["牌九"], blade: "#6a1820", ink: "#f0d78a", fascia: "#4a1218", inkF: "#f0d78a", dim: true, tube: 0xd2bea0 },
-  dogmeat:    { use: "food", words: ["狗肉"], blade: "#f2efe6", ink: "#6a1c14", fascia: "#8a3030", inkF: "#f6efe4", awning: "canvas", stools: true, half: true, tube: 0xffd2aa },
+  dogmeat:    { use: "food", words: ["狗肉"], blade: "#f2efe6", ink: "#6a1c14", fascia: "#8a3030", inkF: "#f6efe4", awning: "canvas", stools: true, tube: 0xffd2aa },
   fishball:   { use: "food", words: ["魚蛋", "魚漿"], blade: "#e7e2d4", ink: "#1c3a44", fascia: "#2a4038", inkF: "#e7f0ea", awning: "zinc", workshop: true, tube: 0xd7e4b8 },
   noodle:     { use: "food", words: ["麵廠"], blade: "#f0eadc", ink: "#3a3428", fascia: "#c4b49a", inkF: "#2a241c", awning: "zinc", workshop: true, tube: 0xf0e2c0 },
   bbq:        { use: "food", words: ["燒味"], blade: "#f3e6c4", ink: "#6a1a12", fascia: "#8d2218", inkF: "#f6e7c4", awning: "zinc", hanging: true, stools: true, tube: 0xffcc90 },
@@ -3096,7 +3100,7 @@ const SHOP_KIND = {
   candy:      { use: "food", words: ["糖果"], blade: "#f7e27a", ink: "#6a1830", fascia: "#c44a58", inkF: "#fff6d8", awning: "canvas", tube: 0xffe4c0 },
   plastic:    { use: "factory", words: ["塑膠"], blade: "#d5d8d4", ink: "#1c241c", fascia: "#3a4038", inkF: "#e6e2d4", awning: "zinc", workshop: true, tube: 0xd5e0d0 },
   textile:    { use: "factory", words: ["織布"], blade: "#e6e0d4", ink: "#2a241c", fascia: "#4a4038", inkF: "#f0e6d4", awning: "zinc", workshop: true, tube: 0xe0e6ea },
-  joss:       { use: "shop", words: ["香燭"], blade: "#f0d56a", ink: "#6a1418", fascia: "#a32028", inkF: "#f6e7a8", half: true, tube: 0xffe0a0 },
+  joss:       { use: "shop", words: ["香燭"], blade: "#f0d56a", ink: "#6a1418", fascia: "#a32028", inkF: "#f6e7a8", tube: 0xffe0a0 },
   water:      { use: "service", words: ["水房"], blade: "#d5dde2", ink: "#1a3040", fascia: "#3d4a55", inkF: "#e6eef2", tube: 0xd5e0ea },
   door:       { use: "home", words: [], stack: 0 }
 };
@@ -4346,13 +4350,26 @@ function bayOnFace(x, z, w, d, face, a0, a1) {
   if (face === "n" || face === "s") return { x: x + a0, z: z, w: bw, d: d, span: bw };
   return { x: x, z: z + a0, w: w, d: bw, span: bw };
 }
+// One ground-floor front is about four metres. A longer clear wall is a row
+// of those fronts. A single mouth on that wall, with the rest left as
+// concrete or one long shutter, reads as a thin shop stranded on the block.
+function shopBayCount(span) {
+  const bay = 4.2;
+  const widest = 5.15;
+  const narrowest = 2.7;
+  let n = Math.max(1, Math.round(span / bay));
+  if (span / n > widest) n = Math.ceil(span / widest);
+  if (n > 1 && span / n < narrowest) n = Math.max(1, Math.floor(span / narrowest));
+  if (span / n > widest) n = Math.ceil(span / widest);
+  return Math.max(1, n);
+}
 function planShopFace(x, z, w, d, face, run) {
   const full = (face === "n" || face === "s") ? w : d;
   const a0 = run ? run.a0 : 0;
   const a1 = run ? run.a1 : full;
   const span = a1 - a0;
   if (span < 1.15) return [];
-  const n = span > 7.4 ? 2 : 1;
+  const n = shopBayCount(span);
   // The trade belongs to the street this opening faces, not to whichever
   // named street happens to be nearest the middle of the block.
   const zoneId = shopZone(x, z, w, d, face);
@@ -4365,12 +4382,22 @@ function planShopFace(x, z, w, d, face, run) {
     if (s1 - s0 < 1.12) continue;
     const bay = bayOnFace(x, z, w, d, face, s0, s1);
     const picked = chooseShop(zoneId, bay.x + bay.w * 0.5, bay.z + bay.d * 0.5, 0x9e3779b9 + i * 17 + Math.floor(a0 * 13));
-    // A lane door is about a metre. A wider run was one frame with a short
-    // gate and a blank wall beside it. The extra width is a shop.
-    if (picked.kind === "door" && s1 - s0 > 2.35) {
-      const doorW = 1.08;
+    // A lane door is about a metre. The bay is that mouth plus its jambs.
+    // A wider bay drew the mosaic frame around the whole run, and the gate
+    // filled only the slot, so a black panel sat inside the entrance.
+    // Anything past the door is a shop, or plain wall.
+    const doorBay = 1.56;
+    if (picked.kind === "door" && s1 - s0 > doorBay + 0.16) {
+      const doorW = doorBay;
       const gap = 0.08;
-      const left = lotRoll(s0, s1, 0x0d00) < 0.5;
+      // Prefer the jamb farther from an entrance already standing next door,
+      // so two gates do not meet on the party wall.
+      let left = lotRoll(s0, s1, 0x0d00) < 0.5;
+      const leftAt = bayOnFace(x, z, w, d, face, s0, s0 + doorW);
+      const rightAt = bayOnFace(x, z, w, d, face, s1 - doorW, s1);
+      const leftGap = entranceClearance(facePose(leftAt.x, leftAt.z, leftAt.w, leftAt.d, face, 0.5, 0.15, 0));
+      const rightGap = entranceClearance(facePose(rightAt.x, rightAt.z, rightAt.w, rightAt.d, face, 0.5, 0.15, 0));
+      if (Math.abs(leftGap - rightGap) > 0.8) left = leftGap > rightGap;
       const door0 = left ? s0 : s1 - doorW;
       const door1 = door0 + doorW;
       const shop0 = left ? door1 + gap : s0;
@@ -4933,15 +4960,75 @@ const SHOP_SEAT = 0.40;
 // figures exist, so a keeper can stand in the mouth of the shop.
 const shopPosts = [];
 function noteShopkeeper(bay, face, kind, data) {
+  const spec = SHOP_KIND[kind] || {};
+  const glass = !!spec.glass;
   const veiled = kind === "mahjong" || kind === "paikau";
-  const glass = kind === "dentist" || kind === "doctor";
-  const along = veiled ? 0.7 : 0.4;
-  const depth = glass || veiled ? -0.26 : -0.1;
+  const make = !!(spec.workshop || kind === "herbal");
+  // Local depth is before SHOP_SEAT. The clinic pane is at -0.06, and the
+  // face plus a bent arm reach about 0.2 m in front of the feet. A stance
+  // at -0.26 left that face in the glass.
+  let along = 0.38;
+  let depth = -0.26;
+  let yaw = 0;
+  if (glass) {
+    along = 0.56;
+    depth = -0.62;
+    yaw = 0.3;
+  } else if (veiled) {
+    along = 0.68;
+    depth = -0.44;
+    yaw = 0.85;
+  } else if (make) {
+    along = 0.46;
+    depth = -0.32;
+    yaw = 0.6;
+  } else if (kind === "barber") {
+    along = 0.34;
+    depth = -0.28;
+    yaw = 0.4;
+  }
+  // The narrow mouths, about a door's width and under, are the thin shops.
+  // The keeper sits in those. A wider bay is a mix: some still work, some
+  // stand idle, some sit.
+  const span = bay.span || 4;
+  const thin = span < 2.2;
+  const roll = lotRoll(bay.x + bay.w * 0.5, bay.z + bay.d * 0.5, 0x51 + Math.floor(span * 10));
+  let stance = "work";
+  if (thin) stance = "sit";
+  else if (roll < 0.34) stance = "sit";
+  else if (roll < 0.62) stance = "idle";
+  // That chair in the barber is the customer's. The barber stays on their feet
+  // unless the bay itself is too narrow to stand beside it.
+  if (kind === "barber" && !thin && stance === "sit") stance = "idle";
+  // A chair is about a quarter metre wide. A slit narrower than that stays standing.
+  if (stance === "sit" && span < 0.9) stance = "idle";
+  if (stance === "sit") {
+    const room = Math.min(1.62, Math.max(0.34, bay.room == null ? 0.7 : bay.room));
+    const backFace = -(room - 0.05);
+    // Knees reach about 0.34 m toward the street. The chair back needs the
+    // wall behind it. A recess that cannot hold both stays a standing idle.
+    const deepest = backFace - SHOP_SEAT + 0.16;
+    const near = thin ? -0.55 : -0.70;
+    if (deepest > near) stance = "idle";
+    else {
+      // The bench is at along 0.62 and about 0.42 m deep. A chair on that
+      // spot sits inside the timber. Keep the seat to the side, far enough
+      // forward that the street sees the sitter and not only a head.
+      const preferred = glass ? -1.02 : -0.78;
+      depth = Math.max(deepest, preferred) + SHOP_SEAT;
+      yaw = thin ? 0 : yaw * 0.2;
+      if (!glass) along = thin ? 0.24 : Math.min(along, 0.34);
+    }
+  }
   const spot = facePose(bay.x, bay.z, bay.w, bay.d, face, along, depth - SHOP_SEAT, 0.33);
   if (massCovers(spot.x, spot.z, data.x, data.z, data.w, data.d)) return;
+  // Positive yaw turns the face toward -along on every front but the east one.
+  const toward = face === "e" ? 1 : -1;
+  const rot = spot.rot + toward * yaw;
   shopPosts.push({
-    x: spot.x, y: 0.33, z: spot.z, rot: spot.rot, kind: kind,
-    fx: Math.sin(spot.rot), fz: Math.cos(spot.rot)
+    x: spot.x, y: 0.33, z: spot.z, rot: rot, kind: kind,
+    fx: Math.sin(rot), fz: Math.cos(rot),
+    stance: stance, span: span
   });
 }
 function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
@@ -5000,8 +5087,8 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   const open = variant !== "shut" && kind !== "door";
   const backFace = -(room - 0.05);
   const isDoor = kind === "door";
-  // A household door is about a metre. Anything wider in the same bay is wall,
-  // not an empty frame.
+  // A household door is about a metre. The frame follows that mouth. A wider
+  // bay used to keep the border on the whole run, with a blank panel beside the gate.
   const doorMouth = isDoor ? Math.min(openW, 1.08) : openW;
   const d0 = inset;
   const d1 = inset + doorMouth / span;
@@ -5028,6 +5115,10 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   const returnY = (returnBot + returnTop) * 0.5;
   const cheekW = 0.08;
   const cheekAt = Math.max(cheekW * 0.5, margin - cheekW * 0.5) / span;
+  const frameAlong = isDoor ? dMid : 0.5;
+  const frameW = isDoor ? doorMouth : openW;
+  const leftCheek = isDoor ? d0 - cheekW / (2 * span) : cheekAt;
+  const rightCheek = isDoor ? d1 + cheekW / (2 * span) : 1 - cheekAt;
   if (isDoor) {
     put(shopGeo.box, shopFinish.timber, d0, -0.07, 1.24, 0.06, 1.9, 0.07);
     put(shopGeo.box, shopFinish.timber, d1, -0.07, 1.24, 0.06, 1.9, 0.07);
@@ -5053,9 +5144,9 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     shopCheeks.push(box);
     return true;
   }
-  if (markCheek(cheekAt)) put(shopGeo.box, shopFinish.mosaic, cheekAt, returnOut, returnY, cheekW, returnH, returnD);
-  if (markCheek(1 - cheekAt)) put(shopGeo.box, shopFinish.mosaic, 1 - cheekAt, returnOut, returnY, cheekW, returnH, returnD);
-  put(shopGeo.box, shopFinish.mosaic, 0.5, returnOut, returnTop - 0.04, openW + cheekW * 2, 0.07, returnD);
+  if (markCheek(leftCheek)) put(shopGeo.box, shopFinish.mosaic, leftCheek, returnOut, returnY, cheekW, returnH, returnD);
+  if (markCheek(rightCheek)) put(shopGeo.box, shopFinish.mosaic, rightCheek, returnOut, returnY, cheekW, returnH, returnD);
+  put(shopGeo.box, shopFinish.mosaic, frameAlong, returnOut, returnTop - 0.04, frameW + cheekW * 2, 0.07, returnD);
   // The bay.room depth is the recess plus the notch cut out of the ground
   // shell. Floor, walls and the back board fill that volume, so the opening
   // is a room you can look into rather than a picture on the wall.
@@ -5106,9 +5197,9 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   // Girard’s Tung Tau Tsuen Road facade and the 1987 alley pictures: a tong lau
   // bay, not a glass wall. The fascia is the full opening and 36 cm tall.
   // A clinic has a door and a framed window. A workshop keeps an open mouth
-  // about two metres wide, because that opening is the vent. Anything wider
-  // is wall or a roller shutter. The gate, when the shop is open, is folded
-  // to a 16 cm stack of leaf edges at the jamb.
+  // about two metres wide, because that opening is the vent, and the rest of
+  // its own bay is the shutter. An ordinary shop fills its bay. The gate,
+  // when the shop is open, is folded to a 16 cm stack of leaf edges at the jamb.
   const words = spec.words || [];
   const wordIndex = variant === "shut" || variant === 1 || !words.length ? 0 : (variant % words.length);
   const word = words[wordIndex] || words[0] || "";
@@ -5126,18 +5217,6 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     }
   }
   if (kind === "door") {
-    const spare = openW - doorMouth;
-    if (spare > 0.18) {
-      const spareMid = (d1 + (1 - inset)) * 0.5;
-      const infillFront = -0.02;
-      // The spare width was never cut out of the shell. A panel carried back
-      // to the rear wall ran through that concrete into the shop next door.
-      const infillBack = -0.06;
-      const infillD = infillFront - infillBack;
-      if (infillD > 0.025) {
-        put(shopGeo.box, shopFinish.plaster, spareMid, (infillFront + infillBack) * 0.5, 1.26, Math.max(0.08, spare - 0.04), 1.96, infillD);
-      }
-    }
     const tread = 0.11;
     const rise = 0.16;
     const stepW = Math.max(0.42, doorMouth * 0.82);
@@ -5233,14 +5312,13 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
       put(shopGeo.box, shopFinish.concrete, wallAlong, -0.1, frameY, Math.max(0.08, rest - 0.06), frameH, 0.12);
     }
   } else {
-    const cap = (spec.workshop || kind === "bbq" || kind === "noodle" || kind === "fishball") ? 2.15 : 2.6;
+    const cap = (spec.workshop || kind === "bbq" || kind === "noodle" || kind === "fishball") ? 2.15 : 4.4;
     const mouth = Math.min(openW * 0.96, cap);
     const rest = openW - mouth;
     if (rest > 0.4) roller(0.36, 1.9, Math.max(0.3, rest - 0.06), 1 - inset - rest / (2 * span));
     const fold = 0.16;
     const gateV = variant === 2 ? 2 : variant === 1 ? 1 : 0;
     putFoldedStack(put, span, inset + fold / (2 * span), 0.36, 1.9, gateV);
-    if (spec.half && variant === 1) roller(0.36, 1.05, mouth * 0.96, inset + mouth / (2 * span));
   }
   if (lined && open && kind !== "mahjong" && kind !== "paikau") {
     const cw = Math.min(1.15, Math.max(0.55, openW * 0.42));
@@ -6081,31 +6159,97 @@ function footprintGap(x, z, w, d, face) {
 function stairOnRun(x, z, w, d, face, run) {
   const stairW = 0.86;
   if (!run || run.a1 - run.a0 < stairW + 0.24) return null;
-  let atEnd = lotRoll(x + run.a1, z + run.a0, face.charCodeAt(0) + 41) >= 0.5;
-  let along0 = atEnd ? run.a1 - stairW : run.a0;
-  if (!intervalClear(x, z, w, d, face, along0, along0 + stairW, 0.26)) {
-    atEnd = !atEnd;
-    along0 = atEnd ? run.a1 - stairW : run.a0;
-    if (!intervalClear(x, z, w, d, face, along0, along0 + stairW, 0.26)) return null;
+  // Either end of the run can hold the stair. Take the one that is clear
+  // of the wall and farther from a neighbour's gate.
+  let atEnd = null;
+  let along0 = 0;
+  let bestGap = -1;
+  const preferEnd = lotRoll(x + run.a1, z + run.a0, face.charCodeAt(0) + 41) >= 0.5;
+  const ends = preferEnd ? [true, false] : [false, true];
+  for (let e = 0; e < ends.length; e++) {
+    const end = ends[e];
+    const a0 = end ? run.a1 - stairW : run.a0;
+    if (!intervalClear(x, z, w, d, face, a0, a0 + stairW, 0.26)) continue;
+    const seat = bayOnFace(x, z, w, d, face, a0, a0 + stairW);
+    const gap = entranceClearance(facePose(seat.x, seat.z, seat.w, seat.d, face, 0.5, 0.15, 0));
+    if (gap > bestGap + 0.8 || (Math.abs(gap - bestGap) <= 0.8 && atEnd === null)) {
+      bestGap = gap;
+      atEnd = end;
+      along0 = a0;
+    }
   }
+  if (atEnd === null) return null;
+  const bay = bayOnFace(x, z, w, d, face, along0, along0 + stairW);
   return {
-    bay: bayOnFace(x, z, w, d, face, along0, along0 + stairW),
+    bay: bay,
     face: face,
     atEnd: atEnd,
-    cut: { face: face, along0: along0, width: stairW, notch: 1.02 + SHOP_SEAT },
+    // The hole can be narrowed by the shop beside it. The gate has to follow
+    // that hole, or it stays a full slot drawn across the remaining wall.
+    cut: { face: face, along0: along0, width: stairW, notch: 1.02 + SHOP_SEAT, bay: bay },
     variant: Math.floor(lotRoll(x, z, 0x51a1) * 3),
     along0: along0
   };
 }
+// Gates already standing, so the next tenement does not set its door against them.
+const entranceTaken = [];
+function entranceClearance(p) {
+  let best = 99;
+  for (let i = 0; i < entranceTaken.length; i++) {
+    const dx = entranceTaken[i].x - p.x;
+    const dz = entranceTaken[i].z - p.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < best) best = dist;
+  }
+  return best;
+}
+function noteEntrance(p) {
+  entranceTaken.push({ x: p.x, z: p.z });
+}
+// A second door on the same tenement becomes a shop. The mix will happily
+// roll a gate for every bay, and a corner then carries two or three
+// entrances within a couple of metres. One household entry is enough.
+function demoteDoor(plan) {
+  let shopKind = "grocery";
+  let shopRng = plan.rng;
+  const bx = plan.bay.x + plan.bay.w * 0.5;
+  const bz = plan.bay.z + plan.bay.d * 0.5;
+  for (let t = 1; t <= 6; t++) {
+    const again = chooseShop(plan.zoneId, bx + t * 0.31, bz + t * 0.17, 0x0e11 + t * 97);
+    if (again.kind !== "door") { shopKind = again.kind; shopRng = again.rng; break; }
+  }
+  plan.kind = shopKind;
+  plan.rng = shopRng;
+}
+function settleEntrances(facePlans) {
+  let best = null;
+  let bestScore = -1;
+  const found = [];
+  for (let f = 0; f < facePlans.length; f++) {
+    const fp = facePlans[f];
+    for (let i = 0; i < fp.plans.length; i++) {
+      const plan = fp.plans[i];
+      if (plan.kind !== "door") continue;
+      const atEnd = i === 0 || i === fp.plans.length - 1;
+      const seat = facePose(plan.bay.x, plan.bay.z, plan.bay.w, plan.bay.d, fp.face, 0.5, 0.15, 0);
+      const score = (fp.clearance || 0) + (atEnd ? 3 : 0) + Math.min(entranceClearance(seat), 8);
+      found.push(plan);
+      if (score > bestScore) { bestScore = score; best = plan; }
+    }
+  }
+  for (let i = 0; i < found.length; i++) {
+    if (found[i] !== best) demoteDoor(found[i]);
+  }
+}
 function reserveBuildingStair(x, z, w, d, floors, facePlans, openFaces) {
   if (floors < 2) return null;
+  // The door is already the way in. A stair on the next wall, or on this
+  // one, reads as a second entrance a step from the first.
+  if (facePlans.some(fp => fp.plans.some(p => p.kind === "door"))) return null;
   const stairW = 0.86;
   for (let i = 0; i < facePlans.length; i++) {
     const fp = facePlans[i];
-    if (fp.plans.some(p => p.kind === "door")) {
-      if (i === 0) return null;
-      continue;
-    }
+    if (fp.plans.some(p => p.kind === "door")) continue;
     const face = fp.face;
     const run = fp.run;
     if (!run || run.a1 - run.a0 < stairW + 1.4) continue;
@@ -6206,6 +6350,7 @@ function addMass(x, z, w, d, floors, meta) {
       facePlans.push({ face: hit.f, clearance: run.clearance, plans: plans, run: run });
     });
   });
+  settleEntrances(facePlans);
   const openFaces = facePlans.map(fp => fp.face);
   ["n", "s", "e", "w"].forEach(f => {
     if (openFaces.indexOf(f) >= 0) return;
@@ -6213,6 +6358,13 @@ function addMass(x, z, w, d, floors, meta) {
     if (p.x > court.x + 0.15 && p.x < court.x2 - 0.15 && p.z > court.z + 0.15 && p.z < court.z2 - 0.15 && !massCovers(p.x, p.z, x, z, w, d) && !wallInFront(x, z, w, d, f)) openFaces.push(f);
   });
   const stair = reserveBuildingStair(x, z, w, d, floors, facePlans, openFaces);
+  facePlans.forEach(fp => {
+    fp.plans.forEach(p => {
+      if (p.kind !== "door") return;
+      noteEntrance(facePose(p.bay.x, p.bay.z, p.bay.w, p.bay.d, fp.face, 0.5, 0.15, 0));
+    });
+  });
+  if (stair) noteEntrance(facePose(stair.bay.x, stair.bay.z, stair.bay.w, stair.bay.d, stair.face, 0.5, 0.15, 0));
   const shopCuts = shopRoomCuts(x, z, w, d, facePlans, openFaces);
   const framed = makeFramedBlock(w, d, floors, FLOOR_H, openFaces, x, z, stair && stair.cut, step, shopCuts);
   const frameTint = wallColor();
@@ -6318,7 +6470,9 @@ function addMass(x, z, w, d, floors, meta) {
     city.add(bucket);
   }
   addAnchor(x, z, w, d);
-  walkSolids.push({ x, z, x2: x + w, z2: z + d });
+  // Open ground faces sit 0.48 m behind the lot line. bakeWalk pulls the
+  // walker box back to that plaster, so the lane you see is the lane you walk.
+  walkSolids.push({ x, z, x2: x + w, z2: z + d, ground: openFaces.join("") });
   dressRoof(top.x, top.z, top.w, top.d, h);
   return data;
 }
@@ -6574,7 +6728,9 @@ function zoneMeta(id) {
 }
 const GAP = 0.2;
 const walkSolids = [];
-const WALK_R = 0.28;
+// The body is a square this far out from the eye. Party gaps between lots
+// are often only a quarter to half a metre, so a wider body stops in the mouth.
+const WALK_R = 0.08;
 function carve(x, z, w, d, depth) {
   if (w < 4.6 || d < 4.6 || depth > 28) return;
   const v = VOIDS.find(v => x < v.x2 && x + w > v.x && z < v.z2 && z + d > v.z);
@@ -7391,6 +7547,7 @@ function dressAlleys() {
   const drumMat = new THREE.MeshStandardMaterial({ map: drumSkinMap(), color: 0xffffff, roughness: 0.78, metalness: 0.08, clippingPlanes: clips });
   const pipes = { galv: [], pvc: [], cable: [], tube: [], warm: [] };
   const bits = { grate: [], puddle: [], plate: [], paper: [], board: [], damp: [], scrap: [] };
+  const flyers = [];
   const goods = { bucket: [], sack: [], bag: [], crate: [], sheet: [], drum: [], rag: [] };
   const gates = [];
   const signs = [];
@@ -8311,6 +8468,39 @@ function dressAlleys() {
           }
         }
       }
+      // Handbills on their own dice, so the covers and the piles stay put.
+      // The photographs paper both walls: dental, rooms, dit da, drains, video,
+      // overlapped and torn, naming the trade and not a shop. They stream with
+      // the walk camera, the same way a shop interior does.
+      const fly = roofRand(cx + 9.1, span[0] + 2.4, 0xF17E);
+      const gap = thick < 2.2 ? 0.52 : thick < 3.4 ? 0.78 : 1.25;
+      [-1, 1].forEach(side => {
+        let t = start + 0.35 + fly() * 0.4;
+        while (t < end - 0.3) {
+          if (fly() < 0.1) { t += gap; continue; }
+          if (!wallHolds(side, t)) { t += gap * 0.6; continue; }
+          const sheets = 1 + (fly() > 0.62 ? 1 : 0) + (fly() > 0.88 ? 1 : 0);
+          for (let s = 0; s < sheets; s++) {
+            const along = t + (fly() - 0.5) * 0.18;
+            if (!wallHolds(side, along)) continue;
+            const p = wallPos(side, 0.02, along);
+            if (!keptClear(p.x, p.z)) continue;
+            const y = 0.58 + fly() * 1.28;
+            const yJitter = (fly() - 0.5) * 0.16;
+            const design = (fly() * 16) | 0;
+            fly(); // was a landscape squash of this portrait; dropping it would slide the row
+            const tilt = (fly() - 0.5) * 0.1;
+            flyers.push({
+              x: p.x, z: p.z, y: y + yJitter,
+              face: ns ? "x" : "z",
+              design: design,
+              layer: s,
+              tilt: tilt
+            });
+          }
+          t += gap * (0.72 + fly() * 0.55);
+        }
+      });
     });
   });
   function splitLong(list) {
@@ -8370,6 +8560,10 @@ function dressAlleys() {
       }
     }
     if (!best || bestD > 0.75) return false;
+    // The face the prop was pulled onto. Open shop fronts step the plaster
+    // back from this line, and a panel left on the line hangs in the gap.
+    box.wallAxis = best.axis;
+    box.wallSign = best.sign;
     const depth = Math.abs(best.axis === "x" ? box.sx : box.sz);
     const halfY = Math.abs(box.sy) * 0.5;
     const bottom = box.y - halfY;
@@ -8494,6 +8688,61 @@ function dressAlleys() {
       box.z = best.point.z - dirZ * bite;
     }
   });
+  // A gate or a board belongs on plaster. Shop fronts now step the ground
+  // wall back from the lot line, and the old pin left the panel standing in
+  // that gap: bars across an empty opening, a board with daylight behind it.
+  // Anything that does not meet a wall within a hand's breadth goes, and so
+  // does the cord that used to pretend to hold a mid-lane board.
+  function plasterBehind(box) {
+    const y = Math.min(2.4, Math.max(0.45, box.y));
+    const axes = [];
+    if (box.wallAxis === "x") axes.push([-box.wallSign, 0]);
+    else if (box.wallAxis === "z") axes.push([0, -box.wallSign]);
+    else {
+      const thinX = Math.abs(box.sx) <= Math.abs(box.sz);
+      if (thinX) { axes.push([1, 0]); axes.push([-1, 0]); }
+      else { axes.push([0, 1]); axes.push([0, -1]); }
+    }
+    const near = [];
+    for (let w = 0; w < lampWalls.length; w++) {
+      const b = lampWalls[w].box;
+      if (box.x < b.min.x - 0.7 || box.x > b.max.x + 0.7) continue;
+      if (box.z < b.min.z - 0.7 || box.z > b.max.z + 0.7) continue;
+      if (y < b.min.y - 0.4 || y > b.max.y + 0.4) continue;
+      near.push(lampWalls[w].mesh);
+    }
+    if (!near.length) return false;
+    for (let a = 0; a < axes.length; a++) {
+      // Start a little back from the panel. One seated on the recessed
+      // plaster is already touching it, and a ray that begins inside the
+      // wall never reports the hit.
+      const ox = axes[a][0], oz = axes[a][1];
+      lampOrigin.set(box.x - ox * 0.1, y, box.z - oz * 0.1);
+      lampDir.set(ox, 0, oz);
+      lampRay.set(lampOrigin, lampDir);
+      lampRay.far = 0.34;
+      const hits = lampRay.intersectObjects(near, false);
+      if (hits.length && hits[0].distance - 0.1 <= 0.2) return true;
+    }
+    return false;
+  }
+  function onPlaster(box) {
+    if (Math.abs(box.sy) < 0.12) return true;
+    return plasterBehind(box);
+  }
+  for (let i = gates.length - 1; i >= 0; i--) if (!onPlaster(gates[i])) gates.splice(i, 1);
+  ["paper", "plate", "board"].forEach(k => {
+    bits[k] = bits[k].filter(onPlaster);
+  });
+  for (let i = signs.length - 1; i >= 0; i--) {
+    if (onPlaster(signs[i])) continue;
+    const s = signs[i];
+    signs.splice(i, 1);
+    for (let c = cross.cord.length - 1; c >= 0; c--) {
+      const cord = cross.cord[c];
+      if (Math.abs(cord.x - s.x) < 0.06 && Math.abs(cord.z - s.z) < 0.06) cross.cord.splice(c, 1);
+    }
+  }
   function bridgePipes(list) {
     const k = SHEAR_K;
     const extra = [];
@@ -8590,6 +8839,172 @@ function dressAlleys() {
     fillGoods(new THREE.CylinderGeometry(0.5, 0.48, 1, 8), drumMat, goods.drum)
   ].forEach(mesh => streetMesh(mesh, false));
   streetMesh(fillInst(unit, soffitMat, cross.soffit, placeBox), true);
+  // Printed handbills. One shared sheet per wording, many pastings. stay 0
+  // puts them through the shop stream: drawn in walk mode, and only while the
+  // sheet sits in the frame.
+  hangAlleyFlyers(flyers);
+}
+const alleyFlyerGeo = new THREE.PlaneGeometry(1, 1);
+const alleyFlyerMats = (function buildAlleyFlyers() {
+  const sheets = [
+    { bg: "#f4efe4", ink: "#9c1c1c", lines: ["牙科", "補牙  脫牙"], phone: "3-712····", tall: 1 },
+    { bg: "#f6d2cc", ink: "#7a1418", lines: ["牙科"], phone: "3-838····", tall: 1 },
+    { bg: "#f3e27a", ink: "#1c1a16", lines: ["吉屋出租"], phone: "3-716····", tall: 1 },
+    { bg: "#f7f4ee", ink: "#b42318", lines: ["吉", "出租"], phone: "", tall: 0 },
+    { bg: "#8d1e1c", ink: "#f4e6c8", lines: ["跌打"], phone: "3-964····", tall: 1 },
+    { bg: "#e7f0e4", ink: "#1d4a32", lines: ["涼茶"], phone: "", tall: 0 },
+    { bg: "#e4eef6", ink: "#163a66", lines: ["水電", "通渠"], phone: "3-712····", tall: 1 },
+    { bg: "#f6e7a8", ink: "#3a2a14", lines: ["通渠"], phone: "3-850····", tall: 0 },
+    { bg: "#fff8f2", ink: "#a32018", lines: ["魚蛋", "雲吞"], phone: "", tall: 1 },
+    { bg: "#f0d2b4", ink: "#6a2414", lines: ["燒味"], phone: "", tall: 0 },
+    { bg: "#1c2438", ink: "#f2e2a8", lines: ["錄影帶", "新片"], phone: "3-728····", tall: 1, bars: 1 },
+    { bg: "#c43a62", ink: "#fff4ea", lines: ["成人影視"], phone: "3-891····", tall: 1 },
+    { bg: "#f6f3ec", ink: "#1a1a1a", lines: ["招聘", "日薪"], phone: "", tall: 1 },
+    { bg: "#d9cbb6", ink: "#4a4038", lines: [], phone: "", fade: 1 },
+    { bg: "#f3efe6", ink: "#2a241c", lines: ["補鞋"], phone: "3-765····", tall: 0 },
+    { bg: "#f7f1e4", ink: "#1e3a5c", lines: ["鐘錶"], phone: "", tall: 0 }
+  ];
+  return sheets.map((spec, n) => {
+    const c = document.createElement("canvas");
+    c.width = 128;
+    c.height = spec.tall ? 192 : 160;
+    const g = c.getContext("2d");
+    const w = c.width, h = c.height;
+    g.fillStyle = spec.bg;
+    g.fillRect(0, 0, w, h);
+    if (spec.bars) {
+      ["#c43a3a", "#e6c15a", "#3a6ec4", "#141414"].forEach((col, i) => {
+        g.fillStyle = col;
+        g.fillRect(i * w / 4, 0, w / 4 + 1, h * 0.1);
+      });
+    }
+    if (spec.fade) {
+      g.fillStyle = "rgba(60,48,36,0.28)";
+      for (let row = 0; row < 9; row++) {
+        for (let col = 0; col < 6; col++) {
+          if ((row * 5 + col + n) % 3 === 0) continue;
+          g.fillRect(14 + col * 16, 16 + row * 15, 10, 8);
+        }
+      }
+    }
+    g.fillStyle = spec.ink;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    spec.lines.forEach((line, i) => {
+      const glyphs = Array.from(line).length || 1;
+      const glyph = Math.min(h * (spec.lines.length > 1 ? 0.22 : 0.34), (w * 0.84) / (glyphs * 0.92));
+      g.font = "700 " + Math.round(glyph) + "px " + SHOP_FONT;
+      const y0 = spec.bars ? 0.34 : 0.3;
+      g.fillText(line, w / 2, h * (y0 + i * 0.24));
+    });
+    if (spec.phone) {
+      g.font = "600 " + Math.round(h * 0.09) + "px " + SHOP_FONT;
+      g.fillText(spec.phone, w / 2, h * 0.8);
+    }
+    g.fillStyle = "rgba(70,52,32,0.2)";
+    g.fillRect(0, h * 0.7, w, h * 0.3);
+    g.globalCompositeOperation = "destination-out";
+    g.fillStyle = "#000";
+    const bites = [[0, 8], [w, 18], [12, 0], [w - 16, h], [0, h - 10]];
+    bites.forEach((b, i) => {
+      if ((i + n) % 2) return;
+      g.beginPath();
+      g.arc(b[0], b[1], 8 + (i % 3) * 4, 0, Math.PI * 2);
+      g.fill();
+    });
+    g.globalCompositeOperation = "source-over";
+    const mat = new THREE.MeshStandardMaterial({
+      map: shopCanvasTex(c), color: 0xffffff, roughness: 0.94, metalness: 0,
+      alphaTest: 0.4, side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+      clippingPlanes: clips
+    });
+    attachWetFilm(mat);
+    mat.userData.fw = spec.fade ? 0.3 : spec.tall ? 0.26 : 0.17;
+    mat.userData.fh = spec.fade ? 0.36 : spec.tall ? 0.38 : 0.23;
+    return mat;
+  });
+})();
+function hangAlleyFlyers(list) {
+  if (!list.length) return;
+  function openInset(anchor, face) {
+    for (let i = 0; i < walkSolids.length; i++) {
+      const b = walkSolids[i];
+      if (b.ground == null) continue;
+      if (Math.abs(b.x - anchor.x) > 0.08 || Math.abs(b.z - anchor.z) > 0.08) continue;
+      if (Math.abs((b.x2 - b.x) - (anchor.x2 - anchor.x)) > 0.08) continue;
+      if (Math.abs((b.z2 - b.z) - (anchor.z2 - anchor.z)) > 0.08) continue;
+      return b.ground.indexOf(face) >= 0 ? 0.48 : 0.035;
+    }
+    return 0.035;
+  }
+  function onMouth(x, z) {
+    for (let i = 0; i < laneMouths.length; i++) {
+      const m = laneMouths[i];
+      const da = m.along === "x" ? Math.abs(x - m.x) : Math.abs(z - m.z);
+      const dc = m.along === "x" ? Math.abs(z - m.z) : Math.abs(x - m.x);
+      if (da < m.half + 0.15 && dc < 0.75) return true;
+    }
+    return false;
+  }
+  const prevStay = addShopMesh.stay;
+  const prevSpin = addShopMesh.spin;
+  const prevAz = addShopMesh.az;
+  const prevPinX = addShopMesh.pinX;
+  const prevPinZ = addShopMesh.pinZ;
+  const prevBlade = addShopMesh.blade;
+  addShopMesh.stay = 0;
+  addShopMesh.az = null;
+  addShopMesh.pinX = addShopMesh.pinZ = null;
+  addShopMesh.blade = null;
+  let hung = 0;
+  for (let i = 0; i < list.length; i++) {
+    const f = list[i];
+    const alongX = f.face === "z";
+    let best = null, bestD = 0.8;
+    for (let a = 0; a < massAnchors.length; a++) {
+      const an = massAnchors[a];
+      if (alongX) {
+        if (f.x < an.x - 0.35 || f.x > an.x2 + 0.35) continue;
+        const dS = Math.abs(f.z - an.z2), dN = Math.abs(f.z - an.z);
+        const d = Math.min(dS, dN);
+        if (d < bestD) {
+          bestD = d;
+          best = { an: an, face: dS <= dN ? an.z2 : an.z, sign: dS <= dN ? 1 : -1, axis: "z", letter: dS <= dN ? "s" : "n" };
+        }
+      } else {
+        if (f.z < an.z - 0.35 || f.z > an.z2 + 0.35) continue;
+        const dE = Math.abs(f.x - an.x2), dW = Math.abs(f.x - an.x);
+        const d = Math.min(dE, dW);
+        if (d < bestD) {
+          bestD = d;
+          best = { an: an, face: dE <= dW ? an.x2 : an.x, sign: dE <= dW ? 1 : -1, axis: "x", letter: dE <= dW ? "e" : "w" };
+        }
+      }
+    }
+    if (!best) continue;
+    const mat = alleyFlyerMats[f.design % alleyFlyerMats.length];
+    const fw = mat.userData.fw;
+    const fh = mat.userData.fh;
+    const inset = openInset(best.an, best.letter);
+    const proud = 0.012 + f.layer * 0.007;
+    const bite = -inset + proud;
+    const x = best.axis === "x" ? best.face + best.sign * bite : f.x;
+    const z = best.axis === "z" ? best.face + best.sign * bite : f.z;
+    if (onMouth(x, z)) continue;
+    const rot = best.axis === "x" ? (best.sign > 0 ? Math.PI / 2 : -Math.PI / 2) : (best.sign > 0 ? 0 : Math.PI);
+    addShopMesh.spin = f.tilt || 0;
+    addShopMesh(alleyFlyerGeo, mat, x, f.y, z, rot, fw, fh, 1);
+    hung++;
+  }
+  addShopMesh.stay = prevStay;
+  addShopMesh.spin = prevSpin || 0;
+  addShopMesh.az = prevAz;
+  addShopMesh.pinX = prevPinX;
+  addShopMesh.pinZ = prevPinZ;
+  addShopMesh.blade = prevBlade;
+  flushShops();
+  hangAlleyFlyers.hung = hung;
 }
 function nearestSlit(x, z, w, d) {
   let best = null;
@@ -8705,7 +9120,7 @@ function indexBuiltMasses() {
 }
 // Walk pockets left by the infill are joined by a slot cut through the new
 // parcels. Original lots, the compound and the temple stay where they are.
-// The slot is wide enough that a walker (radius 0.28 m) clears both walls.
+// The slot is cut wide enough for a body of about a quarter metre on each side.
 function linkInfillAlleys(baseCount) {
   const W = SITE_W, D = SITE_D, N = W * D, PAD = 0.58, CLEAR = 0.72, S = 0.5;
   const GX = 420, GZ = 240, GN = GX * GZ;
@@ -10797,36 +11212,135 @@ function courtNet(cx, cz, w, d, eaveNorth, eaveSouth) {
 hall(91.15, 78.22, 12.27, 6.33, "衙門", { lintel: true, flank: ["w"] });
 squareAnchor = null;
 
-const wellMat = new THREE.MeshStandardMaterial({
-  map: plainWear(64, 64, (g, w, h) => {
-    g.fillStyle = "#5c584e";
+// 大井街 is older than the wall and is named for this mouth. It was the city's
+// water. The cholera closures of the 1920s and 1930s left it open; it was
+// plugged in the 1950s, when the eight municipal pipes took over. Demolition
+// lifted the same granite curb. In 1987 the curb is still in the lane and the
+// concrete plug is the roadway, so the street is not a hole and not a well
+// still drawn. The lane here is a metre and a half, and the plug fills it.
+(function greatWell() {
+  const x = 57.75, z = 74.25;
+  const data = { zone: "well", street: "大井街", name: "大井", floors: 0 };
+  // Ten dressed blocks, overlapped so the joints close. One dark edge on each
+  // block is the joint. The concrete sits down inside the ring.
+  const stoneMap = plainWear(128, 128, (g, w, h) => {
+    g.fillStyle = "#c2bbb0";
     g.fillRect(0, 0, w, h);
-    for (let i = 0; i < 80; i++) {
-      const n = 46 + (i * 19) % 46;
-      g.fillStyle = "rgba(" + n + "," + (n - 4) + "," + (n - 8) + ",0.45)";
-      g.fillRect((i * 11) % w, (i * 7) % h, 5 + (i % 6), 3);
+    for (let i = 0; i < 420; i++) {
+      const n = 148 + (i * 37) % 80;
+      const px = (i * 47) % w;
+      const py = (i * 29) % h;
+      g.fillStyle = "rgba(" + n + "," + (n - 6) + "," + (n - 16) + ",0.4)";
+      g.fillRect(px, py, 1 + (i % 3), 1 + (i % 2));
     }
-    g.fillStyle = "rgba(28,40,26,0.5)";
-    g.fillRect(0, 0, w, 16);
-    g.fillStyle = "rgba(14,12,10,0.4)";
-    g.fillRect(0, 46, w, 18);
-  }),
-  color: 0x5a564c, roughness: 0.96, metalness: 0.02, side: THREE.DoubleSide, clippingPlanes: clips
-});
-// Sealed in the 1950s. In 1987 the mouth on 大井街 is a concrete cap, not a well still drawn.
-const well = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.7, 0.16, 8), wellMat);
-well.position.set(57.75, 0.31, 74.25);
-well.userData = { zone: "well", street: "大井街", name: "大井", floors: 0 };
-city.add(well);
-pickables.push(well);
-walkSolids.push({ x: 57.75 - 0.78, z: 74.25 - 0.78, x2: 57.75 + 0.78, z2: 74.25 + 0.78 });
-const wellFill = new THREE.Mesh(
-  new THREE.CircleGeometry(0.4, 8),
-  new THREE.MeshBasicMaterial({ color: 0x3a3632, clippingPlanes: clips })
-);
-wellFill.rotation.x = -Math.PI / 2;
-wellFill.position.set(57.75, 0.4, 74.25);
-city.add(wellFill);
+    g.fillStyle = "rgba(58,52,44,0.4)";
+    g.fillRect(0, h * 0.78, w, h * 0.22);
+    g.fillStyle = "rgba(48,42,36,0.75)";
+    g.fillRect(0, 0, 2, h);
+  });
+  const granite = new THREE.MeshStandardMaterial({
+    map: stoneMap, color: 0xffffff, roughness: 0.92, metalness: 0.02, clippingPlanes: clips
+  });
+  attachWetFilm(granite);
+  const apronMat = new THREE.MeshStandardMaterial({
+    map: plainWear(128, 128, (g, w, h) => {
+      g.fillStyle = "#b2ada2";
+      g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 240; i++) {
+        const n = 130 + (i * 11) % 70;
+        g.fillStyle = "rgba(" + n + "," + (n - 6) + "," + (n - 14) + ",0.3)";
+        g.fillRect((i * 17) % w, (i * 13) % h, 2, 1);
+      }
+      g.strokeStyle = "rgba(72,66,58,0.7)";
+      g.lineWidth = 2;
+      g.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = i / 8 * Math.PI * 2;
+        g.moveTo(w / 2, h / 2);
+        g.lineTo(w / 2 + Math.cos(a) * w * 0.5, h / 2 + Math.sin(a) * h * 0.5);
+      }
+      g.stroke();
+      g.strokeStyle = "rgba(78,70,60,0.4)";
+      g.lineWidth = 7;
+      g.beginPath();
+      g.arc(w / 2, h / 2, w * 0.36, 0, Math.PI * 2);
+      g.stroke();
+    }),
+    color: 0xffffff, roughness: 0.96, metalness: 0, clippingPlanes: clips
+  });
+  attachWetFilm(apronMat);
+  const cap = new THREE.MeshStandardMaterial({
+    map: plainWear(128, 128, (g, w, h) => {
+      g.fillStyle = "#8a847a";
+      g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 280; i++) {
+        const n = 120 + (i * 19) % 90;
+        g.fillStyle = "rgba(" + n + "," + (n - 2) + "," + (n - 8) + ",0.28)";
+        g.fillRect((i * 11) % w, (i * 23) % h, 2, 2);
+      }
+      g.strokeStyle = "rgba(128,122,112,0.4)";
+      g.lineWidth = 1;
+      for (let i = 0; i < 5; i++) {
+        g.beginPath();
+        g.arc(w * 0.48, h * 0.52, 14 + i * 11, 0.2, 2.4);
+        g.stroke();
+      }
+      const shade = g.createRadialGradient(w * 0.5, h * 0.5, 4, w * 0.5, h * 0.5, w * 0.48);
+      shade.addColorStop(0, "rgba(62,58,52,0.18)");
+      shade.addColorStop(1, "rgba(62,58,52,0)");
+      g.fillStyle = shade;
+      g.fillRect(0, 0, w, h);
+      g.strokeStyle = "rgba(62,56,50,0.75)";
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(w * 0.18, h * 0.42);
+      g.lineTo(w * 0.47, h * 0.5);
+      g.lineTo(w * 0.63, h * 0.4);
+      g.lineTo(w * 0.86, h * 0.58);
+      g.stroke();
+      g.fillStyle = "rgba(122,74,42,0.4)";
+      g.beginPath();
+      g.arc(w * 0.5, h * 0.2, 4.5, 0, Math.PI * 2);
+      g.fill();
+      g.beginPath();
+      g.arc(w * 0.5, h * 0.8, 4.5, 0, Math.PI * 2);
+      g.fill();
+    }),
+    color: 0xffffff, roughness: 0.97, metalness: 0, clippingPlanes: clips
+  });
+  attachWetFilm(cap);
+  const apron = new THREE.Mesh(new THREE.CylinderGeometry(0.74, 0.76, 0.03, 28), apronMat);
+  apron.position.set(x, 0.297, z);
+  apron.userData = data;
+  apron.receiveShadow = true;
+  city.add(apron);
+  pickables.push(apron);
+  const base = 0.312;
+  const curbH = 0.22;
+  const n = 10;
+  const midR = 0.57;
+  const arc = Math.PI * 2 / n;
+  const alt = granite.clone();
+  alt.color.setHex(0xd5cfc3);
+  const stoneGeo = new THREE.BoxGeometry(0.46, curbH, 0.18);
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + i * arc;
+    const stone = new THREE.Mesh(stoneGeo, i % 2 ? alt : granite);
+    stone.position.set(x + Math.cos(a) * midR, base + curbH / 2, z + Math.sin(a) * midR);
+    stone.rotation.y = Math.PI / 2 - a;
+    stone.userData = data;
+    stone.castShadow = true;
+    stone.receiveShadow = true;
+    city.add(stone);
+    pickables.push(stone);
+  }
+  const plug = new THREE.Mesh(new THREE.CylinderGeometry(0.445, 0.45, 0.04, 24), cap);
+  plug.position.set(x, base + curbH - 0.1, z);
+  plug.userData = data;
+  plug.receiveShadow = true;
+  city.add(plug);
+  pickables.push(plug);
+})();
 
 (function templeHall() {
   // 1951 hall on 天后廟街. Grey brick, unglazed tiles, door to the south.
@@ -13217,8 +13731,8 @@ function stepViewGlide(dt) {
     viewGlide = null;
   }
 }
-controls.addEventListener("start", () => { viewGlide = null; });
-renderer.domElement.addEventListener("wheel", () => { viewGlide = null; }, { passive: true });
+controls.addEventListener("start", () => { viewGlide = null; airHeld = false; });
+renderer.domElement.addEventListener("wheel", () => { viewGlide = null; airHeld = false; }, { passive: true });
 function setCardKicker(chapterId, fallback) {
   const el = document.getElementById("card-kicker");
   if (chapterId) el.textContent = chapterName(chapterId);
@@ -13350,6 +13864,7 @@ function showZone(id, quiet) {
       beginViewGlide(z.pos, z.tgt);
     }
   }
+  if (walkMode) return;
   activeZone = id;
   activePick = null;
   document.querySelectorAll("[data-view]").forEach(b => b.classList.remove("on"));
@@ -13368,19 +13883,56 @@ document.querySelectorAll("[data-zone]").forEach(b => b.onclick = () => {
   showZone(b.dataset.zone);
 });
 const views = {
-  // Wide screen. Close on the south-west, so the south wall fills the
-  // frame, the west wall shows on the left, and the south road runs along the bottom.
-  air: { pos: [13.38, 95.31, 246.11], tgt: [91.47, 16, 86] },
-  // A portrait frame sits closer and lower on that same east side.
-  airPhone: { pos: [300, 60, -30], tgt: [150, 0, 40] }
+  // Wide landscape. High over the north-east, so the block fills the gray
+  // field, the east wall shows on the left, and Tung Tau Tsuen Road runs
+  // along the bottom with the traffic in front of the north face.
+  // A narrower landscape keeps this ray and steps back so the east roof
+  // stays inside the frame.
+  air: { pos: [160, 78, -110], tgt: [104, 1, 46] },
+  // Portrait. High on the east, looking west, so the roofs fill the tall
+  // frame, the east wall crosses the lower half, and Tung Tau Tsuen Road
+  // runs down the right. A taller phone keeps this ray and steps back.
+  airPhone: { pos: [310, 90, 4], tgt: [90, 6, 45] }
 };
+// Still on the opening aerial. An orbit or a zoom leaves it, so a resize
+// does not pull the eye back.
+let airHeld = true;
+function landscapeAir() {
+  const pos = views.air.pos, tgt = views.air.tgt;
+  const aspect = camera.aspect > 0 ? camera.aspect : innerWidth / Math.max(1, innerHeight);
+  const wide = 1900 / 871;
+  const pull = Math.max(1, wide / aspect);
+  return {
+    pos: [
+      tgt[0] + (pos[0] - tgt[0]) * pull,
+      tgt[1] + (pos[1] - tgt[1]) * pull,
+      tgt[2] + (pos[2] - tgt[2]) * pull
+    ],
+    tgt: tgt
+  };
+}
+function portraitAir() {
+  const pos = views.airPhone.pos, tgt = views.airPhone.tgt;
+  const aspect = camera.aspect > 0 ? camera.aspect : innerWidth / Math.max(1, innerHeight);
+  const sheet = 605 / 859;
+  const pull = Math.max(1, sheet / aspect);
+  return {
+    pos: [
+      tgt[0] + (pos[0] - tgt[0]) * pull,
+      tgt[1] + (pos[1] - tgt[1]) * pull,
+      tgt[2] + (pos[2] - tgt[2]) * pull
+    ],
+    tgt: tgt
+  };
+}
 function viewDefault() {
-  return portraitSheet() ? views.airPhone : views.air;
+  return portraitSheet() ? portraitAir() : landscapeAir();
 }
 function go(name) {
   const v = name === "air" ? viewDefault() : views[name];
   if (!v) return;
   viewGlide = null;
+  airHeld = true;
   if (walkMode) setWalk(false);
   activeZone = null;
   activePick = null;
@@ -13442,6 +13994,10 @@ function fit() {
       beginWalkGlide(spot.x, spot.z, pose.yaw, pose.pitch, pose.fov, true);
     }
   } else if (crossed && !walkMode && !activeZone) go("air");
+  else if (!walkMode && !activeZone && airHeld && !viewGlide) {
+    const v = viewDefault();
+    aim(v.pos, v.tgt);
+  }
   fitCard();
   fitLegend();
   fitDockText();
@@ -13566,7 +14122,7 @@ const I18N = {
     useHome: "住戶，常常一房數人", useFactory: "工場 — 塑膠、製衣、五金", useFood: "食品工場 — 麵、魚蛋、燒味",
     useClinic: "無牌診所或牙醫", useSchool: "學堂、幼稚園、教會房間", useTemple: "廟宇、神廳、坊眾會",
     useShop: "店舖、麻雀館、食肆", useService: "樓梯、走廊、水房、倉",
-    legendNote: "分區跟書的章節。色物語：下層無日照，靠色溫不同的光管。鳥籠物語：有光的窗多半收在連續的懸挑鐵網露台裡，一座花籠橫過同一層的幾扇窗，玻璃在網內。露台分淺、深、生鏽、蓋帆布和晾滿衣。多數頂上是一塊舊鐵皮，玻璃前另有鐵窗花。北面較長較深。約一米的窄巷只伸出一截，兩面不相碰。暗核沒有。すきま物語：約一米的隙，滴水和垃圾網。生活物語：大井留到一九五〇年代才封，其後八條市政水管；用水要人挑上樓。地下店面按約一九八七年的照片，不是逐舖測繪。舖面一側按一九八七年的照片留一條窄梯：混凝土級、摺起的鐵閘、一盞燈泡，紅紙寫出入和平安，不寫門牌。照片裡西城路把牙科招牌疊上街面，光明街是魚蛋、麵廠和燒味，龍津路這時期多是士多和家庭工場，龍津道留下麻雀、藥舖和食肆，一米左右的橫巷多半只是一扇鐵閘。城內的招牌寫在舖面牆上。城外的東頭村道、東正道和賈炳達道，舖頭把刀牌伸出路面，板的大小不一，沿街疏密也不齊。只寫行業，不寫沒有測繪的店名。涼茶舖放大金屬壺，藥房是一壁抽屜，麵廠沒有窗、粉鋪在檯上，燒味掛在爐前，麻雀和牌九用布簾。天台按一九八〇年代末的照片：鍍鋅圓水箱和魚骨天線落在屋面上，另有鐵皮屋和晾衣。竹棚搭在部分巷牆外，窄巷不擋行路。巷道路面是磨損開裂的濕混凝土，有補丁和水漬，靠牆一條水渠。窄巷一樓底用混凝土、木板或鐵皮分段封上，白日光從路口落下；頭頂是喉管、電纜、滴水和色溫不同的光管，垃圾網掛在未封的隙上。寬街只在高處拉線，一樓底另有幾支光管，牆邊偶有膠盆、木箱和膠凳，不佔行路的中線。街上的人按同一時期的巷照：汗衫、短袖、膠拖鞋、膠袋、菜籃、扁擔和水桶，傘只在雨裡打開，人數不是統計。另有數人走在東頭村道、東正道和賈炳達道靠城寨的一側。書中全景有進入航道的廣體客機，外圍馬路有奶油紅雙層巴士和市區車輛。這幅模型有一架起落架放下的廣體客機，低飛過南面屋頂，朝東進入航道，只塗時代的顏色，不寫航空公司的名字。外圍馬路的巴士和市區車輛同樣只留塗裝。東頭村道北面和其餘外牆按同一時期的照片加上窗式冷氣機、竹升、直落喉和鐵窗花；照片裡招牌最密的是北面。暗巷不長冷氣機。",
+    legendNote: "分區跟書的章節。色物語：下層無日照，靠色溫不同的光管。鳥籠物語：有光的窗多半收在連續的懸挑鐵網露台裡，一座花籠橫過同一層的幾扇窗，玻璃在網內。露台分淺、深、生鏽、蓋帆布和晾滿衣。多數頂上是一塊舊鐵皮，玻璃前另有鐵窗花。北面較長較深。約一米的窄巷只伸出一截，兩面不相碰。暗核沒有。すきま物語：約一米的隙，滴水和垃圾網。生活物語：大井留到一九五〇年代才封，其後八條市政水管；用水要人挑上樓。地下店面按約一九八七年的照片，不是逐舖測繪。舖面一側按一九八七年的照片留一條窄梯：混凝土級、摺起的鐵閘、一盞燈泡，紅紙寫出入和平安，不寫門牌。照片裡西城路把牙科招牌疊上街面，光明街是魚蛋、麵廠和燒味，龍津路這時期多是士多和家庭工場，龍津道留下麻雀、藥舖和食肆，一米左右的橫巷多半只是一扇鐵閘。城內的招牌寫在舖面牆上。城外的東頭村道、東正道和賈炳達道，舖頭把刀牌伸出路面，板的大小不一，沿街疏密也不齊。只寫行業，不寫沒有測繪的店名。涼茶舖放大金屬壺，藥房是一壁抽屜，麵廠沒有窗、粉鋪在檯上，燒味掛在爐前，麻雀和牌九用布簾。天台按一九八〇年代末的照片：鍍鋅圓水箱和魚骨天線落在屋面上，另有鐵皮屋和晾衣。竹棚搭在部分巷牆外，窄巷不擋行路。巷道路面是磨損開裂的濕混凝土，有補丁和水漬，靠牆一條水渠。巷牆貼滿照片裡的街招：牙科、吉屋出租、跌打、涼茶、通渠、魚蛋、錄影帶，一層壓一層，邊是撕開的。只寫行當，不寫沒有測過的店名。窄巷一樓底用混凝土、木板或鐵皮分段封上，白日光從路口落下；頭頂是喉管、電纜、滴水和色溫不同的光管，垃圾網掛在未封的隙上。寬街只在高處拉線，一樓底另有幾支光管，牆邊偶有膠盆、木箱和膠凳，不佔行路的中線。街上的人按同一時期的巷照：汗衫、短袖、膠拖鞋、膠袋、菜籃、扁擔和水桶，傘只在雨裡打開，人數不是統計。另有數人走在東頭村道、東正道和賈炳達道靠城寨的一側。書中全景有進入航道的廣體客機，外圍馬路有奶油紅雙層巴士和市區車輛。這幅模型有一架起落架放下的廣體客機，低飛過南面屋頂，朝東進入航道，只塗時代的顏色，不寫航空公司的名字。外圍馬路的巴士和市區車輛同樣只留塗裝。東頭村道北面和其餘外牆按同一時期的照片加上窗式冷氣機、竹升、直落喉和鐵窗花；照片裡招牌最密的是北面。暗巷不長冷氣機。",
     cardKicker: "地點", cardTitle: "城寨", cardBody: "拖曳旋轉，滾輪縮放。剖面是書的做法：一座沒有立面的城，只能切開來看。點一棟樓，讀它的層數和地下的一行。",
     statFoot: "矩形城廓", statArea: "面積", statCensus: "一九八七年調查", statPeak: "報導高峰（常含西頭村）",
     statCap: "航道與屋脊", statCapVal: "航道約 45 米，屋脊約 35 米", statLifts: "全城電梯", statLiftsVal: "約三部", statMass: "模型樓塊",
@@ -13598,7 +14154,7 @@ const I18N = {
     chapters: { life: "生活故事", colour: "色彩故事", cage: "鳥籠故事", enter: "入城", panorama: "生活復原", gap: "縫隙故事", altar: "社壇" },
     notes: {
       west: "西城路基線，北口開向東頭村道，是最易找的入口。城內無牌牙醫逾百家，招牌沿這條街疊起。照片裡更密的一排在城外：一九八七年格雷格・吉拉德和薩德比都從東頭村道拍到北面外牆的牙醫舖。香港不承認牌照。西城路是城內唯一有意譯英文名的街，檔案作 West City Road。其餘是測量圖和展板上的音譯。",
-      well: "大井街比寨城更老，因一口大井得名。這口井是城內主要水源。一九二〇至三〇年代的霍亂封井沒有封到它，井留到一九五〇年代才封，之後由八條市政水管取代。一九八七年的模型裡，井口是封上的混凝土，不是還在打水的井。八條是數目，位置沒有測繪，模型只在北面行人路上放八個街頭水龍頭來標數量。英文作 Tai Chang Street。生活物語講的是供水不是全日：水桶、浴缸儲水，以及收費挑水上樓。",
+      well: "大井街比寨城更老，因一口大井得名。這口井是城內主要水源。一九二〇至三〇年代的霍亂封井沒有封到它，井留到一九五〇年代才封，之後由八條市政水管取代。一九八七年的模型裡，井口仍是原來的麻石井欄，欄內是一九五〇年代封上的混凝土，街面可以踏過去，不是還在打水的井。八條是數目，位置沒有測繪，模型只在北面行人路上放八個街頭水龍頭來標數量。英文作 Tai Chang Street。生活物語講的是供水不是全日：水桶、浴缸儲水，以及收費挑水上樓。",
       loyan: "老人街，英文 Lo Yan Street。南口在龍津道一一二號與一一四號之間，一九五〇年代初才有。這條街在城南，不是衙署天井東側。安老院和後來的老人中心、青少年中心是衙署那一組，一九九三年留下的是衙署，不是四周的唐樓。",
       kwong: "城內最暗的巷。魯金記：檔口點蠟燭給人認路，故稱光明街；英文展板作 Kwong Ming Street。後來食品工場集中，魚蛋、麵廠和燒味在此。色物語：下層不見日，光管色溫不同，切開才見五色。",
       shing: "舊東門一線，與東正道平行。北口開向東頭村道。居民稱為龍城路，龍城即寨城簡稱。英文檔案作 Lung Shing Road。南口夾在龍津路與龍津道之間、益華樓與東南樓之中，城外看不見。鳥籠物語是鐵窗花、晾衣，和伸出巷上的露台。",
@@ -13618,7 +14174,7 @@ const I18N = {
     useHome: "Dwelling, often one room for several people", useFactory: "Workshop — plastic, garment, metal", useFood: "Food works — noodles, fish balls, roast meat",
     useClinic: "Unlicensed clinic or dentist", useSchool: "School, kindergarten, church room", useTemple: "Temple, shrine, association hall",
     useShop: "Shop, mahjong, eating house", useService: "Stair, corridor, water room, store",
-    legendNote: "Zones follow the book’s chapter headings, kept in Japanese as printed. 色物語: no sun downstairs, fluorescent tubes of different colour temperatures. 鳥籠物語: lit windows sit inside continuous cantilevered wire-mesh balconies, the glass behind the mesh. A flower cage runs across several windows on the same floor. The balconies are shallow, deep, rusted, tarp-covered or hung with laundry. Most of them carry a weathered metal sheet for a roof, and a bar guard sits on the window behind the mesh. The north front carries the longest and the deepest. A lane about a metre wide gets only a short projection, so the two sides do not meet. The dark core has none. すきま物語: metre-wide gaps, drip, refuse nets. 生活物語: the great well lasted until the 1950s, then eight municipal pipes, and water carried upstairs. Ground floors follow photographs from about 1987. They are not a shop-by-shop survey. Where that floor is shops, a narrow stair stands beside them, as on the 1987 fronts: steep concrete steps, a collapsible gate folded to one jamb, a bare bulb, and red paper reading 出入 and 平安. No house number. In the photographs, dental signs stack on West City Road. Kwong Ming Street is fish balls, noodle works and roast meat. Lung Chun Avenue by then was groceries and family workshops. Lung Tsun Road still has mahjong, dispensaries and cooked food. A lane about a metre wide is mostly a metal gate. Inside the walls the sign is painted on the shop. Outside, on Tung Tau Tsuen Road, Tung Tsing Road and Carpenter Road, blade signs project over the pavement: boards of different sizes, set at irregular intervals. They name the trade, not an unsurveyed shop. Herbal shops keep large metal urns, a dispensary is a wall of drawers, noodle rooms have no window and flour on the table, roast meat hangs in front of the furnace, and mahjong and pai kau keep a cloth across the door. Roofs follow late-1980s photographs: galvanized tanks and fishbone aerials stand on the roof face, with zinc huts and washing lines. Bamboo scaffolds stand off some alley walls and stay out of the metre lanes. Alleys are worn wet concrete, cracked, patched and pooled, with a channel along one wall. On a narrow lane the first floor closes in stretches of concrete, boards or zinc, so daylight comes in at the crossings. Pipes, cables, drips and fluorescent tubes of different colour temperatures run under that ceiling, and refuse nets cross the open gaps. Wider streets keep a high cable, a few tubes under the first floor, and the odd basin, crate or plastic stool against the wall, clear of the walking line. People in the alleys follow the same photographs: singlets, short sleeves, rubber slippers, plastic bags, baskets, a shoulder pole and buckets. Umbrellas open only in the rain. They are not a count of residents. A few also walk the building side of Tung Tau Tsuen Road, Tung Tsing Road and Carpenter Road. The book’s panorama puts a widebody on the flight path and cream-and-red buses on the outer roads. This model flies one widebody low over the south roofs, gear down, eastbound on the approach, in period colours and with no airline name. The outer roads keep the cream-and-red buses and city traffic, in livery only. Window units, bamboo poles, downpipes and cage grilles follow the same photographs and sit on the outer faces, densest on the north front. The dark alleys do not grow air-conditioners.",
+    legendNote: "Zones follow the book’s chapter headings, kept in Japanese as printed. 色物語: no sun downstairs, fluorescent tubes of different colour temperatures. 鳥籠物語: lit windows sit inside continuous cantilevered wire-mesh balconies, the glass behind the mesh. A flower cage runs across several windows on the same floor. The balconies are shallow, deep, rusted, tarp-covered or hung with laundry. Most of them carry a weathered metal sheet for a roof, and a bar guard sits on the window behind the mesh. The north front carries the longest and the deepest. A lane about a metre wide gets only a short projection, so the two sides do not meet. The dark core has none. すきま物語: metre-wide gaps, drip, refuse nets. 生活物語: the great well lasted until the 1950s, then eight municipal pipes, and water carried upstairs. Ground floors follow photographs from about 1987. They are not a shop-by-shop survey. Where that floor is shops, a narrow stair stands beside them, as on the 1987 fronts: steep concrete steps, a collapsible gate folded to one jamb, a bare bulb, and red paper reading 出入 and 平安. No house number. In the photographs, dental signs stack on West City Road. Kwong Ming Street is fish balls, noodle works and roast meat. Lung Chun Avenue by then was groceries and family workshops. Lung Tsun Road still has mahjong, dispensaries and cooked food. A lane about a metre wide is mostly a metal gate. Inside the walls the sign is painted on the shop. Outside, on Tung Tau Tsuen Road, Tung Tsing Road and Carpenter Road, blade signs project over the pavement: boards of different sizes, set at irregular intervals. They name the trade, not an unsurveyed shop. Herbal shops keep large metal urns, a dispensary is a wall of drawers, noodle rooms have no window and flour on the table, roast meat hangs in front of the furnace, and mahjong and pai kau keep a cloth across the door. Roofs follow late-1980s photographs: galvanized tanks and fishbone aerials stand on the roof face, with zinc huts and washing lines. Bamboo scaffolds stand off some alley walls and stay out of the metre lanes. Alleys are worn wet concrete, cracked, patched and pooled, with a channel along one wall. The walls carry the handbills in the photographs, pasted at random and in layers: dentists, rooms to let, dit da, herbal tea, drains, fish balls, video. They name the trade. No shop name. On a narrow lane the first floor closes in stretches of concrete, boards or zinc, so daylight comes in at the crossings. Pipes, cables, drips and fluorescent tubes of different colour temperatures run under that ceiling, and refuse nets cross the open gaps. Wider streets keep a high cable, a few tubes under the first floor, and the odd basin, crate or plastic stool against the wall, clear of the walking line. People in the alleys follow the same photographs: singlets, short sleeves, rubber slippers, plastic bags, baskets, a shoulder pole and buckets. Umbrellas open only in the rain. They are not a count of residents. A few also walk the building side of Tung Tau Tsuen Road, Tung Tsing Road and Carpenter Road. The book’s panorama puts a widebody on the flight path and cream-and-red buses on the outer roads. This model flies one widebody low over the south roofs, gear down, eastbound on the approach, in period colours and with no airline name. The outer roads keep the cream-and-red buses and city traffic, in livery only. Window units, bamboo poles, downpipes and cage grilles follow the same photographs and sit on the outer faces, densest on the north front. The dark alleys do not grow air-conditioners.",
     cardKicker: "Site", cardTitle: "The city", cardBody: "Drag to orbit. Scroll to walk the scale. The section is the book’s move: a city with no facade, opened on one cut. Click a block to read its storeys and the ground-floor trade.",
     statFoot: "Rectangular wall", statArea: "Area", statCensus: "1987 survey", statPeak: "Reported peak, often with Sai Tau Tsuen",
     statCap: "Flight path and roofs", statCapVal: "flight path ~45 m, roofs ~35 m", statLifts: "Lifts in the whole city", statLiftsVal: "about three", statMass: "Masses in this model",
@@ -13650,7 +14206,7 @@ const I18N = {
     chapters: { life: "Daily life", colour: "Colour", cage: "Birdcages", enter: "The approach", panorama: "Restored life", gap: "The gaps", altar: "Shrine" },
     notes: {
       west: "West wall line. Its north end is the easiest entrance off Tung Tau Tsuen Road. More than a hundred unlicensed dentists stacked signs along this street. The denser row in the photographs is outside the city: in 1987 both Greg Girard and Andrew Suddaby shot dentist shops on the north front from Tung Tau Tsuen Road. Hong Kong did not recognise the licences. 西城路 is the only internal street whose English name is a translation, West City Road. The others keep the romanizations on the sheet and the plaques.",
-      well: "大井街 is older than the walled city and is named for the great well, the city’s main source. The cholera sealing of wells in the 1920s and 1930s did not close this one. It lasted until the 1950s, then eight municipal pipes replaced it. In this 1987 view the mouth is a concrete cap, not a well still in use. Eight is a count. The positions are not mapped, so the model marks the count with eight street taps on the north pavement. The English name is Tai Chang Street. The life chapter is about water that did not run all day: buckets, stored bathtubs, and carriers paid to haul it upstairs.",
+      well: "大井街 is older than the walled city and is named for the great well, the city’s main source. The cholera sealing of wells in the 1920s and 1930s did not close this one. It lasted until the 1950s, then eight municipal pipes replaced it. In this 1987 view the old granite curb is still in the lane, and the concrete plug of the 1950s fills it. The street walks over that plug. It is not a well still in use. Eight is a count. The positions are not mapped, so the model marks the count with eight street taps on the north pavement. The English name is Tai Chang Street. The life chapter is about water that did not run all day: buckets, stored bathtubs, and carriers paid to haul it upstairs.",
       loyan: "Lo Yan Street. Its south mouth opens on Lung Tsun Road between nos 112 and 114, and the street dates from the early 1950s. It lies in the south of the city, not on the east side of the yamen court. The almshouse, and later the old people’s centre and the youth centre, were the yamen compound. What was kept in 1993 was the yamen, not the tenements around it.",
       kwong: "The darkest alley. Lu Jin records candle-lit stalls for people finding their way, hence 光明街; the park plaque gives Kwong Ming Street. Later the food works concentrated here: fish balls, noodle works and roast meat. 色物語: no sun downstairs, so tubes of different colour temperatures make the cut a patchwork.",
       shing: "Old east-gate line, parallel to Tung Tsing Road, its north end opening on Tung Tau Tsuen Road. Residents called it 龍城路, 龍城 being the short name of the city; archives give Lung Shing Road. The south mouth sits between Lung Chun Avenue and Lung Tsun Road, hidden between 益華樓 and 東南樓. 鳥籠物語 is the cage-balcony chapter.",
@@ -13670,7 +14226,7 @@ const I18N = {
     useHome: "住居。一部屋に数人ということも", useFactory: "工場 — プラスチック、縫製、金属", useFood: "食品工場 — 麺、魚団子、焼味",
     useClinic: "無免許の医院・歯科", useSchool: "学堂、幼稚園、教会の部屋", useTemple: "廟、神棚、坊衆の会",
     useShop: "店舗、麻雀、食肆", useService: "階段、廊下、水場、倉庫",
-    legendNote: "区分は書の章題のまま。色物語は下層に日が差さず蛍光灯の色温度が並ぶこと。鳥籠物語は、光のある窓を連続した持ち出しの金網バルコニーに収め、ガラスは網の内側にある。花籠は同じ階の複数の窓にまたがる。浅いもの、深いもの、錆びたもの、タープを掛けたもの、洗濯物を干したものがある。多くは古びた鉄板を屋根にし、網の内側の窓には鉄格子が付く。北面が最も長く深い。幅一メートルほどの巷は出を短くし、向かいと触れない。暗い核には置かない。すきま物語は約一メートルの隙間、滴る管、ごみ網。生活物語は一九五〇年代まで残った大井と、その後の市政の水管八本、楼上へ運ぶ水。地下の店先は一九八七年頃の写真に合わせたもので、一軒ずつの測量ではない。店のある面には、一九八七年の写真どおり幅の狭い階段を脇に置く。急なコンクリート段、片側へ畳んだ伸縮門、裸電球、赤い紙の出入と平安。番地は書かない。写真では西城路に歯科の招牌が壁へ重なる。光明街は魚団子、製麺、焼味。龍津路はこの時期、雑貨と家庭工場が多い。龍津道には麻雀、薬舗、食肆が残る。幅一メートルほどの横巷は、たいてい鉄の扉だけである。城内の招牌は店の壁に書く。城外の東頭村道、東正道、賈炳達道では、刀牌が路面へ突き出す。板の大きさはまちまちで、通りに沿って間隔も揃えない。書くのは業種だけで、測っていない店名は書かない。涼茶は大きな金属の壺。薬房は引き出しの壁。製麺は窓がなく、粉が台を覆う。焼味は炉の前に吊る。麻雀と牌九は布で入口を隠す。屋上は一九八〇年代末の写真に合わせ、亜鉛メッキの円形水槽と魚骨アンテナを屋上面に置く。トタン小屋と物干しもある。竹の足場は一部の路地の壁から出し、幅一メートルの巷は通す。路地は摩耗してひび割れた湿ったコンクリートで、補修跡、染み、水たまりがあり、壁際に側溝が一本ある。狭い巷は一階の床がコンクリート、板、トタンで途切れ途切れに塞がり、昼の光は辻から入る。その天井下に管、電線、滴り、色温度の違う蛍光灯が走り、開いた隙間にごみ網がかかる。広い街は高い位置の線と、一階の下の蛍光灯を数本置き、壁際にたらい、箱、プラスチックの腰掛けを置く。通りの中央は空けてある。路地の人は同じ時期の写真に合わせ、ランニング、半袖、ゴム草履、袋、籠、天秤棒と桶にする。傘は雨のときだけ開く。人数は居住者の数ではない。東頭村道、東正道、賈炳達道では、建物側を歩く人もいる。書のパノラマには航路へ入るワイドボディと、外周のクリームと赤の二階バスがある。この模型は、脚を出したワイドボディが一機、南の屋根のすぐ上を東へ進み航路へ入る。塗装は時代の色だけで、航空会社の名前は書かない。外周のバスと車も塗色だけである。窓用冷房、竹竿、竪樋、鉄格子は同じ時期の写真に合わせ、外壁に置く。北面が最も密で、暗い路地には冷房を付けない。",
+    legendNote: "区分は書の章題のまま。色物語は下層に日が差さず蛍光灯の色温度が並ぶこと。鳥籠物語は、光のある窓を連続した持ち出しの金網バルコニーに収め、ガラスは網の内側にある。花籠は同じ階の複数の窓にまたがる。浅いもの、深いもの、錆びたもの、タープを掛けたもの、洗濯物を干したものがある。多くは古びた鉄板を屋根にし、網の内側の窓には鉄格子が付く。北面が最も長く深い。幅一メートルほどの巷は出を短くし、向かいと触れない。暗い核には置かない。すきま物語は約一メートルの隙間、滴る管、ごみ網。生活物語は一九五〇年代まで残った大井と、その後の市政の水管八本、楼上へ運ぶ水。地下の店先は一九八七年頃の写真に合わせたもので、一軒ずつの測量ではない。店のある面には、一九八七年の写真どおり幅の狭い階段を脇に置く。急なコンクリート段、片側へ畳んだ伸縮門、裸電球、赤い紙の出入と平安。番地は書かない。写真では西城路に歯科の招牌が壁へ重なる。光明街は魚団子、製麺、焼味。龍津路はこの時期、雑貨と家庭工場が多い。龍津道には麻雀、薬舗、食肆が残る。幅一メートルほどの横巷は、たいてい鉄の扉だけである。城内の招牌は店の壁に書く。城外の東頭村道、東正道、賈炳達道では、刀牌が路面へ突き出す。板の大きさはまちまちで、通りに沿って間隔も揃えない。書くのは業種だけで、測っていない店名は書かない。涼茶は大きな金属の壺。薬房は引き出しの壁。製麺は窓がなく、粉が台を覆う。焼味は炉の前に吊る。麻雀と牌九は布で入口を隠す。屋上は一九八〇年代末の写真に合わせ、亜鉛メッキの円形水槽と魚骨アンテナを屋上面に置く。トタン小屋と物干しもある。竹の足場は一部の路地の壁から出し、幅一メートルの巷は通す。路地は摩耗してひび割れた湿ったコンクリートで、補修跡、染み、水たまりがあり、壁際に側溝が一本ある。壁には写真どおりのビラが重なって貼ってある。歯科、空き家、跌打、涼茶、通渠、魚団子、ビデオ。書くのは業種だけで、測っていない店名は書かない。狭い巷は一階の床がコンクリート、板、トタンで途切れ途切れに塞がり、昼の光は辻から入る。その天井下に管、電線、滴り、色温度の違う蛍光灯が走り、開いた隙間にごみ網がかかる。広い街は高い位置の線と、一階の下の蛍光灯を数本置き、壁際にたらい、箱、プラスチックの腰掛けを置く。通りの中央は空けてある。路地の人は同じ時期の写真に合わせ、ランニング、半袖、ゴム草履、袋、籠、天秤棒と桶にする。傘は雨のときだけ開く。人数は居住者の数ではない。東頭村道、東正道、賈炳達道では、建物側を歩く人もいる。書のパノラマには航路へ入るワイドボディと、外周のクリームと赤の二階バスがある。この模型は、脚を出したワイドボディが一機、南の屋根のすぐ上を東へ進み航路へ入る。塗装は時代の色だけで、航空会社の名前は書かない。外周のバスと車も塗色だけである。窓用冷房、竹竿、竪樋、鉄格子は同じ時期の写真に合わせ、外壁に置く。北面が最も密で、暗い路地には冷房を付けない。",
     cardKicker: "地点", cardTitle: "九龍城砦", cardBody: "ドラッグで周回、スクロールで距離。断面は書のやり方で、正面を持たない都市を一刀で開く。棟をクリックすると階数と地下の業種が読める。",
     statFoot: "矩形の城郭", statArea: "面積", statCensus: "一九八七年の調査", statPeak: "報道のピーク（西頭村を含むことが多い）",
     statCap: "航路と屋根", statCapVal: "航路約 45m、屋根約 35m", statLifts: "城内の昇降機", statLiftsVal: "およそ三基", statMass: "モデルの棟",
@@ -13702,7 +14258,7 @@ const I18N = {
     chapters: { life: "生活物語", colour: "色物語", cage: "鳥籠物語", enter: "九龍城へ", panorama: "生活復元パノラマ", gap: "すきま物語", altar: "社壇" },
     notes: {
       west: "西の城基。北の口が東頭村道に開き、最も見つかりやすい入口。無免許の歯科が百軒を超え、招牌をこの街に積み上げた。写真でより密なのは城の外で、一九八七年にグレッグ・ジラードとアンドリュー・サダビーが、東頭村道から北の外壁の歯科を撮っている。香港はその免許を認めなかった。西城路は城内で唯一、英文が意訳された街で、West City Road と記される。ほかの街は測量図や解説板の音写である。",
-      well: "大井街は九龍城砦より古い。大井に由来し、城の主な水源だった。一九二〇–三〇年代のコレラによる封井はこの井に及ばず、一九五〇年代まで残った。その後、市政の水管八本に替わる。一九八七年の模型では、井口はコンクリートで封じてあり、まだ水を汲む井ではない。八本は数であり、位置は測られていない。模型は北の歩道に街頭の蛇口を八つ置き、数だけを示す。英文は Tai Chang Street。生活物語は終日来ない水、桶と浴槽、楼上へ運賃を取って運ぶ水のこと。",
+      well: "大井街は九龍城砦より古い。大井に由来し、城の主な水源だった。一九二〇–三〇年代のコレラによる封井はこの井に及ばず、一九五〇年代まで残った。その後、市政の水管八本に替わる。一九八七年の模型では、もとの麻石の井欄が巷に残り、その中を一九五〇年代のコンクリートが塞いでいる。通りはその栓の上を歩く。まだ水を汲む井ではない。八本は数であり、位置は測られていない。模型は北の歩道に街頭の蛇口を八つ置き、数だけを示す。英文は Tai Chang Street。生活物語は終日来ない水、桶と浴槽、楼上へ運賃を取って運ぶ水のこと。",
       loyan: "老人街。英文は Lo Yan Street。南の口は龍津道の一一二号と一一四号のあいだに開き、一九五〇年代初の街。城の南にあり、衙門の中庭の東ではない。安老院と、のちの老人中心、青少年センターは衙門の一郭である。一九九三年に残ったのは衙門で、周囲の唐楼ではない。",
       kwong: "城内で最も暗い路地。魯金は、道を示す蝋燭から光明街と呼んだと記す。解説板の英文は Kwong Ming Street。のち食品工場が集まり、魚団子、製麺、焼味がここで作られた。色物語は下層に日が差さず、蛍光灯の色温度が切り口を彩ること。",
       shing: "旧東門の線で、東正道と平行し、北端は東頭村道に開く。住民は龍城路と呼んだ。龍城は九龍城砦の略。英文記録は Lung Shing Road。南の入口は龍津路と龍津道のあいだ、益華楼と東南楼に隠れ、外から見えない。鳥籠物語は鉄格子と物干し、路地へせり出した床。",
@@ -13733,6 +14289,7 @@ function shopCaption(shops) {
   return lines.filter(Boolean).join(" ");
 }
 function showPick(u) {
+  if (walkMode) return;
   viewGlide = null;
   activePick = u;
   activeZone = null;
@@ -13863,6 +14420,7 @@ renderer.domElement.addEventListener("pointermove", (ev) => {
   renderer.domElement.style.cursor = key && LABEL_PLACE[key] ? "pointer" : "";
 });
 renderer.domElement.addEventListener("pointerup", (ev) => {
+  if (walkMode) return;
   if (Math.hypot(ev.clientX - pointerX, ev.clientY - pointerY) > 8) return;
   const labelHit = nearestLabel(ev);
   const massHit = ray.intersectObjects(pickables, false)[0];
@@ -16961,8 +17519,6 @@ const figGeo = {
   joint: new THREE.BoxGeometry(1.2, 1.2, 1.2),
   belt: new THREE.BoxGeometry(0.3, 0.045, 0.18),
   buckle: new THREE.BoxGeometry(0.04, 0.026, 0.012),
-  apron: new THREE.BoxGeometry(0.2, 0.3, 0.04),
-  strap: new THREE.BoxGeometry(0.022, 0.34, 0.016),
   suspender: new THREE.BoxGeometry(0.022, 0.36, 0.016),
   hand: new THREE.BoxGeometry(0.07, 0.06, 0.05),
   slipper: new THREE.BoxGeometry(0.1, 0.045, 0.2),
@@ -17055,7 +17611,8 @@ toothMat.userData.streetGrade = "figure";
 const lipDeep = clothMat(0x7a403c, 0.5);
 const nostrilMat = clothMat(0x5c382c, 0.7);
 const buckleMat = clothMat(0xd9d3c6, 0.35);
-const apronMat = clothMat(0xcbbfa8, 1, "cloth");
+const apronMat = clothMat(0xefe8dc, 0.94, "cloth");
+const apronHemMat = clothMat(0xd2c4ae, 0.96, "cloth");
 const bambooMat = clothMat(0x3a2c20, 0.96);
 const ropeMat = clothMat(0x6a5844, 0.92);
 const capMat = clothMat(0x2a3136, 0.78);
@@ -17339,6 +17896,22 @@ function skirtRecipe(box) {
   box(-16, -16, -10, 16, -2, 10);
   box(-17, -28, -11, 17, -16, 11);
 }
+// Centimetres in hip space. The bib clears the shirt by one centimetre.
+// The fall hangs forward of the hips so a stride does not cut it.
+function apronRecipe(box) {
+  box(-9, 28, 8, 9, 44, 9);
+  box(-12, 20, 8, 12, 24, 13);
+  box(-11, -8, 12, 11, 22, 13);
+}
+function apronHemRecipe(box) {
+  box(-11, -10, 12, 11, -8, 13);
+}
+function apronStrapRecipe(box) {
+  box(-8, 44, 8, -6, 49, 9);
+  box(6, 44, 8, 8, 49, 9);
+  box(-12, 47, 8, -8, 52, 9);
+  box(8, 47, 8, 12, 52, 9);
+}
 function thighRecipe(box) {
   box(-6, -21, -6, 6, 21, 6);
 }
@@ -17506,6 +18079,9 @@ const parts = {
   pelvis: part(pelvisRecipe, true),
   neck: part(neckRecipe, true),
   skirt: part(skirtRecipe, false),
+  apron: part(apronRecipe, false),
+  apronHem: part(apronHemRecipe, false),
+  apronStraps: part(apronStrapRecipe, false),
   thigh: part(thighRecipe, true),
   shin: part(shinRecipe, true),
   knee: part(kneeRecipe, true),
@@ -17740,18 +18316,10 @@ function makeCitizen(spec) {
     });
   }
   if (spec.apron) {
-    const apron = figMesh(figGeo.apron, apronMat);
-    apron.position.set(0, 0.22, 0.086);
-    apron.scale.set(1.05, 1, 0.55);
-    hip.add(apron);
+    hip.add(figMesh(parts.apron, apronMat));
+    hip.add(figMesh(parts.apronHem, apronHemMat));
     const strapMat = clothMat(spec.straps || 0x3e5966, 1, "cloth");
-    [-1, 1].forEach(function (side) {
-      const s = figMesh(figGeo.strap, strapMat);
-      s.position.set(side * 0.04, 0.4, 0.1);
-      s.rotation.z = side * 0.22;
-      s.rotation.x = 0.35;
-      hip.add(s);
-    });
+    hip.add(figMesh(parts.apronStraps, strapMat));
   }
   const neck = figMesh(parts.neck, skin);
   neck.position.y = 0.535;
@@ -18125,10 +18693,23 @@ function poseIdle(rig, ud, now, w, rainUp) {
     rig.torso.rotation.x += Math.sin(now * 1.35 + ud.offset * 2) * 0.012 * w;
     return;
   }
-  if (act === "browse") {
-    rig.torso.rotation.y += (0.35 * side - rig.torso.rotation.y) * w;
-    rig.head.rotation.y += (0.85 * side - rig.head.rotation.y) * w;
-    rig.head.rotation.x += (0.02 - rig.head.rotation.x) * w;
+  if (act === "greet") {
+    const nod = Math.sin(now * 5.2 + ud.offset * 3);
+    rig.head.rotation.x += (0.06 + Math.max(0, nod) * 0.1 - rig.head.rotation.x) * w;
+    rig.head.rotation.y += (0.08 * side - rig.head.rotation.y) * w;
+    if (!rainUp && rig.prop !== "pole" && rig.prop !== "basket") {
+      poseToward(rig.armR, -1.32, 0.12 * side, -0.42, nod * 0.32, w);
+    }
+    if (rig.mouth) {
+      const open = 1.08 + Math.max(0, nod) * 0.22;
+      rig.mouth.scale.y += (open - rig.mouth.scale.y) * w;
+    }
+  } else if (act === "browse") {
+    // The body has already turned toward the opening. The head only finishes the look.
+    const aimed = Math.abs(ud.bias || 0) > 0.45;
+    rig.torso.rotation.y += ((aimed ? 0.12 : 0.35) * side - rig.torso.rotation.y) * w;
+    rig.head.rotation.y += ((aimed ? 0.22 : 0.85) * side - rig.head.rotation.y) * w;
+    rig.head.rotation.x += ((aimed ? 0.16 : 0.02) - rig.head.rotation.x) * w;
     if (!rainUp && rig.prop !== "pole") poseToward(rig.armR, -0.62, 0.62 * side, -0.85, 0.12 * side, w);
   } else if (act === "talk") {
     const gest = Math.sin(now * 3.4 + ud.offset * 4);
@@ -18290,6 +18871,86 @@ function poseIdle(rig, ud, now, w, rainUp) {
 function stepWalker(fig, now) {
   advanceWalker(fig.userData, now, fig);
 }
+// A meeting is one roll for the pair. One in five stops to greet. The rest walk past.
+const GREET_CHANCE = 0.2;
+const MEET_D2 = 1.45 * 1.45;
+const KEEPER_MEET_D2 = 3.05 * 3.05;
+function turnToward(ud, x, z) {
+  const dx = x - ud.x, dz = z - ud.z;
+  let turn = Math.atan2(dx, dz) - (ud.yaw || 0);
+  turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+  if (turn > 1.15) turn = 1.15;
+  else if (turn < -1.15) turn = -1.15;
+  return turn;
+}
+function considerPerson(ud, other, best) {
+  if (!other || other === ud || other.keeper || other.post || other.wait > 0) return best;
+  if (other.who < ud.who) return best;
+  const dx = other.x - ud.x, dz = other.z - ud.z;
+  const d2 = dx * dx + dz * dz;
+  if (d2 < 0.04 || d2 >= best.d2) return best;
+  best.d2 = d2;
+  best.who = other;
+  return best;
+}
+function tryGreet(ud, now) {
+  if (now < (ud.meetScan || 0) || now < (ud.meetCool || 0)) return false;
+  ud.meetScan = now + 0.35;
+  const best = { d2: MEET_D2, who: null };
+  for (let i = 0; i < walkers.length; i++) {
+    const ou = walkers[i].userData;
+    if (!ou || ou.inside) continue;
+    considerPerson(ud, ou, best);
+  }
+  for (let i = 0; i < cityFolk.length; i++) considerPerson(ud, cityFolk[i], best);
+  if (best.who) {
+    const other = best.who;
+    ud.meetCool = other.meetCool = now + 6.5;
+    if (Math.random() >= GREET_CHANCE) return false;
+    beginAct(ud, now, "greet", 1.65);
+    beginAct(other, now, "greet", 1.55);
+    ud.bias = turnToward(ud, other.x, other.z);
+    other.bias = turnToward(other, ud.x, ud.z);
+    return true;
+  }
+  let post = null;
+  let postD = KEEPER_MEET_D2;
+  for (let i = 0; i < keeperPosts.length; i++) {
+    const p = keeperPosts[i];
+    const dx = ud.x - p.x, dz = ud.z - p.z;
+    if (dx * p.fx + dz * p.fz < 0.35) continue;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < postD) { postD = d2; post = p; }
+  }
+  if (!post) return false;
+  ud.meetCool = now + 6.5;
+  if (Math.random() >= GREET_CHANCE) return false;
+  beginAct(ud, now, "greet", 1.65);
+  ud.bias = turnToward(ud, post.x, post.z);
+  post.greetUntil = now + 1.65;
+  post.greetX = ud.x;
+  post.greetZ = ud.z;
+  return true;
+}
+function tryLook(ud, now) {
+  if (now < (ud.lookScan || 0) || now < (ud.lookCool || 0)) return false;
+  ud.lookScan = now + 0.4;
+  let post = null;
+  let postD = KEEPER_MEET_D2;
+  for (let i = 0; i < keeperPosts.length; i++) {
+    const p = keeperPosts[i];
+    const dx = ud.x - p.x, dz = ud.z - p.z;
+    if (dx * p.fx + dz * p.fz < 0.3) continue;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < postD) { postD = d2; post = p; }
+  }
+  if (!post) return false;
+  const hold = 2.8 + (ud.who % 5) * 0.22;
+  beginAct(ud, now, "browse", hold);
+  ud.bias = turnToward(ud, post.x, post.z);
+  ud.lookCool = now + hold + 11 + (ud.who % 5);
+  return true;
+}
 function advanceWalker(ud, now, fig) {
   const path = ud.path;
   const span = Math.max(0.5, path.b - path.a);
@@ -18309,9 +18970,7 @@ function advanceWalker(ud, now, fig) {
       ud.actLeft -= dt;
       // A long court pause changes what they are doing instead of freezing one pose.
       if (ud.actLeft <= 0 && ud.wait > 1.4) {
-        ud.act = pickAct(ud);
         ud.actLeft = Math.min(ud.wait, 3.4);
-        ud.bias = actBias(ud);
       }
     }
     if (ud.wait <= 0) {
@@ -18321,7 +18980,6 @@ function advanceWalker(ud, now, fig) {
     }
   } else {
     let speed = ud.speed;
-    let tail = 99;
     ud.held = false;
     const crowd = ud.inside ? cityFolk : walkers;
     for (let i = 0; i < crowd.length; i++) {
@@ -18332,45 +18990,24 @@ function advanceWalker(ud, now, fig) {
         speed = 0;
         ud.held = true;
       } else if (ahead > 0.08 && ahead < 1.15) speed *= Math.max(0.2, (ahead - 0.08) / 1.05);
-      const behind = -ahead;
-      if (behind > 0.05 && behind < tail) tail = behind;
-      if (other.dir !== ud.dir && ahead > 0.35 && ahead < 1.2 && ud.ease > 0.4 && other.ease > 0.4 && now > (ud.chatCool || 0) && now > (other.chatCool || 0)) {
-        ud.chatCool = other.chatCool = now + 14;
-        beginAct(ud, now, "talk", 2.6);
-        beginAct(other, now, "talk", 2.4);
-        ud.bias = ud.dir > 0 ? -0.42 : 0.42;
-        other.bias = other.dir > 0 ? -0.42 : 0.42;
-        speed = 0;
-        break;
-      }
     }
-    if (ud.wait > 0) {
-      // A meeting just stopped them. The pose takes over this frame.
-    } else if (tail > 1.8 && Math.min(ud.along, span - ud.along) > 1.6 && now >= ud.nextAct) {
-      const act = pickAct(ud);
-      beginAct(ud, now, act, actHold(ud, act));
+    if (ud.wait <= 0 && (tryGreet(ud, now) || tryLook(ud, now))) {
+      // A greeting or a shop window just stopped them.
+    } else if (ud.wait > 0) {
+      // Already stopped this frame.
     } else {
       let face = ud.dir;
       let landed = ud.along + speed * face * dt;
-      let ended = false;
       if (landed >= span) {
         landed = span;
         face = -1;
-        ended = true;
       } else if (landed <= 0) {
         landed = 0;
         face = 1;
-        ended = true;
       }
       if (!walkerBlocked(path, landed, face)) {
         ud.along = landed;
-        if (face !== ud.dir) {
-          ud.dir = face;
-          if (ended) {
-            const act = pickAct(ud);
-            beginAct(ud, now, act, path.pause == null ? actHold(ud, act) : path.pause + (ud.offset % 1.4));
-          }
-        }
+        if (face !== ud.dir) ud.dir = face;
       } else {
         const back = -ud.dir;
         const held = Math.max(0, Math.min(span, ud.along));
@@ -18533,7 +19170,7 @@ function advanceWalker(ud, now, fig) {
     }
   }
   poseIdle(rig, ud, now, 1 - moving, rainUp);
-  if (rig.mouth && ud.act !== "talk") rig.mouth.scale.y += (1 - rig.mouth.scale.y) * Math.min(1, dt * 8);
+  if (rig.mouth && ud.act !== "talk" && ud.act !== "greet") rig.mouth.scale.y += (1 - rig.mouth.scale.y) * Math.min(1, dt * 8);
   if (rig.mouth && ud.act !== "smoke") rig.mouth.position.z += (0 - rig.mouth.position.z) * Math.min(1, dt * 8);
   if (rainUp) {
     standBrolly(rig);
@@ -18769,21 +19406,16 @@ function addWalker(path, spec, i, place) {
   ud.along = along;
   ud.live = 1;
   ud.inside = inside ? 1 : 0;
-  ud.wait = place && place.wait != null ? place.wait : (i % 5) * 0.15;
+  ud.wait = 0;
   ud.ease = 1;
   ud.bias = 0;
   ud.biasEase = 0;
   ud.act = null;
   ud.chatCool = 0;
+  ud.who = addWalker.seq = (addWalker.seq || 0) + 1;
+  ud.meetCool = (ud.who % 5) * 0.4;
+  ud.lookCool = (ud.who % 13) * 0.9;
   ud.fig = fig;
-  const opening = place && place.wait > 1.2;
-  if (opening || i % 3 === 0) {
-    ud.act = pickAct(ud);
-    if (!opening) ud.wait = 2.6 + (i % 4) * 0.5;
-    ud.actLeft = Math.min(ud.wait, 3.6);
-    ud.bias = actBias(ud);
-    ud.ease = 0;
-  }
   const yaw0 = path.axis === "z" ? (dir > 0 ? 0 : Math.PI) : (dir > 0 ? Math.PI / 2 : -Math.PI / 2);
   ud.yaw = yaw0;
   if (fig) fig.rotation.y = yaw0;
@@ -18880,7 +19512,7 @@ function keeperTrade(kind) {
   if (kind === "mahjong" || kind === "paikau") return "watch";
   return "counter";
 }
-function keeperWear(kind, i) {
+function keeperWear(kind, i, stance) {
   const src = KEEPER_LOOK[kind] || KEEPER_LOOK.grocery;
   const wear = { gait: "slow" };
   for (const k in src) if (k !== "mix") wear[k] = src[k];
@@ -18888,6 +19520,8 @@ function keeperWear(kind, i) {
     wear.hair = i % 4 === 1 ? "bun" : "bob";
     wear.shorts = false;
   }
+  // A bob or a bun hangs a rigid skirt. It cannot fold over a chair.
+  if (stance === "sit" && (wear.hair === "bob" || wear.hair === "bun")) wear.hair = "short";
   return wear;
 }
 const keepers = [];
@@ -18911,28 +19545,69 @@ function prepareKeeperPosts() {
       if (dx * dx + dz * dz < 0.2) { skip = true; break; }
     }
     if (skip) continue;
+    // A shared sine made a whole street nod on one beat. The phase and the
+    // rate stay with the post, so a keeper who leaves the frame and comes
+    // back is still on the same loop, just not on the neighbour's.
+    const phase = lotRoll(post.x, post.z, 0xA11 + i) * Math.PI * 2;
+    const phase2 = lotRoll(post.z, post.x, 0xB22 + i) * Math.PI * 2;
+    const rate = 0.64 + lotRoll(post.x + 3, post.z + 5, 0xC33 + i) * 0.82;
+    const spin = (lotRoll(post.x, post.z, 0xD44 + i) - 0.5) * 0.18;
+    const rot = post.rot + spin;
     keeperPosts.push({
-      x: post.x, y: post.y, z: post.z, rot: post.rot, kind: post.kind,
-      fx: post.fx, fz: post.fz, i: i, fig: null
+      x: post.x, y: post.y, z: post.z, rot: rot, kind: post.kind,
+      fx: Math.sin(rot), fz: Math.cos(rot), i: i, fig: null,
+      phase: phase, phase2: phase2, rate: rate,
+      stance: post.stance || "work", span: post.span || 4
     });
   }
 }
 prepareKeeperPosts();
+const KEEPER_SIT_HIP = 0.494;
+const KEEPER_SIT_THIGH = -1.45;
+const KEEPER_SIT_KNEE = 1.55;
+function seatKeeper(rig) {
+  rig.hip.position.y = KEEPER_SIT_HIP;
+  rig.legL.pivot.rotation.x = KEEPER_SIT_THIGH;
+  rig.legR.pivot.rotation.x = KEEPER_SIT_THIGH;
+  rig.legL.knee.rotation.x = KEEPER_SIT_KNEE;
+  rig.legR.knee.rotation.x = KEEPER_SIT_KNEE;
+  rig.legL.ankle.rotation.x = -(KEEPER_SIT_THIGH + KEEPER_SIT_KNEE);
+  rig.legR.ankle.rotation.x = -(KEEPER_SIT_THIGH + KEEPER_SIT_KNEE);
+}
+function mountKeeperChair(post) {
+  const chair = new THREE.Mesh(shopGeo.chair, shopFinish.chair);
+  // The chair is full size and the figure is scaled. 0.8 puts the seat under
+  // a hip at KEEPER_SIT_HIP with the soles on the shop floor.
+  chair.scale.setScalar(0.8);
+  chair.position.set(post.x, post.y, post.z);
+  chair.rotation.y = post.rot;
+  vfx.add(chair);
+  post.chair = chair;
+}
 function spawnKeeper(post, now) {
-  const fig = makeCitizen(keeperWear(post.kind, post.i));
+  const fig = makeCitizen(keeperWear(post.kind, post.i, post.stance));
   fig.position.set(post.x, post.y, post.z);
   fig.rotation.y = post.rot;
   fig.userData.live = 1;
   fig.userData.keeper = 1;
   fig.userData.post = post;
   fig.userData.trade = keeperTrade(post.kind);
-  fig.userData.offset = (post.i * 1.37) % 4.2;
+  fig.userData.stance = post.stance || "work";
+  fig.userData.offset = post.phase;
+  fig.userData.phase = post.phase;
+  fig.userData.phase2 = post.phase2;
+  fig.userData.rate = post.rate;
   fig.userData.scale = 1;
   fig.userData.greetUntil = 0;
   fig.userData.greetCool = 0;
   fig.userData.aimYaw = 0;
   fig.userData.then = now - 0.4;
-  fig.userData.rig.hip.position.y = THIGH_L + SHIN_L + 0.04;
+  if (fig.userData.stance === "sit") {
+    seatKeeper(fig.userData.rig);
+    mountKeeperChair(post);
+  } else {
+    fig.userData.rig.hip.position.y = THIGH_L + SHIN_L + 0.04;
+  }
   vfx.add(fig);
   keepers.push(fig);
   post.fig = fig;
@@ -18948,6 +19623,10 @@ function disposeOwned(fig) {
 }
 function dropKeeper(post) {
   const fig = post.fig;
+  if (post.chair) {
+    if (post.chair.parent) post.chair.parent.remove(post.chair);
+    post.chair = null;
+  }
   if (!fig) return;
   post.fig = null;
   const at = keepers.indexOf(fig);
@@ -19072,45 +19751,55 @@ function stepKeeper(fig, now) {
   ud.then = now;
   const dt = Math.min(0.05, Math.max(0, now - prev));
   const w = Math.min(1, dt * 6);
-  const greet = now < ud.greetUntil;
-  if (!greet && now >= ud.greetCool) {
-    const px = fig.position.x, pz = fig.position.z;
-    let aim = null;
-    let aimD = 4.4;
-    for (let i = 0; i < walkers.length; i++) {
-      const other = walkers[i];
-      const ou = other.userData;
-      if (!ou || (ou.ease || 0) < 0.35) continue;
-      const dx = other.position.x - px;
-      const dz = other.position.z - pz;
-      if (dx * post.fx + dz * post.fz < 0.4) continue;
-      const d2 = dx * dx + dz * dz;
-      if (d2 < aimD) { aimD = d2; aim = dx; ud.aimZ = dz; }
-    }
-    if (aim != null) {
-      const want = Math.atan2(aim, ud.aimZ);
-      let dy = want - fig.rotation.y;
-      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-      ud.aimYaw = dy > 0.9 ? 0.9 : dy < -0.9 ? -0.9 : dy;
-      ud.greetUntil = now + 1.35;
-      ud.greetCool = now + 8.5;
-    }
+  // A shopkeeper keeps working unless a passer-by actually stopped to greet them.
+  const waving = post && now < (post.greetUntil || 0);
+  if (waving) {
+    const dx = post.greetX - fig.position.x;
+    const dz = post.greetZ - fig.position.z;
+    const want = Math.atan2(dx, dz);
+    let dy = want - fig.rotation.y;
+    dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    ud.aimYaw = dy > 0.9 ? 0.9 : dy < -0.9 ? -0.9 : dy;
   }
-  const waving = now < ud.greetUntil;
-  const s = Math.sin(now * 1.7 + ud.offset);
-  const s2 = Math.sin(now * 2.6 + ud.offset * 2);
+  const rate = ud.rate || 1;
+  const phase = ud.phase || 0;
+  const phase2 = ud.phase2 || 0;
+  const s = Math.sin(now * 1.65 * rate + phase);
+  const s2 = Math.sin(now * 2.35 * rate + phase2);
+  const stance = ud.stance || "work";
+  let hipY = THIGH_L + SHIN_L + 0.04;
+  let thighL = 0, thighR = 0, kneeL = 0.04, kneeR = 0.04;
+  let sway = s * 0.012;
   let lean = 0.08, headX = 0.12, headY = s * 0.1, torsoY = 0;
   let L = [-0.75, -0.35, -1.25, 0.12];
   let R = [-0.7, 0.38, -1.2, -0.1];
   const trade = ud.trade;
-  if (trade === "clinic") {
-    lean = 0.04; headX = 0.16 + s * 0.05; headY = s2 * 0.14;
-    L = [-0.9, -0.4, -1.6, 0.18];
-    R = [-0.9, 0.4, -1.6, -0.18];
+  if (stance === "sit") {
+    // Hands rest. The head turns on its own phase. The legs stay on the chair.
+    hipY = KEEPER_SIT_HIP;
+    thighL = thighR = KEEPER_SIT_THIGH;
+    kneeL = kneeR = KEEPER_SIT_KNEE;
+    sway = 0;
+    lean = 0.06 + s * 0.015;
+    headX = 0.08 + s2 * 0.03;
+    headY = s * 0.1;
+    L = [-0.62, -0.2, -0.9, 0.05];
+    R = [-0.56 + s2 * 0.04, 0.18, -0.82, -0.04];
+  } else if (stance === "idle") {
+    lean = 0.03;
+    headX = 0.04 + s * 0.025;
+    headY = s2 * 0.16;
+    L = [-0.12, -0.16, -0.22, 0.02];
+    R = [-0.1, 0.14, -0.18, -0.02];
+  } else if (trade === "clinic") {
+    // Hands stay at the chart. The old reach swung the forearm through the pane.
+    lean = 0.05; headX = 0.2 + s * 0.04; headY = s2 * 0.08;
+    L = [-0.42, -0.18, -1.05, 0.06];
+    R = [-0.5 + s2 * 0.06, 0.16, -1.15, -0.08];
   } else if (trade === "serve") {
-    lean = 0.24; headX = 0.32; headY = s * 0.06;
-    L = [-0.65, -0.28, -1.15, 0.08];
-    R = [-1.05 + s * 0.2, 0.22, -1.4, s2 * 0.28];
+    lean = 0.18; headX = 0.22 + s * 0.04; headY = s2 * 0.08;
+    L = [-0.4, -0.22, -0.85, 0.06];
+    R = [-0.7 + s * 0.16, 0.18, -1.15, s2 * 0.16];
   } else if (trade === "make") {
     lean = 0.32; headX = 0.4; headY = s * 0.05;
     L = [-0.85 + s2 * 0.12, -0.3, -1.35, 0.16];
@@ -19124,18 +19813,23 @@ function stepKeeper(fig, now) {
     L = [-0.4, -0.85, -2.2, 0.35];
     R = [-0.35, 0.9, -2.15, -0.4];
   } else {
-    lean = 0.16;
-    headX = 0.34 + s * 0.08;
-    L = [-1.05, -0.22, -1.1, 0.12 + s2 * 0.22];
-    R = [-0.95 + s * 0.28, 0.26, -1.0, -0.1];
+    // One hand stays by the hip. The other works the counter on its own phase.
+    lean = 0.1 + s * 0.03;
+    headX = 0.16 + s2 * 0.05;
+    headY = s * 0.14;
+    L = [-0.32, -0.24, -0.55, 0.06];
+    R = [-0.62 + s2 * 0.2, 0.2, -0.95, -0.1];
   }
   if (waving) {
-    headY = ud.aimYaw;
+    headY = ud.aimYaw * (stance === "sit" ? 0.65 : 1);
     headX = 0.02;
     lean = 0.04;
-    torsoY = ud.aimYaw * 0.45;
-    const wave = Math.sin(now * 8);
-    R = [-1.45, 0.2, -0.4, wave * 0.45];
+    torsoY = ud.aimYaw * (stance === "sit" ? 0.2 : 0.45);
+    const wave = Math.sin(now * (6.4 + rate * 2.2) + phase2);
+    // A seated greeting is a small lift. Standing still uses the full wave.
+    R = stance === "sit"
+      ? [-0.95, 0.22, -0.5, wave * 0.2]
+      : [-1.45, 0.2, -0.4, wave * 0.45];
     if (rig.mouth) {
       const open = 1.15 + Math.max(0, wave) * 0.2;
       rig.mouth.scale.y += (open - rig.mouth.scale.y) * w;
@@ -19143,9 +19837,9 @@ function stepKeeper(fig, now) {
   } else if (rig.mouth) {
     rig.mouth.scale.y += (1 - rig.mouth.scale.y) * w;
   }
-  rig.hip.position.y += (THIGH_L + SHIN_L + 0.04 - rig.hip.position.y) * w;
-  rig.hip.position.x += (s * 0.012 - rig.hip.position.x) * w;
-  rig.hip.rotation.x += (0.02 - rig.hip.rotation.x) * w;
+  rig.hip.position.y += (hipY - rig.hip.position.y) * w;
+  rig.hip.position.x += (sway - rig.hip.position.x) * w;
+  rig.hip.rotation.x += ((stance === "sit" ? 0.04 : 0.02) - rig.hip.rotation.x) * w;
   rig.hip.rotation.z += (0 - rig.hip.rotation.z) * w;
   rig.torso.rotation.x += (lean - rig.torso.rotation.x) * w;
   rig.torso.rotation.y += (torsoY - rig.torso.rotation.y) * w;
@@ -19153,10 +19847,10 @@ function stepKeeper(fig, now) {
   rig.head.rotation.x += (headX - rig.head.rotation.x) * w;
   rig.head.rotation.y += (headY - rig.head.rotation.y) * w;
   rig.head.rotation.z += (0 - rig.head.rotation.z) * w;
-  rig.legL.pivot.rotation.x += (0 - rig.legL.pivot.rotation.x) * w;
-  rig.legR.pivot.rotation.x += (0 - rig.legR.pivot.rotation.x) * w;
-  rig.legL.knee.rotation.x += (0.04 - rig.legL.knee.rotation.x) * w;
-  rig.legR.knee.rotation.x += (0.04 - rig.legR.knee.rotation.x) * w;
+  rig.legL.pivot.rotation.x += (thighL - rig.legL.pivot.rotation.x) * w;
+  rig.legR.pivot.rotation.x += (thighR - rig.legR.pivot.rotation.x) * w;
+  rig.legL.knee.rotation.x += (kneeL - rig.legL.knee.rotation.x) * w;
+  rig.legR.knee.rotation.x += (kneeR - rig.legR.knee.rotation.x) * w;
   rig.legL.ankle.rotation.x = -(rig.legL.pivot.rotation.x + rig.legL.knee.rotation.x);
   rig.legR.ankle.rotation.x = -(rig.legR.pivot.rotation.x + rig.legR.knee.rotation.x);
   poseToward(rig.armL, L[0], L[1], L[2], L[3], w);
@@ -20438,11 +21132,19 @@ function stepWalk(dt) {
   if (len > 0) {
     const quicker = walkHeld.has("ShiftLeft") || walkHeld.has("ShiftRight");
     const push = keyActive ? 1 : Math.min(1, stickMag);
-    const speed = (quicker ? 4.6 : 2.55) * push / len;
-    const nx = walkX + mx * speed * dt;
-    const nz = walkZ + mz * speed * dt;
-    if (walkInside(nx, walkZ) && !walkBlocked(nx, walkZ)) walkX = nx;
-    if (walkInside(walkX, nz) && !walkBlocked(walkX, nz)) walkZ = nz;
+    const speed = (quicker ? 4.6 : 2.55) * push;
+    const ux = mx / len, uz = mz / len;
+    // Short slices, so a sprint frame cannot jump a narrow mouth or a post.
+    const slice = Math.max(WALK_R, 0.06);
+    let left = speed * dt;
+    while (left > 1e-4) {
+      const s = Math.min(left, slice);
+      const nx = walkX + ux * s;
+      const nz = walkZ + uz * s;
+      if (walkInside(nx, walkZ) && !walkBlocked(nx, walkZ)) walkX = nx;
+      if (walkInside(walkX, nz) && !walkBlocked(walkX, nz)) walkZ = nz;
+      left -= s;
+    }
   }
   camera.position.set(walkX, GROUND_Y + WALK_EYE, walkZ);
   camera.rotation.order = "YXZ";
@@ -20450,6 +21152,7 @@ function stepWalk(dt) {
 }
 function leaveWalkToView() {
   if (!walkMode) return;
+  airHeld = true;
   const fromFov = camera.fov;
   const eye = camera.position.clone();
   const ahead = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -20685,12 +21388,42 @@ seatPavement();
 function bakeWalk() {
   for (let i = 0; i < walkSolids.length; i++) {
     const b = walkSolids[i];
+    if (b.x == null) continue;
+    if (b.x0 == null) {
+      b.x0 = b.x;
+      b.x20 = b.x2;
+      b.z0 = b.z;
+      b.z20 = b.z2;
+    }
+    let x = b.x0, x2 = b.x20, z = b.z0, z2 = b.z20;
+    if (b.ground != null) {
+      const o = b.ground;
+      const pull = face => o.indexOf(face) >= 0 ? 0.48 : 0.035;
+      x += pull("w");
+      x2 -= pull("e");
+      z += pull("n");
+      z2 -= pull("s");
+      // A sliver with two open faces must keep a core, or the shell inverts
+      // and the lane walks through the tenement.
+      if (x2 - x < 0.4) {
+        const c = (b.x0 + b.x20) * 0.5;
+        x = c - 0.2;
+        x2 = c + 0.2;
+      }
+      if (z2 - z < 0.4) {
+        const c = (b.z0 + b.z20) * 0.5;
+        z = c - 0.2;
+        z2 = c + 0.2;
+      }
+    }
+    b.z = z;
+    b.z2 = z2;
     let az = b.az;
-    if (az == null) az = anchorNear((b.x + b.x2) / 2, (b.z + b.z2) / 2);
-    if (az == null) az = (b.z + b.z2) / 2;
+    if (az == null) az = anchorNear((x + x2) * 0.5, (z + z2) * 0.5);
+    if (az == null) az = (z + z2) * 0.5;
     const dx = SHEAR_K * az;
-    b.wx = b.x + dx;
-    b.wx2 = b.x2 + dx;
+    b.wx = x + dx;
+    b.wx2 = x2 + dx;
   }
 }
 bakeWalk();
