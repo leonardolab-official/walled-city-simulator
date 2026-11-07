@@ -5586,16 +5586,23 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
         if (gw > winW * 0.72) { gw = winW * 0.72; gh = gw / glyphs.aspect; }
         put(shopGeo.plane, glyphs.mat, winAlong, -0.04, (sill + head) * 0.5, gw, gh, 1);
       }
-      let py = head - 0.28;
-      for (let i = 0; i < words.length && i < 4; i++) {
-        if (!words[i] || words[i] === word) continue;
-        const plaque = shopBoard(words[i], i % 2 ? "#f7f4ee" : "#fffdf8", spec.inkF || "#9d1c1c");
-        const ph = 0.11;
-        const pw = Math.min(ph * plaque.aspect, doorW * 0.55);
-        put(shopGeo.plane, plaque.mat, doorAlong, -0.045, py, pw, ph * (pw / (ph * plaque.aspect)), 1);
-        py -= 0.135;
-        if (py < sill + 0.12) break;
-      }
+      // The spare trade boards used to sit in the empty doorway, a hand's
+      // width in front of the tile, so each one read as a card in mid-air.
+      // They belong on the back wall, in the slice the open door shows.
+      byDay(function () {
+        let py = head - 0.28;
+        const plaqueOut = backFace + 0.012;
+        for (let i = 0; i < words.length && i < 4; i++) {
+          if (!words[i] || words[i] === word) continue;
+          const plaque = shopBoard(words[i], i % 2 ? "#f7f4ee" : "#fffdf8", spec.inkF || "#9d1c1c");
+          const ph = 0.11;
+          const pw = Math.min(ph * plaque.aspect, doorW * 0.72);
+          const phFit = ph * (pw / (ph * plaque.aspect));
+          put(shopGeo.plane, plaque.mat, doorAlong, plaqueOut, py, pw, phFit, 1);
+          py -= phFit + 0.028;
+          if (py < Math.max(sill, floorTop) + 0.2) break;
+        }
+      });
     } else {
       put(shopGeo.box, shopFinish.shopTile, doorAlong, -0.07, (floorTop + sill) * 0.5, Math.max(0.28, doorW - 0.1), Math.max(0.08, sill - floorTop), 0.06);
       put(shopGeo.box, shopFinish.pane, doorAlong, -0.06, (sill + head) * 0.5, Math.max(0.28, doorW - 0.12), Math.max(0.3, head - sill - 0.06), 0.01);
@@ -5636,7 +5643,15 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
       const backOut = backFace + 0.18;
       if (clinic) {
         const shelfW = Math.min(0.72, roomW * 0.42);
-        put(shopGeo.shelf, shopFinish.shelf, 0.34, backOut, floorTop, shelfW / 0.56, 0.9, 0.8);
+        const shelfScaleZ = 0.8;
+        const shelfDepth = 0.16 * shelfScaleZ;
+        const shelfOut = backFace + shelfDepth * 0.5 + 0.008;
+        // Behind the window, not in the doorway. The old spot crossed the
+        // open door and stood clear of the tile, so it read as a loose rail.
+        const shelfAlong = front && front.winW > 0
+          ? inset + (front.doorW + front.gap + front.winW * 0.5) / span
+          : 0.62;
+        put(shopGeo.shelf, shopFinish.shelf, shelfAlong, shelfOut, floorTop, shelfW / 0.56, 0.9, shelfScaleZ);
       } else {
         const counterW = Math.min(1.2, roomW * 0.55);
         put(shopGeo.box, shopFinish.timber, 0.42, backOut, floorTop + 0.46, counterW, 0.04, 0.32);
