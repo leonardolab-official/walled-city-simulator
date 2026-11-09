@@ -22895,105 +22895,268 @@ function placeCatCamera() {
 function makeCat() {
   if (catFig) return;
   const fur = clothMat(0xc47a3a, 0.92, "cloth");
+  const mid = clothMat(0x8d4e2c, 0.9, "cloth");
   const dark = clothMat(0x3a2418, 0.94, "cloth");
-  const ear = clothMat(0xe7b09a, 0.8, "cloth");
-  const eye = clothMat(0xd7a441, 0.4, "leather");
+  const cream = clothMat(0xf0d2b0, 0.88, "cloth");
+  const earIn = clothMat(0xe7b09a, 0.8, "cloth");
+  const eye = clothMat(0xd7a441, 0.35, "leather");
   const g = new THREE.Group();
   g.userData.live = 1;
-  const body = figMesh(new THREE.BoxGeometry(0.16, 0.14, 0.32), fur);
-  body.position.set(0, 0.22, 0.02);
-  g.add(body);
-  const stripe = figMesh(new THREE.BoxGeometry(0.045, 0.02, 0.22), dark);
-  stripe.position.set(0, 0.292, 0.02);
-  g.add(stripe);
-  const head = new THREE.Group();
-  head.position.set(0, 0.28, -0.18);
-  g.add(head);
-  head.add(figMesh(new THREE.BoxGeometry(0.13, 0.11, 0.12), fur));
+  const torso = new THREE.Group();
+  g.add(torso);
+  const hips = new THREE.Group();
+  hips.position.set(0, 0.185, 0.055);
+  torso.add(hips);
+  const haunch = figMesh(new THREE.BoxGeometry(0.125, 0.09, 0.11), fur);
+  haunch.position.set(0, 0.01, 0.01);
+  hips.add(haunch);
+  const rump = figMesh(new THREE.BoxGeometry(0.1, 0.055, 0.07), mid);
+  rump.position.set(0, 0.045, 0.02);
+  hips.add(rump);
   [-1, 1].forEach(function (side) {
-    const e = figMesh(new THREE.BoxGeometry(0.034, 0.05, 0.02), fur);
-    e.position.set(side * 0.04, 0.075, -0.01);
-    head.add(e);
-    const inner = figMesh(new THREE.BoxGeometry(0.016, 0.026, 0.01), ear);
-    inner.position.set(side * 0.04, 0.072, -0.016);
-    head.add(inner);
-    const look = figMesh(new THREE.BoxGeometry(0.016, 0.014, 0.01), eye);
-    look.position.set(side * 0.028, 0.01, -0.06);
-    head.add(look);
+    const cheek = figMesh(new THREE.BoxGeometry(0.03, 0.055, 0.07), fur);
+    cheek.position.set(side * 0.07, -0.005, 0.01);
+    hips.add(cheek);
   });
+  const waist = figMesh(new THREE.BoxGeometry(0.1, 0.074, 0.08), fur);
+  waist.position.set(0, 0.012, -0.028);
+  hips.add(waist);
+  const chest = new THREE.Group();
+  chest.position.set(0, 0.01, -0.068);
+  hips.add(chest);
+  const rib = figMesh(new THREE.BoxGeometry(0.108, 0.086, 0.12), fur);
+  rib.position.set(0, 0.012, -0.01);
+  chest.add(rib);
+  const belly = figMesh(new THREE.BoxGeometry(0.09, 0.04, 0.09), cream);
+  belly.position.set(0, -0.028, -0.01);
+  chest.add(belly);
+  const shoulder = figMesh(new THREE.BoxGeometry(0.118, 0.04, 0.07), fur);
+  shoulder.position.set(0, 0.04, -0.03);
+  chest.add(shoulder);
+  const stripeA = figMesh(new THREE.BoxGeometry(0.028, 0.012, 0.09), dark);
+  stripeA.position.set(0, 0.058, 0.015);
+  hips.add(stripeA);
+  const stripeB = figMesh(new THREE.BoxGeometry(0.026, 0.012, 0.08), dark);
+  stripeB.position.set(0, 0.058, -0.03);
+  chest.add(stripeB);
+  const neck = new THREE.Group();
+  neck.position.set(0, 0.028, -0.05);
+  chest.add(neck);
+  const throat = figMesh(new THREE.BoxGeometry(0.07, 0.055, 0.07), fur);
+  throat.position.set(0, 0.012, -0.012);
+  neck.add(throat);
+  const head = new THREE.Group();
+  head.position.set(0, 0.028, -0.018);
+  neck.add(head);
+  const skull = figMesh(new THREE.BoxGeometry(0.092, 0.078, 0.084), fur);
+  skull.position.set(0, 0.01, 0);
+  head.add(skull);
+  const brow = figMesh(new THREE.BoxGeometry(0.07, 0.02, 0.03), mid);
+  brow.position.set(0, 0.028, -0.03);
+  head.add(brow);
+  const muzzle = figMesh(new THREE.BoxGeometry(0.046, 0.032, 0.04), cream);
+  muzzle.position.set(0, -0.012, -0.05);
+  head.add(muzzle);
   const nose = figMesh(new THREE.BoxGeometry(0.016, 0.012, 0.012), lipMat);
-  nose.position.set(0, -0.014, -0.062);
+  nose.position.set(0, -0.004, -0.072);
   head.add(nose);
-  function leg(x, z) {
-    const pivot = new THREE.Group();
-    pivot.position.set(x, 0.16, z);
-    g.add(pivot);
-    const limb = figMesh(new THREE.BoxGeometry(0.04, 0.14, 0.045), fur);
-    limb.position.y = -0.07;
-    pivot.add(limb);
-    const paw = figMesh(new THREE.BoxGeometry(0.042, 0.02, 0.05), dark);
-    paw.position.set(0, -0.145, -0.006);
-    pivot.add(paw);
-    return pivot;
+  const chin = figMesh(new THREE.BoxGeometry(0.03, 0.012, 0.02), cream);
+  chin.position.set(0, -0.028, -0.04);
+  head.add(chin);
+  const ears = [];
+  [-1, 1].forEach(function (side) {
+    const ear = new THREE.Group();
+    ear.position.set(side * 0.03, 0.048, -0.004);
+    ear.rotation.z = side * 0.28;
+    ear.rotation.x = -0.15;
+    head.add(ear);
+    const shell = figMesh(new THREE.BoxGeometry(0.028, 0.05, 0.016), fur);
+    shell.position.y = 0.02;
+    ear.add(shell);
+    const inner = figMesh(new THREE.BoxGeometry(0.014, 0.028, 0.008), earIn);
+    inner.position.set(0, 0.018, -0.006);
+    ear.add(inner);
+    ears.push(ear);
+    const look = figMesh(new THREE.BoxGeometry(0.016, 0.014, 0.008), eye);
+    look.position.set(side * 0.024, 0.008, -0.042);
+    head.add(look);
+    const pupil = figMesh(new THREE.BoxGeometry(0.005, 0.01, 0.004), pupilMat);
+    pupil.position.set(side * 0.024, 0.008, -0.047);
+    head.add(pupil);
+    for (let w = 0; w < 3; w++) {
+      const whisk = figMesh(new THREE.BoxGeometry(0.045, 0.004, 0.004), cream);
+      whisk.position.set(side * 0.048, -0.01 - w * 0.006, -0.05);
+      whisk.rotation.y = side * (0.3 + w * 0.12);
+      head.add(whisk);
+    }
+  });
+  function catLeg(parent, x, y, z, hind) {
+    const upperLen = hind ? 0.086 : 0.078;
+    const lowerLen = hind ? 0.08 : 0.078;
+    const hip = new THREE.Group();
+    hip.position.set(x, y, z);
+    parent.add(hip);
+    const thigh = figMesh(new THREE.BoxGeometry(hind ? 0.05 : 0.04, upperLen * 1.28, hind ? 0.052 : 0.042), fur);
+    thigh.position.y = -upperLen * 0.46;
+    hip.add(thigh);
+    const knee = new THREE.Group();
+    knee.position.y = -upperLen;
+    hip.add(knee);
+    const shin = figMesh(new THREE.BoxGeometry(hind ? 0.034 : 0.03, lowerLen * 1.22, hind ? 0.034 : 0.03), fur);
+    shin.position.y = -lowerLen * 0.44;
+    knee.add(shin);
+    const paw = new THREE.Group();
+    paw.position.y = -lowerLen;
+    knee.add(paw);
+    const pad = figMesh(new THREE.BoxGeometry(hind ? 0.04 : 0.036, 0.014, 0.034), dark);
+    pad.position.set(0, -0.006, -0.004);
+    paw.add(pad);
+    const toes = figMesh(new THREE.BoxGeometry(hind ? 0.038 : 0.034, 0.01, 0.014), dark);
+    toes.position.set(0, -0.004, -0.018);
+    paw.add(toes);
+    return { hip: hip, knee: knee, paw: paw, hind: !!hind, side: x < 0 ? -1 : 1 };
   }
-  const legs = [leg(-0.05, -0.08), leg(0.05, -0.08), leg(-0.05, 0.12), leg(0.05, 0.12)];
+  const legs = [
+    catLeg(chest, -0.042, -0.02, -0.02, false),
+    catLeg(chest, 0.042, -0.02, -0.02, false),
+    catLeg(hips, -0.046, -0.012, 0.02, true),
+    catLeg(hips, 0.046, -0.012, 0.02, true)
+  ];
   const tail = new THREE.Group();
-  tail.position.set(0, 0.26, 0.16);
-  g.add(tail);
-  const tailSeg = figMesh(new THREE.BoxGeometry(0.03, 0.03, 0.2), fur);
-  tailSeg.position.set(0, 0.05, 0.08);
-  tailSeg.rotation.x = -0.55;
-  tail.add(tailSeg);
-  const tip = figMesh(new THREE.BoxGeometry(0.028, 0.028, 0.07), dark);
-  tip.position.set(0, 0.12, 0.15);
-  tail.add(tip);
+  tail.position.set(0, 0.02, 0.055);
+  hips.add(tail);
+  const tailSeg = [];
+  let tailParent = tail;
+  const tailLen = [0.062, 0.055, 0.048, 0.04];
+  const tailThick = [0.03, 0.026, 0.022, 0.016];
+  for (let i = 0; i < 4; i++) {
+    const seg = new THREE.Group();
+    if (i > 0) seg.position.z = tailLen[i - 1];
+    tailParent.add(seg);
+    const mat = i === 3 ? dark : (i % 2 ? mid : fur);
+    const mesh = figMesh(new THREE.BoxGeometry(tailThick[i], tailThick[i], tailLen[i] * 1.45), mat);
+    mesh.position.z = tailLen[i] * 0.4;
+    seg.add(mesh);
+    tailSeg.push(seg);
+    tailParent = seg;
+  }
   g.visible = false;
   city.add(g);
   catFig = g;
-  catRig = { head: head, body: body, stripe: stripe, legs: legs, tail: tail, phase: 0 };
+  catRig = {
+    torso: torso, hips: hips, chest: chest, neck: neck, head: head, ears: ears,
+    legs: legs, tail: tail, tailSeg: tailSeg,
+    phase: 0, move: 0, gait: 0, tailLag: 0, tailLag2: 0, lean: 0, lastYaw: 0
+  };
+  settleCat(0, false, 0);
 }
-function settleCat(dt, moving) {
+function catLegPose(phase, hind, gait) {
+  const s = Math.sin(phase);
+  const lift = Math.pow(Math.max(0, Math.cos(phase)), 1.2);
+  if (hind) {
+    return {
+      hipX: -0.16 + s * (0.28 + gait * 0.16),
+      kneeX: 0.52 + lift * (0.78 + gait * 0.55),
+      pawX: -0.4 - s * 0.1,
+      hipZ: 0
+    };
+  }
+  return {
+    hipX: s * (0.32 + gait * 0.16),
+    kneeX: -0.3 - lift * (0.72 + gait * 0.5),
+    pawX: 0.12 - s * 0.06,
+    hipZ: 0
+  };
+}
+function settleCat(dt, moving, speed) {
   if (!catFig) makeCat();
-  catFig.visible = true;
+  catFig.visible = catMode;
   catFig.position.set(walkX, GROUND_Y, walkZ);
   catFig.rotation.y = catYaw;
   const rig = catRig;
   const sit = catSit;
-  const stand = 1 - sit;
-  rig.phase += dt * (moving ? 11 : sit > 0.5 ? 0.8 : 1.6);
-  const bob = moving ? Math.abs(Math.sin(rig.phase * 2)) * 0.015 * stand : 0;
-  const swing = moving ? Math.sin(rig.phase) * 0.7 * stand : 0;
-  rig.body.position.y = 0.22 * stand + 0.15 * sit + bob;
-  rig.body.rotation.x = -0.32 * sit;
-  rig.stripe.position.y = 0.292 * stand + 0.222 * sit;
-  rig.stripe.rotation.x = -0.32 * sit;
-  rig.head.position.y = 0.28 * stand + 0.2 * sit;
-  rig.head.rotation.x = -0.06 * sit;
-  const glance = Math.sin(rig.phase * (moving ? 0.5 : 0.65));
-  rig.head.rotation.y = glance * (moving ? 0.08 : 0.14 * stand + 0.1 * sit);
-  const frontY = 0.16 * stand + 0.168 * sit;
-  const hindY = 0.16 * stand + 0.12 * sit;
-  rig.legs[0].position.y = frontY;
-  rig.legs[1].position.y = frontY;
-  rig.legs[2].position.y = hindY;
-  rig.legs[3].position.y = hindY;
-  rig.legs[0].position.z = -0.08 * stand - 0.14 * sit;
-  rig.legs[1].position.z = -0.08 * stand - 0.14 * sit;
-  rig.legs[2].position.z = 0.12 * stand + 0.05 * sit;
-  rig.legs[3].position.z = 0.12 * stand + 0.05 * sit;
-  rig.legs[0].rotation.x = swing + 0.18 * sit;
-  rig.legs[1].rotation.x = -swing + 0.18 * sit;
-  rig.legs[2].rotation.x = -swing - 0.4 * sit;
-  rig.legs[3].rotation.x = swing - 0.4 * sit;
-  rig.legs[0].rotation.z = 0.06 * sit;
-  rig.legs[1].rotation.z = -0.06 * sit;
-  rig.legs[2].rotation.z = 0.9 * sit;
-  rig.legs[3].rotation.z = -0.9 * sit;
-  rig.tail.position.y = 0.26 * stand + 0.16 * sit;
-  rig.tail.rotation.x = (moving ? -0.2 : -0.05) * stand + 1.2 * sit;
-  rig.tail.rotation.y = 1.15 * sit;
-  rig.tail.rotation.z = Math.sin(rig.phase * 0.65) * (moving ? 0.45 : 0.15) * stand;
-  placeCatCamera();
+  const wantGait = moving ? Math.max(0, Math.min(1, ((speed || 2.55) - 2.3) / 2.2)) : 0;
+  const wantMove = moving ? 1 : 0;
+  const k = Math.min(1, dt * 4.5);
+  rig.move += (wantMove - rig.move) * (dt > 0 ? k : 1);
+  rig.gait += (wantGait - rig.gait) * (dt > 0 ? Math.min(1, dt * 3.2) : 1);
+  const move = rig.move * (1 - sit);
+  const gait = rig.gait;
+  let dyaw = catYaw - rig.lastYaw;
+  dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+  rig.lastYaw = catYaw;
+  const wantLean = Math.max(-0.28, Math.min(0.28, -dyaw * 5.5));
+  rig.lean += (wantLean - rig.lean) * Math.min(1, dt * 7 + (dt === 0 ? 1 : 0));
+  const cadence = (sit > 0.65 ? 1.1 : 1.35) + move * (6.2 + gait * 5.4);
+  rig.phase += dt * cadence;
+  const step = rig.phase;
+  const breath = Math.sin(rig.phase * 0.55);
+  const bob = Math.pow(Math.abs(Math.sin(step * 2)), 0.65) * (0.006 + gait * 0.01) * move;
+  rig.torso.position.y = bob * (1 - sit) - 0.012 * sit;
+  rig.torso.rotation.z = breath * 0.02 * (1 - move) * (1 - sit) + rig.lean * (0.28 + move * 0.45);
+  rig.hips.rotation.x = breath * 0.018 * (1 - sit) + 0.2 * sit + Math.sin(step * 2) * 0.035 * move;
+  rig.hips.rotation.y = Math.sin(step) * 0.06 * move;
+  rig.hips.rotation.z = Math.sin(step) * (0.055 + gait * 0.03) * move;
+  rig.chest.rotation.x = (-0.04 * move - Math.sin(step * 2) * 0.04 * move + breath * 0.028 * (1 - move)) * (1 - sit) + 0.06 * sit;
+  rig.chest.rotation.z = -rig.hips.rotation.z * 0.85;
+  rig.chest.rotation.y = Math.sin(step + 0.8) * 0.04 * move;
+  rig.neck.rotation.x = -rig.chest.rotation.x * 0.45 - 0.08 * sit;
+  const glance = Math.sin(step * (move > 0.2 ? 0.45 : 0.7));
+  rig.head.rotation.x = -0.14 * sit + (move > 0.2 ? -0.04 * gait : glance * 0.04);
+  rig.head.rotation.y = glance * (move > 0.2 ? 0.06 : 0.16) * (1 - sit * 0.4) - rig.hips.rotation.y * 0.5;
+  rig.head.rotation.z = -rig.torso.rotation.z * 0.35;
+  for (let i = 0; i < rig.ears.length; i++) {
+    const ear = rig.ears[i];
+    const side = i === 0 ? -1 : 1;
+    const twitch = Math.pow(Math.max(0, Math.sin(step * 0.37 + i)), 10);
+    ear.rotation.z = side * (0.28 + twitch * 0.18 * (1 - move));
+    ear.rotation.x = -0.15 - gait * 0.38 * move + twitch * 0.08;
+  }
+  const lead = 0.45;
+  const phases = [step, step + Math.PI, step + Math.PI + lead, step + lead];
+  for (let i = 0; i < 4; i++) {
+    const leg = rig.legs[i];
+    const gaitPose = catLegPose(phases[i], leg.hind, gait);
+    const idle = leg.hind
+      ? { hipX: -0.16, kneeX: 0.52, pawX: -0.4, hipZ: 0 }
+      : { hipX: 0.02, kneeX: -0.3, pawX: 0.12, hipZ: 0 };
+    const sat = leg.hind
+      ? { hipX: -0.42, kneeX: 1.05, pawX: -0.58, hipZ: leg.side * 0.5 }
+      : { hipX: 0.16, kneeX: -0.42, pawX: 0.22, hipZ: leg.side * 0.05 };
+    const live = {
+      hipX: idle.hipX + (gaitPose.hipX - idle.hipX) * move,
+      kneeX: idle.kneeX + (gaitPose.kneeX - idle.kneeX) * move,
+      pawX: idle.pawX + (gaitPose.pawX - idle.pawX) * move,
+      hipZ: idle.hipZ + (gaitPose.hipZ - idle.hipZ) * move
+    };
+    leg.hip.rotation.x = live.hipX + (sat.hipX - live.hipX) * sit;
+    leg.knee.rotation.x = live.kneeX + (sat.kneeX - live.kneeX) * sit;
+    leg.paw.rotation.x = live.pawX + (sat.pawX - live.pawX) * sit;
+    leg.hip.rotation.z = live.hipZ + (sat.hipZ - live.hipZ) * sit;
+  }
+  const tailSwing = -Math.sin(step) * (0.22 + gait * 0.2) * move + breath * 0.1 * (1 - move);
+  const tailFollow = Math.min(1, dt * (move > 0.5 ? 7 : 2.6) + (dt === 0 ? 1 : 0));
+  rig.tailLag += (tailSwing - rig.tailLag) * tailFollow;
+  rig.tailLag2 += (rig.tailLag - rig.tailLag2) * Math.min(1, dt * 4 + (dt === 0 ? 1 : 0));
+  const tailUp = (-0.55 + move * 0.18 - gait * 0.4) * (1 - sit) + 0.08 * sit;
+  rig.tail.rotation.x = tailUp;
+  rig.tail.rotation.y = rig.tailLag * (1 - sit) + 1.25 * sit;
+  rig.tail.rotation.z = rig.lean * -0.35 * move;
+  for (let i = 0; i < rig.tailSeg.length; i++) {
+    const seg = rig.tailSeg[i];
+    const curl = (i + 1) / rig.tailSeg.length;
+    seg.rotation.x = (-0.06 + curl * 0.05) * (1 - sit) + (0.05 + curl * 0.08) * sit;
+    seg.rotation.y = rig.tailLag2 * (0.28 + curl * 0.5) * (1 - sit) + (0.2 + curl * 0.55) * sit;
+  }
+  if (!rig.probe) rig.probe = new THREE.Vector3();
+  catFig.updateMatrixWorld(true);
+  let low = Infinity;
+  for (let n = 0; n < 4; n++) {
+    rig.legs[n].paw.getWorldPosition(rig.probe);
+    if (rig.probe.y < low) low = rig.probe.y;
+  }
+  rig.torso.position.y -= low - (GROUND_Y + 0.012);
+  if (!walkGlide) placeCatCamera();
 }
 function syncStreetChrome() {
   const pad = document.getElementById("walk-pad");
@@ -23031,7 +23194,7 @@ function setStreet(kind, fromPlace) {
       catYaw = walkYaw;
       catIdle = 0;
       catSit = 0;
-      settleCat(0, false);
+      settleCat(0, false, 0);
     }
     else {
       camera.fov = walkPinned ? 62 : walkEntryPose().fov;
@@ -23162,7 +23325,7 @@ function stepWalk(dt) {
       const end = walkGlide.toPos;
       walkGlide = null;
       if (catMode) {
-        settleCat(dt, false);
+        settleCat(dt, false, 0);
       } else {
         camera.position.copy(end);
         camera.up.set(0, 1, 0);
@@ -23177,6 +23340,7 @@ function stepWalk(dt) {
       catFig.visible = true;
       catFig.position.set(walkX, GROUND_Y, walkZ);
       catFig.rotation.y = catYaw;
+      settleCat(dt, false, 0);
     }
     return;
   }
@@ -23198,10 +23362,12 @@ function stepWalk(dt) {
   }
   const len = Math.hypot(mx, mz);
   let ux = 0, uz = 0;
+  let travel = 0;
   if (len > 0) {
     const quicker = walkHeld.has("ShiftLeft") || walkHeld.has("ShiftRight");
     const push = keyActive ? 1 : Math.min(1, stickMag);
     const speed = (quicker ? 4.6 : 2.55) * push;
+    travel = speed;
     ux = mx / len;
     uz = mz / len;
     // Short slices, so a sprint frame cannot jump a narrow mouth or a post.
@@ -23229,7 +23395,7 @@ function stepWalk(dt) {
     } else catIdle = Math.min(8, catIdle + dt);
     const sitGoal = moving || catIdle < 5 ? 0 : 1;
     catSit += (sitGoal - catSit) * Math.min(1, dt * 2.4);
-    settleCat(dt, moving);
+    settleCat(dt, moving, travel);
   }
   else {
     if (catFig) catFig.visible = false;
