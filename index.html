@@ -20374,6 +20374,14 @@ function poseIdle(rig, ud, now, w, rainUp) {
   }
   if (ud.scale < 0.8 && act !== "rest") rig.head.rotation.y += Math.sin(now * 1.15 + ud.offset) * 0.22 * w;
   rig.torso.rotation.x += Math.sin(now * 1.35 + ud.offset * 2) * 0.012 * w;
+  // A scuffle is not one sine. A second, slower sway keeps the weight moving.
+  if (ud.heat && w > 0.02) {
+    const n = now + (ud.offset || 0);
+    rig.hip.position.x += Math.sin(n * 1.55) * 0.02 * w;
+    rig.torso.rotation.z += Math.sin(n * 1.15) * 0.035 * w;
+    rig.head.rotation.y += Math.sin(n * 2.05) * 0.07 * w;
+    rig.head.rotation.x += Math.sin(n * 0.83) * 0.04 * w;
+  }
 }
 function stepWalker(fig, now) {
   advanceWalker(fig.userData, now, fig);
@@ -20471,7 +20479,13 @@ function advanceWalker(ud, now, fig) {
   ud.clock = (ud.clock == null ? now : ud.clock) + dt;
   now = ud.clock;
   if (ud.nextAct == null) ud.nextAct = now + 1.2 + Math.abs(ud.offset * 5) % 4;
-  if (ud.wait > 0) {
+  const fleeing = !!(ud.heat && ud.flight);
+  if (fleeing) {
+    ud.wait = 0;
+    ud.held = false;
+    ud.act = null;
+  }
+  if (!fleeing && ud.wait > 0) {
     ud.wait -= dt;
     if (ud.act && ud.actLeft != null) {
       ud.actLeft -= dt;
@@ -20485,7 +20499,7 @@ function advanceWalker(ud, now, fig) {
       ud.actLeft = 0;
       ud.nextAct = now + 3.6 + Math.abs(ud.offset * 4) % 3.2;
     }
-  } else {
+  } else if (!fleeing) {
     let speed = ud.speed;
     ud.held = false;
     const crowd = ud.inside ? cityFolk : walkers;
@@ -20526,34 +20540,39 @@ function advanceWalker(ud, now, fig) {
       }
     }
   }
-  const along = ud.along;
-  const frame = walkerFrame(path, along, ud.dir);
-  const yaw = frame.yaw;
-  const pz = frame.worldZ;
-  const footY = path.y == null ? GROUND_Y : path.y;
-  // city adds another easting of k*z. Take it back off so the world point
-  // stays on the lane, level with the walls, instead of inside them.
-  const localX = fig && fig.parent === city ? frame.worldX - SHEAR_K * pz : frame.worldX;
-  ud.x = localX;
-  ud.y = footY;
-  ud.z = pz;
-  if (fig) fig.position.set(localX, footY, pz);
-  const biasGoal = ud.wait > 0 && ud.act ? (ud.bias || 0) : 0;
-  ud.biasEase = (ud.biasEase || 0) + (biasGoal - (ud.biasEase || 0)) * Math.min(1, dt * (ud.heat ? 7 : 2.4));
-  const faceYaw = yaw + ud.biasEase;
-  const yawNow = fig ? fig.rotation.y : (ud.yaw || 0);
-  const dy = Math.atan2(Math.sin(faceYaw - yawNow), Math.cos(faceYaw - yawNow));
-  // A U-turn takes a moment. Small corrections while walking stay quick.
-  const yawFollow = ud.heat ? (Math.abs(dy) > 0.7 ? 8 : 14) : (Math.abs(dy) > 0.7 ? 3.2 : 9);
-  ud.yaw = yawNow + dy * Math.min(1, dt * yawFollow);
-  if (fig) fig.rotation.y = ud.yaw;
+  let along = ud.along;
+  let dy = 0;
+  if (!fleeing) {
+    const frame = walkerFrame(path, along, ud.dir);
+    const yaw = frame.yaw;
+    const pz = frame.worldZ;
+    const footY = path.y == null ? GROUND_Y : path.y;
+    // city adds another easting of k*z. Take it back off so the world point
+    // stays on the lane, level with the walls, instead of inside them.
+    const localX = fig && fig.parent === city ? frame.worldX - SHEAR_K * pz : frame.worldX;
+    ud.x = localX;
+    ud.y = footY;
+    ud.z = pz;
+    if (fig) fig.position.set(localX, footY, pz);
+    const biasGoal = ud.wait > 0 && ud.act ? (ud.bias || 0) : 0;
+    ud.biasEase = (ud.biasEase || 0) + (biasGoal - (ud.biasEase || 0)) * Math.min(1, dt * (ud.heat ? 7 : 2.4));
+    const faceYaw = yaw + ud.biasEase;
+    const yawNow = fig ? fig.rotation.y : (ud.yaw || 0);
+    dy = Math.atan2(Math.sin(faceYaw - yawNow), Math.cos(faceYaw - yawNow));
+    // A U-turn takes a moment. Small corrections while walking stay quick.
+    const yawFollow = ud.heat ? (Math.abs(dy) > 0.7 ? 8 : 14) : (Math.abs(dy) > 0.7 ? 3.2 : 9);
+    ud.yaw = yawNow + dy * Math.min(1, dt * yawFollow);
+    if (fig) fig.rotation.y = ud.yaw;
+  }
   // A lane resident with no figure still advances. The pose needs a body.
   if (!fig) return;
   const endProx = Math.min(along, span - along);
   const turning = Math.min(1, Math.abs(dy) / 1.15);
-  const stride = ud.wait > 0 || ud.held ? 0 : Math.min(1, endProx / 0.55) * (1 - turning);
+  // Heat does not shorten its step at the kerb. That read as a group arriving
+  // and locking. A flee has already left this rail by then.
+  const stride = ud.wait > 0 || ud.held ? 0 : (ud.heat ? (1 - turning * 0.35) : Math.min(1, endProx / 0.55) * (1 - turning));
   if (ud.ease == null) ud.ease = ud.act ? 0 : 1;
-  ud.ease += (stride - ud.ease) * Math.min(1, dt * (ud.heat ? 12 : 5));
+  ud.ease += (stride - ud.ease) * Math.min(1, dt * (ud.heat ? 4.2 : 5));
   const rig = ud.rig;
   const moving = ud.ease;
   const cadence = (ud.speed / 0.95) * (ud.scale < 0.8 ? 1.22 : 1);
@@ -20562,14 +20581,22 @@ function advanceWalker(ud, now, fig) {
   const c = Math.cos(phase);
   // Arms follow the legs by a short delay, so the shoulder does not lock to the thigh.
   const armS = Math.sin(phase - 0.22);
-  const hipAmp = (rig.gait === "slow" ? 0.28 : rig.gait === "load" ? 0.24 : 0.38) * moving;
-  const kneeAmp = (rig.gait === "slow" ? 0.68 : rig.gait === "load" ? 0.74 : 0.96) * moving;
+  let hipAmp = (rig.gait === "slow" ? 0.28 : rig.gait === "load" ? 0.24 : 0.38) * moving;
+  let kneeAmp = (rig.gait === "slow" ? 0.68 : rig.gait === "load" ? 0.74 : 0.96) * moving;
+  const rush = ud.heat && ud.wait <= 0 ? Math.max(0, Math.min(1, ((ud.speed || 0) - 0.85) / 1.6)) : 0;
+  if (rush > 0) {
+    hipAmp *= 1 + rush * 0.75;
+    kneeAmp *= 1 + rush * 0.4;
+  }
   // Positive rotation.x takes the foot backward. The knee bends on the way forward
-  // and is nearly straight again at the step.
+  // and is nearly straight again at the step. A chase lets one foot lag.
+  const slip = ud.heat ? 0.22 : 0;
+  const sR = Math.sin(phase + Math.PI + slip);
+  const cR = Math.cos(phase + Math.PI + slip);
   const aL = s * hipAmp;
-  const aR = -s * hipAmp;
+  const aR = sR * hipAmp;
   const kL = 0.06 + Math.max(0, -c) * kneeAmp;
-  const kR = 0.06 + Math.max(0, c) * kneeAmp;
+  const kR = 0.06 + Math.max(0, -cR) * kneeAmp;
   rig.legL.pivot.rotation.x = aL;
   rig.legR.pivot.rotation.x = aR;
   rig.legL.knee.rotation.x = kL;
@@ -20579,7 +20606,7 @@ function advanceWalker(ud, now, fig) {
     leg.ankle.rotation.x = -(hipAng + kneeAng) - toe;
   }
   plant(rig.legL, aL, kL, Math.max(0, -c));
-  plant(rig.legR, aR, kR, Math.max(0, c));
+  plant(rig.legR, aR, kR, Math.max(0, -cR));
   function drop(hipAng, kneeAng) {
     return THIGH_L * Math.cos(hipAng) + SHIN_L * Math.cos(hipAng + kneeAng);
   }
@@ -20595,12 +20622,18 @@ function advanceWalker(ud, now, fig) {
   rig.head.rotation.y = -s * 0.03 * moving;
   rig.head.rotation.z = -s * 0.012 * moving;
   rig.head.rotation.x = 0.015 * moving;
+  if (rush > 0) {
+    rig.torso.rotation.x += 0.18 * rush;
+    rig.hip.rotation.x += 0.07 * rush;
+    rig.head.rotation.x += -0.12 * rush;
+    rig.hip.position.y += Math.pow(Math.abs(Math.sin(phase * 2)), 0.65) * 0.02 * rush;
+  }
   if (moving > 0.65) {
     const glanceWave = Math.sin(now * 0.23 + ud.offset * 5);
     if (Math.abs(glanceWave) > 0.78) rig.head.rotation.y += Math.sign(glanceWave) * (Math.abs(glanceWave) - 0.78) * 2.2;
   }
   rig.torso.rotation.x += Math.sin(now * 1.4 + ud.offset * 2) * 0.008;
-  const armAmp = (rig.gait === "slow" ? 0.32 : rig.gait === "load" ? 0.2 : 0.52) * moving;
+  const armAmp = (rig.gait === "slow" ? 0.32 : rig.gait === "load" ? 0.2 : 0.52) * moving * (1 + rush * 0.7);
   // Drips show once the shower passes about 0.04, so the canopy opens with them
   // and stays up until the rain has nearly stopped.
   const rainUp = rig.brolly && wxNow.rain > (rig.brollyOpen ? 0.03 : 0.08);
@@ -21291,7 +21324,8 @@ function syncCityFolk(now) {
 }
 // A short scuffle and a chase in the next alley, some nights between
 // midnight and four. Separate from the residents, so the late crowd
-// does not send two of them home.
+// does not send two of them home. When the lane runs out, each one
+// peels off on their own and is dropped the moment they leave the lens.
 const alleyHeat = [];
 const heat = { phase: "quiet", nights: 0, prev: null, rolled: false, t: 0, spot: null, leaving: false };
 const HEAT_WEAR = [
@@ -21361,10 +21395,6 @@ function heatSeen(rec) {
   keeperView.sphere.radius = 0.95;
   return keeperView.frustum.intersectsSphere(keeperView.sphere);
 }
-function markHeatLeaving() {
-  heat.leaving = true;
-  for (let i = 0; i < alleyHeat.length; i++) alleyHeat[i].leaving = true;
-}
 function cullHeatUnseen() {
   if (!heat.leaving && !alleyHeat.some(function (rec) { return rec.leaving; })) return;
   heatRefreshView();
@@ -21386,16 +21416,139 @@ function attachHeat(rec) {
   rec.rig = fig.userData.rig;
   rec.fig = fig;
   fig.userData = rec;
-  const frame = walkerFrame(rec.path, rec.along, rec.dir);
-  const footY = rec.path.y == null ? GROUND_Y : rec.path.y;
-  rec.x = frame.worldX;
-  rec.y = footY;
-  rec.z = frame.worldZ;
-  rec.yaw = frame.yaw;
-  fig.position.set(frame.worldX, footY, frame.worldZ);
-  fig.rotation.y = frame.yaw;
+  const footY = rec.y == null ? (rec.path.y == null ? GROUND_Y : rec.path.y) : rec.y;
+  if (!rec.flight) {
+    const frame = walkerFrame(rec.path, rec.along, rec.dir);
+    rec.x = frame.worldX;
+    rec.y = footY;
+    rec.z = frame.worldZ;
+    rec.yaw = frame.yaw;
+  }
+  const localX = rec.x - SHEAR_K * rec.z;
+  fig.position.set(localX, footY, rec.z);
+  fig.rotation.y = rec.yaw || 0;
   city.add(fig);
   renderWetReflection.figs = null;
+}
+const HEAT_BEAT = {
+  run: [
+    { t: 0, act: "smoke" },
+    { t: 1.35, act: "gaze" },
+    { t: 2.15, act: "talk" },
+    { t: 3.45, act: "point" },
+    { t: 4.7, act: "smoke" }
+  ],
+  shove: [
+    { t: 0, act: "talk" },
+    { t: 1.15, act: "point" },
+    { t: 2.4, act: "talk" },
+    { t: 3.45, act: "stoop" },
+    { t: 4.6, act: "point" }
+  ],
+  follow: [
+    { t: 0, act: "point" },
+    { t: 1.6, act: "talk" },
+    { t: 3.1, act: "point" },
+    { t: 4.45, act: "talk" }
+  ]
+};
+function heatRole(role) {
+  for (let i = 0; i < alleyHeat.length; i++) if (alleyHeat[i].role === role) return alleyHeat[i];
+  return null;
+}
+function heatBeat(role, t) {
+  const seq = HEAT_BEAT[role] || HEAT_BEAT.follow;
+  let beat = seq[0];
+  for (let i = 0; i < seq.length; i++) if (t >= seq[i].t) beat = seq[i];
+  return beat;
+}
+function heatGap(rec, speed) {
+  let out = speed;
+  for (let i = 0; i < alleyHeat.length; i++) {
+    const other = alleyHeat[i];
+    if (other === rec || other.flight || other.path !== rec.path || other.along == null) continue;
+    const ahead = (other.along - rec.along) * rec.dir;
+    if (ahead > 0.45 && ahead < 1.85) out *= Math.max(0.35, (ahead - 0.45) / 1.4);
+  }
+  return out;
+}
+function heatShouldFlee(rec, span) {
+  if (rec.flight) return false;
+  const end = rec.dir > 0 ? span - rec.along : rec.along;
+  if (end < 0.8) return true;
+  for (let i = 0; i < alleyHeat.length; i++) {
+    const other = alleyHeat[i];
+    if (other === rec || other.path !== rec.path || other.along == null) continue;
+    const ahead = (other.along - rec.along) * rec.dir;
+    if (ahead < -0.05 || ahead > 1.7) continue;
+    const otherEnd = other.dir > 0 ? span - other.along : other.along;
+    if (other.flight || otherEnd < 1.3 || ahead < 0.95) return true;
+  }
+  return false;
+}
+function beginFlight(rec) {
+  if (!rec || rec.flight) return;
+  const yaw = rec.yaw || 0;
+  const fx = Math.sin(yaw), fz = Math.cos(yaw);
+  const rx = Math.cos(yaw), rz = -Math.sin(yaw);
+  const side = rec.role === "follow" ? -0.95 : rec.role === "shove" ? 0.75 : 0.7;
+  const fwd = rec.role === "shove" ? 0.4 : 1;
+  let vx = fx * fwd + rx * side;
+  let vz = fz * fwd + rz * side;
+  const len = Math.hypot(vx, vz) || 1;
+  rec.flight = {
+    x: vx / len,
+    z: vz / len,
+    speed: rec.role === "shove" ? 1.9 : 2.75,
+    steer: side < 0 ? -1 : 1,
+    stuck: 0
+  };
+  rec.leaving = true;
+  heat.leaving = true;
+  rec.wait = 0;
+  rec.act = null;
+  rec.bias = 0;
+  rec.speed = rec.flight.speed;
+}
+function stepHeatFlee(rec, dt) {
+  const fly = rec.flight;
+  if (!fly) return;
+  const step = Math.min(0.12, fly.speed * Math.max(0, dt || 0));
+  let nx = (rec.x || 0) + fly.x * step;
+  let nz = (rec.z || 0) + fly.z * step;
+  if (walkBlocked(nx, nz, { pad: 0.06, bodies: false })) {
+    fly.stuck += dt;
+    const yaw = Math.atan2(fly.x, fly.z) + fly.steer * (fly.stuck > 0.4 ? 1.15 : 0.65);
+    fly.x = Math.sin(yaw);
+    fly.z = Math.cos(yaw);
+    nx = (rec.x || 0) + fly.x * step * 0.65;
+    nz = (rec.z || 0) + fly.z * step * 0.65;
+    if (walkBlocked(nx, nz, { pad: 0.06, bodies: false })) {
+      nx = rec.x;
+      nz = rec.z;
+    }
+  } else fly.stuck = 0;
+  for (let i = 0; i < alleyHeat.length; i++) {
+    const other = alleyHeat[i];
+    if (other === rec) continue;
+    const dx = nx - (other.x || 0), dz = nz - (other.z || 0);
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.98 && dist > 0.001) {
+      nx += dx / dist * (0.98 - dist);
+      nz += dz / dist * (0.98 - dist);
+    }
+  }
+  rec.x = nx;
+  rec.z = nz;
+  rec.y = GROUND_Y;
+  const want = Math.atan2(fly.x, fly.z);
+  let turn = want - (rec.yaw || 0);
+  turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+  rec.yaw = (rec.yaw || 0) + turn * Math.min(1, dt * 7);
+  const fig = rec.fig;
+  if (!fig) return;
+  fig.position.set(nx - SHEAR_K * nz, GROUND_Y, nz);
+  fig.rotation.y = rec.yaw;
 }
 function beginHeat(spot) {
   heat.spot = spot;
@@ -21448,7 +21601,7 @@ function stepAlleyHeat(now, dt) {
   else if (clock < heat.prev - 0.002) {
     heat.nights++;
     heat.rolled = false;
-    if (alleyHeat.length) markHeatLeaving();
+    for (let i = 0; i < alleyHeat.length; i++) beginFlight(alleyHeat[i]);
   }
   heat.prev = clock;
   const hour = clock * 24;
@@ -21462,7 +21615,9 @@ function stepAlleyHeat(now, dt) {
     }
     return;
   }
-  if (!open) markHeatLeaving();
+  if (!open) {
+    for (let i = 0; i < alleyHeat.length; i++) beginFlight(alleyHeat[i]);
+  }
   if (!heat.rolled && !alleyHeat.length) {
     heat.phase = "armed";
     const startHour = heatUnit(heat.nights) * 4;
@@ -21498,44 +21653,56 @@ function stepAlleyHeat(now, dt) {
     heat.t = 0;
   }
   const spot = heat.spot;
+  if (!spot) return;
   const chaseDir = spot.dir;
-  let shove = null, follow = null;
-  for (let i = 0; i < alleyHeat.length; i++) {
-    const rec = alleyHeat[i];
-    rec.speed = rec.role === "run" ? 2.4 : rec.role === "follow" ? 2.1 : 0.72;
-    if (heat.phase === "scuffle") {
+  const span = spot.path.b - spot.path.a;
+  const runner = heatRole("run");
+  const shove = heatRole("shove");
+  const follow = heatRole("follow");
+  if (heat.phase === "scuffle") {
+    for (let i = 0; i < alleyHeat.length; i++) {
+      const rec = alleyHeat[i];
+      if (rec.flight) continue;
+      const beat = heatBeat(rec.role, heat.t);
       rec.wait = 1.6;
-      if (rec.role === "run") { rec.act = "smoke"; rec.dir = chaseDir; rec.bias = 0; }
-      else if (rec.role === "shove") { rec.act = "talk"; rec.dir = -chaseDir; shove = rec; }
-      else { rec.act = "point"; rec.dir = chaseDir; follow = rec; }
-    } else if (rec.role === "run" || (rec.role === "follow" && heat.t >= 1) || (rec.role === "shove" && heat.t >= 2)) {
+      rec.act = beat.act;
+      rec.speed = 0;
+    }
+    if (runner && shove) runner.bias = turnToward(runner, shove.x, shove.z);
+    if (shove && runner) shove.bias = turnToward(shove, runner.x, runner.z);
+    if (follow && (shove || runner)) {
+      const look = shove || runner;
+      follow.bias = turnToward(follow, look.x, look.z);
+    }
+  } else {
+    for (let i = 0; i < alleyHeat.length; i++) {
+      const rec = alleyHeat[i];
+      if (rec.flight) continue;
+      const loose = rec.role === "run" || (rec.role === "follow" && heat.t >= 1) || (rec.role === "shove" && heat.t >= 2);
+      if (!loose) {
+        rec.wait = 1.6;
+        rec.act = rec.role === "follow" ? "point" : "talk";
+        rec.speed = 0;
+        continue;
+      }
       rec.wait = 0;
       rec.act = null;
       rec.bias = 0;
       rec.dir = rec.role === "shove" ? -chaseDir : chaseDir;
-    } else {
-      rec.wait = 1.6;
-      if (rec.role === "follow") { rec.act = "point"; rec.dir = chaseDir; }
-      else { rec.act = "talk"; rec.dir = -chaseDir; }
+      const pace = rec.role === "run" ? 2.55 : rec.role === "follow" ? 2.15 : 0.85;
+      rec.speed = heatGap(rec, pace);
+      if (heatShouldFlee(rec, span)) beginFlight(rec);
+    }
+    if (heat.t >= 10) {
+      for (let i = 0; i < alleyHeat.length; i++) beginFlight(alleyHeat[i]);
     }
   }
-  if (heat.phase === "scuffle" && shove && follow) {
-    shove.bias = turnToward(shove, follow.x, follow.z);
-    follow.bias = turnToward(follow, shove.x, shove.z);
+  for (let i = 0; i < alleyHeat.length; i++) {
+    const rec = alleyHeat[i];
+    if (rec.flight) stepHeatFlee(rec, step);
+    advanceWalker(rec, now, rec.fig || null);
   }
-  for (let i = 0; i < alleyHeat.length; i++) advanceWalker(alleyHeat[i], now, alleyHeat[i].fig || null);
-  const span = spot.path.b - spot.path.a;
-  if (heat.phase === "chase") {
-    let runnerOut = heat.t >= 10;
-    for (let i = alleyHeat.length - 1; i >= 0; i--) {
-      const rec = alleyHeat[i];
-      const out = rec.dir > 0 ? rec.along >= span - 0.35 : rec.along <= 0.35;
-      if (rec.role === "run" && out) runnerOut = true;
-      else if (rec.role === "shove" && heat.t >= 2 && out) rec.leaving = true;
-    }
-    if (runnerOut) markHeatLeaving();
-  }
-  // The lane can end inside the frame. Hold the body until the frustum lets go.
+  // Off the rail and out of the lens: drop that body now. The others keep going.
   cullHeatUnseen();
 }
 function dropHeatMeshes() {
