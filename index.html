@@ -1211,7 +1211,7 @@ const glInfo = glProfile();
 let tier = glInfo.tier;
 const renderer = new THREE.WebGLRenderer({
   canvas: document.getElementById("c"),
-  antialias: tier > 1,
+  antialias: false,
   powerPreference: "high-performance"
 });
 // An 1980s television frame is about 720 by 480. Anything finer reads as a
@@ -1405,10 +1405,19 @@ function holdViewOutside() {
   }
   const eye = camera.position;
   const aim = controls.target;
+  const s = holdViewOutside.stamp || (holdViewOutside.stamp = new Float32Array(7));
+  if (s[6] === 1 &&
+      Math.abs(s[0] - eye.x) < 0.02 && Math.abs(s[1] - eye.y) < 0.02 && Math.abs(s[2] - eye.z) < 0.02 &&
+      Math.abs(s[3] - aim.x) < 0.02 && Math.abs(s[4] - aim.y) < 0.02 && Math.abs(s[5] - aim.z) < 0.02) return;
+  function markHold() {
+    s[0] = eye.x; s[1] = eye.y; s[2] = eye.z;
+    s[3] = aim.x; s[4] = aim.y; s[5] = aim.z;
+    s[6] = 1;
+  }
   for (let pass = 0; pass < 64; pass++) {
     let dx = eye.x - aim.x, dy = eye.y - aim.y, dz = eye.z - aim.z;
     const dist = Math.hypot(dx, dy, dz);
-    if (dist < 1e-4) return;
+    if (dist < 1e-4) { markHold(); return; }
     dx /= dist; dy /= dist; dz /= dist;
     let near = VIEW_ZOOM_MIN, push = 0;
     const ox = aim.x, oy = aim.y, oz = aim.z;
@@ -1427,16 +1436,17 @@ function holdViewOutside() {
     }
     const limit = Math.min(controls.maxDistance - 1, push > 0 ? Math.max(push, near) : near);
     controls.minDistance = limit;
-    if (dist + 1e-3 >= limit) return;
+    if (dist + 1e-3 >= limit) { markHold(); return; }
     eye.set(ox + dx * limit, oy + dy * limit, oz + dz * limit);
   }
+  markHold();
 }
 
 scene.add(new THREE.HemisphereLight(0xc4ccc8, 0x3a342c, 0.62));
 const sun = new THREE.DirectionalLight(0xf2e2cc, 0.72);
 sun.position.set(-80, 140, 60);
 sun.castShadow = true;
-sun.shadow.mapSize.set(tier === 0 ? 512 : tier === 1 ? 1024 : 2048, tier === 0 ? 512 : tier === 1 ? 1024 : 2048);
+sun.shadow.mapSize.set(tier === 0 ? 512 : 1024, tier === 0 ? 512 : 1024);
 sun.shadow.camera.left = -210; sun.shadow.camera.right = 210;
 sun.shadow.camera.top = 170; sun.shadow.camera.bottom = -170;
 sun.shadow.camera.near = 20;
@@ -24167,12 +24177,6 @@ function ensureRainSound() {
   cityGain.connect(cityComp);
   cityComp.connect(mix);
   mix.connect(ctx.destination);
-  src.start();
-  lfo.start();
-  citySrc.start();
-  rumbleLfo.start();
-  murmurLfo.start();
-  murmurSweep.start();
   const dn = Math.floor(ctx.sampleRate * 0.08);
   const drop = ctx.createBuffer(1, dn, ctx.sampleRate);
   const dd = drop.getChannelData(0);
@@ -24187,7 +24191,21 @@ function ensureRainSound() {
   rainSound.cityGain = cityGain;
   rainSound.rumbleGain = rumbleGain;
   rainSound.murmurGain = murmurGain;
-  if (ctx.state === "suspended") ctx.resume();
+  rainSound.startGraph = function () {
+    if (rainSound.graphStarted || ctx.state !== "running") return;
+    rainSound.graphStarted = true;
+    src.start();
+    lfo.start();
+    citySrc.start();
+    rumbleLfo.start();
+    murmurLfo.start();
+    murmurSweep.start();
+  };
+  if (ctx.state === "running") rainSound.startGraph();
+  else {
+    const resumed = ctx.resume();
+    if (resumed && resumed.then) resumed.then(function () { rainSound.startGraph(); }).catch(function () {});
+  }
   return true;
 }
 function dropRain() {
@@ -25057,6 +25075,7 @@ function setStreet(kind, fromPlace) {
   }
   walkMode = on;
   catMode = nextCat;
+  syncPace();
   applyCityLod(on);
   if (!on) purgeStreetCast();
   if (!on) {
@@ -26374,8 +26393,15 @@ function releaseGpuAttr(attr, asIndex) {
   if (!attr || !attr.array || !attr.array.length) return;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3));
-  if (asIndex) geo.setIndex(attr);
-  else geo.setAttribute("release", attr);
+  // A wall index addresses every vertex of that wall. Drawing it here, against
+  // three stand-in vertices, makes the driver reject the call. The triangle
+  // only registers the geometry. The real buffer is named after the draw,
+  // so dispose can drop it without another draw.
+  let holdIndex = null;
+  if (asIndex) {
+    holdIndex = attr;
+    geo.setIndex([0, 1, 2]);
+  } else geo.setAttribute("release", attr);
   const holder = releaseGpuAttr.scene || (releaseGpuAttr.scene = new THREE.Scene());
   const mat = releaseGpuAttr.mat || (releaseGpuAttr.mat = new THREE.MeshBasicMaterial());
   const mesh = new THREE.Mesh(geo, mat);
@@ -26390,6 +26416,7 @@ function releaseGpuAttr(attr, asIndex) {
   renderer.setRenderTarget(prevT);
   renderer.autoClear = prevA;
   holder.remove(mesh);
+  if (holdIndex) geo.setIndex(holdIndex);
   geo.dispose();
 }
 function releaseGpuIndex(attr) {
@@ -28095,7 +28122,8 @@ function renderWetReflection() {
   // pace as a moving eye, so a person walking through a puddle is not left
   // standing in the last frame.
   const restN = high ? pace.reflRest + 4 : pace.reflMove;
-  if (uWetReflOn.value > 0.5 && ((resting && (renderWetReflection.n % restN) !== 0) || (!resting && pace.reflMove > 1 && (renderWetReflection.n % pace.reflMove) !== 0))) return;
+  const moveN = (!walkMode && high) ? Math.max(2, pace.reflMove) : pace.reflMove;
+  if (uWetReflOn.value > 0.5 && ((resting && (renderWetReflection.n % restN) !== 0) || (!resting && moveN > 1 && (renderWetReflection.n % moveN) !== 0))) return;
   if (!updateWetReflCamera(Math.min(camera.far, high ? (pace.tier === 0 ? 220 : 420) : (pace.tier === 0 ? 140 : 190)), 0.22)) {
     uWetReflOn.value = 0;
     return;
@@ -28238,8 +28266,9 @@ function renderRoofReflection() {
   const resting = drift < 1e-4 && align > 0.999999;
   renderRoofReflection.n = (renderRoofReflection.n || 0) + 1;
   const restN = pace.reflRest + 2;
+  const moveN = walkMode ? pace.roofMove : Math.max(2, pace.roofMove);
   const samePlane = Math.abs(renderRoofReflection.plane - planeY) < 0.2;
-  if (uRoofReflOn.value > 0.5 && samePlane && ((resting && (renderRoofReflection.n % restN) !== 0) || (!resting && pace.roofMove > 1 && (renderRoofReflection.n % pace.roofMove) !== 0))) return;
+  if (uRoofReflOn.value > 0.5 && samePlane && ((resting && (renderRoofReflection.n % restN) !== 0) || (!resting && moveN > 1 && (renderRoofReflection.n % moveN) !== 0))) return;
   if (!updateWetReflCamera(Math.min(camera.far, pace.tier === 0 ? 420 : 640), planeY, 0.45)) {
     uRoofReflOn.value = 0;
     return;
@@ -28930,11 +28959,11 @@ function syncPace() {
   pace.roofScale = t === 0 ? 0.18 : t === 1 ? 0.26 : 0.34;
   pace.roofMax = t === 0 ? 240 : t === 1 ? 340 : 420;
   pace.roofMove = t === 0 ? 3 : t === 1 ? 2 : 1;
-  rainGeo.instanceCount = t === 0 ? 2200 : t === 1 ? 3800 : 5600;
-  splashGeo.instanceCount = t === 0 ? 600 : t === 1 ? 1100 : 1800;
-  if (pace.anisoTier !== t && t < 2) {
+  rainGeo.instanceCount = t === 0 ? 1600 : t === 1 ? 2800 : 4000;
+  splashGeo.instanceCount = t === 0 ? 420 : t === 1 ? 800 : 1200;
+  if (pace.anisoTier !== t) {
     pace.anisoTier = t;
-    const max = t === 0 ? 1 : 2;
+    const max = t === 0 ? 1 : t === 1 ? 2 : 4;
     scene.traverse(function (obj) {
       const mats = obj.material;
       if (!mats) return;
@@ -28955,7 +28984,7 @@ function syncPace() {
       }
     });
   }
-  const side = t === 0 ? 512 : t === 1 ? 1024 : 2048;
+  const side = t === 0 ? 512 : t === 1 ? 1024 : (walkMode ? 2048 : 1024);
   if (sun.shadow.mapSize.x !== side) {
     sun.shadow.mapSize.set(side, side);
     if (sun.shadow.map) {
