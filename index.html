@@ -26176,8 +26176,20 @@ function releaseUnusedTextures() {
     } else noteParkMat(mat, shown, live, idle);
   });
   idle.forEach(tex => {
-    if (!live.has(tex)) tex.dispose();
+    if (live.has(tex) || !textureCanRebuild(tex)) return;
+    tex.dispose();
   });
+}
+// A released canvas is a stub. The pixels exist only on the GPU, and a
+// dispose would make the next bind call texImage2D with that stub.
+function textureCanRebuild(tex) {
+  if (!tex || !tex.isTexture || tex.isRenderTargetTexture) return false;
+  if (tex.userData && tex.userData.srcReleased) return false;
+  const img = tex.image;
+  if (!img) return false;
+  if (typeof img.getContext === "function") return img.width > 0 && img.height > 0;
+  if (img.data && img.width > 0 && img.height > 0) return true;
+  return typeof img.naturalWidth === "number" || typeof img.close === "function";
 }
 function packShopStay(mesh) {
   // Alley rooms stream with the walk camera. A front on the outer roads, or
@@ -28052,11 +28064,10 @@ function releaseCanvasSources() {
     seen.add(tex.uuid);
     const img = tex.image;
     if (!img || typeof img.getContext !== "function") return;
-    let props = renderer.properties.get(tex);
-    if (!props || !props.__webglTexture) {
-      try { renderer.initTexture(tex); } catch (err) { return; }
-      props = renderer.properties.get(tex);
-    }
+    // Only drop a canvas the GPU already holds. Forcing an upload here
+    // would stub a painting that view mode has not drawn, and the walk
+    // switch would then have nothing left to send to texImage2D.
+    const props = renderer.properties.get(tex);
     if (!props || !props.__webglTexture) return;
     if (!tex.userData) tex.userData = {};
     const w = img.width, h = img.height;
