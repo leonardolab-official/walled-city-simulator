@@ -20587,12 +20587,13 @@ function beginAct(ud, now, act, seconds) {
   ud.bias = actBias(ud);
   ud.nextAct = now + seconds + 6.5 + Math.abs(ud.offset * 3) % 4.5;
 }
-// One rank throws while the other shells up. A phrase is a jab, then a
-// cross (or a teep), then the ranks trade. The fist starts at the cheek
+// One fighter throws while the other shells up. A phrase is a jab, then a
+// cross (or a teep), then they trade. Each body carries its own beat, so
+// the court does not punch on one count. The fist starts at the cheek
 // and the elbow snaps open, so it reads as a punch rather than a wave.
 const GANG_PHRASE = 1.4;
 function poseGangFight(rig, ud, now, w) {
-  const stagger = (ud.offset || 0) * 0.05;
+  const stagger = ud.beat || 0;
   const span = GANG_PHRASE * 2;
   const u = (((gang.t + stagger) % span) + span) % span;
   const local = u % GANG_PHRASE;
@@ -20602,7 +20603,7 @@ function poseGangFight(rig, ud, now, w) {
   const hit = attacking ? attackName : "guard";
   const extend = attacking ? attackExt : 0;
   const incoming = !attacking && attackExt > 0.4;
-  const slip = incoming ? ((ud.rank || 0) === 0 ? -1 : 1) : 0;
+  const slip = incoming ? (ud.slip || 1) : 0;
   gangPlant(rig, ud, hit, extend, slip, incoming ? attackExt : 0, w);
 }
 function gangHit(local) {
@@ -22411,10 +22412,10 @@ const GANG_WEAR = [
   { top: 0x8a3030, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 4, shoes: 0x7a3030, shorts: true, towel: true, gait: "walk" }
 ];
 // The hall door is at z 25.42 and the iron gate at z 26.47. The open court
-// in front of 天后廟 runs south of that gate to about z 29.9, clear of the
-// censer and the posts. Two ranks stand there, a little over a metre apart.
-const GANG_NORTH_Z = 27.88;
-const GANG_SOUTH_Z = 29.08;
+// in front of 天后廟 runs south of that gate to about z 29.7. Pairs stand
+// in that court at their own angle and their own count, not on two lines.
+const GANG_X0 = 124.25, GANG_X1 = 128.75;
+const GANG_Z0 = 27.45, GANG_Z1 = 29.5;
 const gangFight = [];
 const gang = { nights: 0, prev: null, rolled: false, count: 0, leaving: false, t: 0 };
 function gangHour() {
@@ -22427,21 +22428,71 @@ function gangSeatPath(seat) {
     keep: 0, thick: 1.2, world: true, y: GROUND_Y
   };
 }
+function gangClamp(x, z) {
+  return {
+    x: Math.max(GANG_X0, Math.min(GANG_X1, x)),
+    z: Math.max(GANG_Z0, Math.min(GANG_Z1, z))
+  };
+}
 function gangSpots(count) {
-  const xs = [124.95, 126.12, 127.28, 128.22];
   const bouts = count >= 8 ? 4 : count >= 6 ? 3 : 2;
-  const start = count >= 8 ? 0 : count >= 6 ? 0 : 1;
+  const span = GANG_PHRASE * 2;
   const spots = [];
   for (let i = 0; i < bouts; i++) {
-    const x = xs[start + i];
+    const u = (i + 0.5) / bouts;
+    const jx = (heatUnit(gang.nights * 17 + i * 2 + 1) - 0.5) * 0.32;
+    const jz = (heatUnit(gang.nights * 17 + i * 2 + 2) - 0.5) * 0.4;
+    const cx = GANG_X0 + (GANG_X1 - GANG_X0) * u + jx;
+    const cz = 28.25 + jz;
+    const ang = (heatUnit(gang.nights * 17 + i * 2 + 7) - 0.5) * 0.85;
+    const gap = 1.02 + heatUnit(gang.nights * 17 + i * 2 + 8) * 0.28;
+    const dx = Math.sin(ang) * gap * 0.5;
+    const dz = Math.cos(ang) * gap * 0.5;
+    const slot = span / bouts;
+    const delay = i * slot + (heatUnit(gang.nights * 13 + i + 4) - 0.5) * 0.08;
+    const sign = heatUnit(gang.nights * 13 + i + 9) < 0.5 ? -1 : 1;
+    const skew = sign * (0.18 + heatUnit(gang.nights * 13 + i + 11) * 0.14);
     const a = spots.length;
-    spots.push({ x: x, z: GANG_NORTH_Z, rank: 0, foe: a + 1, kick: i === 1 });
-    spots.push({ x: x, z: GANG_SOUTH_Z, rank: 1, foe: a, kick: false });
+    const north = gangClamp(cx - dx, cz - dz);
+    const south = gangClamp(cx + dx, cz + dz);
+    spots.push({ x: north.x, z: north.z, rank: 0, foe: a + 1, beat: delay, slip: sign });
+    spots.push({ x: south.x, z: south.z, rank: 1, foe: a, beat: delay + skew, slip: -sign });
   }
   if (count % 2 === 1) {
     const host = spots[0];
-    spots.push({ x: host.x - 0.92, z: GANG_NORTH_Z, rank: 0, foe: host.foe, kick: false });
+    const mate = spots[host.foe];
+    const ox = mate.z - host.z;
+    const oz = -(mate.x - host.x);
+    const len = Math.hypot(ox, oz) || 1;
+    const side = heatUnit(gang.nights * 29 + 3) < 0.5 ? -1 : 1;
+    const reach = 0.72 + heatUnit(gang.nights * 29 + 4) * 0.22;
+    const extra = gangClamp(host.x + side * ox / len * reach, host.z + side * oz / len * reach);
+    const beat = host.beat + span / bouts * 0.5;
+    spots.push({ x: extra.x, z: extra.z, rank: 0, foe: host.foe, beat: beat, slip: side });
   }
+  const pairGap = 0.88;
+  const crowdGap = 0.74;
+  for (let pass = 0; pass < 5; pass++) {
+    for (let i = 0; i < spots.length; i++) {
+      for (let j = i + 1; j < spots.length; j++) {
+        const paired = spots[i].foe === j || spots[j].foe === i;
+        const min = paired ? pairGap : crowdGap;
+        let dx = spots[j].x - spots[i].x;
+        let dz = spots[j].z - spots[i].z;
+        let dist = Math.hypot(dx, dz);
+        if (dist >= min) continue;
+        if (dist < 1e-4) { dx = 1; dz = 0; dist = 1; }
+        const push = (min - dist) * 0.5;
+        const ux = dx / dist, uz = dz / dist;
+        const ai = gangClamp(spots[i].x - ux * push, spots[i].z - uz * push);
+        const aj = gangClamp(spots[j].x + ux * push, spots[j].z + uz * push);
+        spots[i].x = ai.x; spots[i].z = ai.z;
+        spots[j].x = aj.x; spots[j].z = aj.z;
+      }
+    }
+  }
+  const kicker = Math.floor(heatUnit(gang.nights * 19 + 5) * spots.length);
+  spots[kicker].kick = true;
   return spots;
 }
 function aimGang(rec) {
@@ -22487,12 +22538,13 @@ function beginGang() {
     gangFight.push({
       gang: 1, live: true, wear: GANG_WEAR[i], path: gangSeatPath(seat),
       along: 0.2, dir: 1, speed: 0, wait: 2.2, act: "guard", bias: 0,
-      offset: i * 0.17, rank: seat.rank, kick: !!seat.kick, foe: seat.foe,
+      offset: heatUnit(gang.nights * 29 + i * 5) * 6.2, rank: seat.rank, kick: !!seat.kick, foe: seat.foe,
+      beat: seat.beat || 0, slip: seat.slip || 1,
       scale: 1, x: seat.x, y: GROUND_Y, z: seat.z, yaw: seat.rank ? Math.PI : 0
     });
   }
   for (let i = 0; i < gangFight.length; i++) gangFight[i].foe = gangFight[gangFight[i].foe];
-}
+};
 function stepGangFight(now, dt) {
   const clock = stepSky.clock == null ? OPEN_CLOCK : stepSky.clock;
   if (gang.prev == null) gang.prev = clock;
@@ -22512,6 +22564,7 @@ function stepGangFight(now, dt) {
   const offer = emptyFigureOffer();
   const budget = pace.tier === 0 ? 1 : 2;
   const want = walkMode && hourOpen && !gang.leaving;
+  let bout = false;
   for (let i = gangFight.length - 1; i >= 0; i--) {
     const rec = gangFight[i];
     const py = (rec.y || GROUND_Y) + 0.9;
@@ -22531,6 +22584,7 @@ function stepGangFight(now, dt) {
         advanceWalker(rec, now, rec.fig);
         aimGang(rec);
         flushFigure(rec.fig);
+        bout = true;
       } else dozeFigure(rec.fig);
       continue;
     }
@@ -22543,8 +22597,11 @@ function stepGangFight(now, dt) {
   if (want) {
     if (offer.a >= 0) attachGang(gangFight[offer.a]);
     if (budget > 1 && offer.b >= 0) attachGang(gangFight[offer.b]);
-    gang.t += dt;
   }
+  // The hour only gates new bodies. A bout already in the picture keeps
+  // its phrase until the lens has left the fighters, so they do not freeze
+  // mid-punch when three o'clock arrives.
+  if (want || bout) gang.t += Math.min(0.05, Math.max(0, dt || 0));
   if (gang.leaving && !gangFight.length) gang.leaving = false;
 }
 // Passed out against an alley wall after midnight. The same places each
