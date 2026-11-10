@@ -1735,8 +1735,8 @@ const uStreetOn = { value: 0 };
 const uBeamGain = { value: 1.15 };
 const uWetRes = { value: new THREE.Vector2(1, 1) };
 const uWetReflOn = { value: 0 };
-// View mode draws the city dry of specular and running water. Walk and cat
-// put the threads back, and only on the surfaces inside the frame.
+// View mode keeps the wet road outside the wall, and draws the alleys dry.
+// Walk and cat put the threads back, and only on the surfaces inside the frame.
 const uFxGrade = { value: 0.5 };
 const uFxWalk = { value: 0 };
 const uFxVP = { value: new THREE.Matrix4() };
@@ -1896,6 +1896,26 @@ const WET_VERT = [
 // Same dissolve as the ground sheet: solid through 8 m past the lot, gone
 // by 52 m. Wet pavement and the rain share it, so neither runs on past the
 // blurred edge into the empty sky.
+// The fort wall is not the site rectangle. The northeast wedge and the south
+// chamfers are open ground, and the carriageway is north of z = 0.
+function wallOutsideGlsl(xz) {
+  // Same outline as CITY_EDGE. The shader is built before that list exists.
+  const poly = [
+    [0, 0], [192, 0], [197, 8], [202, 20], [208, 34], [210, 48],
+    [210, 108], [200, 115], [188, 120], [14, 120], [0, 110]
+  ];
+  const lines = ["float wallOut = 1.0;", "{", "bool wallIn = false;", "vec2 wallP = " + xz + ";"];
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[j], b = poly[i];
+    lines.push(
+      "{ vec2 a = vec2(" + a[0].toFixed(1) + ", " + a[1].toFixed(1) + ");",
+      "vec2 b = vec2(" + b[0].toFixed(1) + ", " + b[1].toFixed(1) + ");",
+      "if (((a.y > wallP.y) != (b.y > wallP.y)) && (wallP.x < (b.x - a.x) * (wallP.y - a.y) / ((b.y - a.y) + 1e-5) + a.x)) wallIn = !wallIn; }"
+    );
+  }
+  lines.push("wallOut = wallIn ? 0.0 : 1.0;", "}");
+  return lines.join("\n");
+}
 function lotKeepGlsl(gw) {
   const k = SHEAR_K.toFixed(6);
   const w = SITE_W.toFixed(1);
@@ -1928,6 +1948,13 @@ function wetSurfaceChunk(xzVarying, scale) {
     "vec2 gw = " + xzVarying + ";",
     lotKeepGlsl("gw"),
     fxGateGlsl("vWetWorld"),
+    // View mode drops the alley mirror. The roads and the ground outside the
+    // wall keep it. Walk and cat still follow the frame.
+    wallOutsideGlsl("gw"),
+    "if (uFxWalk < 0.5) {",
+    "  fxSeen = max(fxSeen, wallOut);",
+    "  fxSpec = max(fxSpec, wallOut * uFxGrade);",
+    "}",
     "wetK *= lotKeep;",
     "wetMask *= lotKeep;",
     "if (wetK > 0.001) {",
@@ -25992,30 +26019,216 @@ function captureShopStreams() {
     const bay = mesh.userData.bayData || null;
     const trade = mesh.userData.shopTrade || null;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    const col = mesh.instanceColor ? mesh.instanceColor.array : null;
     mesh.userData.shopStream = {
       stay: stay, hours: hours || null, trade: trade, px: px, py: py, pz: pz, pr: pr, n: n,
       base: mesh.instanceMatrix.array.slice(0, n * 16),
+      color: col ? col.slice(0, n * 3) : null,
       shown: new Uint8Array(n),
       bay: bay ? bay.slice() : null,
-      packedBay: bay ? new Array(n) : null
+      packedBay: bay ? new Array(n) : null,
+      ids: new Uint32Array(n)
     };
     shopStreams.push(mesh);
   });
   for (let i = 0; i < shopStreams.length; i++) packShopStay(shopStreams[i]);
 }
-function packShopStay(mesh) {
-  // View mode keeps the building mass and draws no shop, gate, or handbill.
-  // Walk and cat put the front back, and only while it sits in the frame.
-  const s = mesh.userData.shopStream;
-  for (let i = 0; i < s.n; i++) s.shown[i] = 0;
+const gpuStub = {};
+function gpuStubMat() {
+  if (!gpuStub.mat) {
+    gpuStub.mat = new THREE.InstancedBufferAttribute(new Float32Array(16), 16);
+    gpuStub.mat.setUsage(THREE.DynamicDrawUsage);
+  }
+  return gpuStub.mat;
+}
+// The attribute has to be on a geometry the renderer has actually drawn,
+// or dispose never reaches the buffer. A one-pixel target keeps this off
+// the city picture.
+function releaseGpuAttr(attr, asIndex) {
+  if (!attr || !attr.array || !attr.array.length) return;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3));
+  if (asIndex) geo.setIndex(attr);
+  else geo.setAttribute("release", attr);
+  const holder = releaseGpuAttr.scene || (releaseGpuAttr.scene = new THREE.Scene());
+  const mat = releaseGpuAttr.mat || (releaseGpuAttr.mat = new THREE.MeshBasicMaterial());
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  holder.add(mesh);
+  const rt = releaseGpuAttr.rt || (releaseGpuAttr.rt = new THREE.WebGLRenderTarget(1, 1));
+  const prevT = renderer.getRenderTarget();
+  const prevA = renderer.autoClear;
+  renderer.autoClear = false;
+  renderer.setRenderTarget(rt);
+  renderer.render(holder, camera);
+  renderer.setRenderTarget(prevT);
+  renderer.autoClear = prevA;
+  holder.remove(mesh);
+  geo.dispose();
+}
+function releaseGpuIndex(attr) {
+  releaseGpuAttr(attr, true);
+}
+function parkInstanceMesh(mesh) {
+  if (mesh.userData.gpuParked) {
+    mesh.count = 0;
+    mesh.visible = false;
+    return;
+  }
+  if (mesh.userData.gpuArmed) {
+    const attrs = mesh.geometry && mesh.geometry.attributes;
+    if (attrs) {
+      for (const name in attrs) {
+        const attr = attrs[name];
+        // Only the per-instance data. Position and the index are shared with
+        // every other batch that came from the same box.
+        if (!attr || !attr.isInstancedBufferAttribute || !attr.gpuHeld) continue;
+        releaseGpuAttr(attr, false);
+        attr.gpuHeld = 0;
+      }
+    }
+    mesh.dispose();
+  }
+  mesh.userData.gpuArmed = false;
+  mesh.userData.gpuParked = true;
+  mesh.instanceMatrix = gpuStubMat();
+  mesh.instanceColor = null;
   mesh.count = 0;
   mesh.visible = false;
+}
+function armInstanceMesh(mesh, count, colorCount) {
+  const need = Math.max(count | 0, 1);
+  const mat = mesh.instanceMatrix;
+  const col = mesh.instanceColor;
+  const have = mat && mat !== gpuStub.mat ? mat.count : 0;
+  const haveC = colorCount > 0 && col ? col.count : 0;
+  const fit = have >= need && have <= Math.max(need + 48, (need * 1.25) | 0);
+  const fitC = colorCount < 1 || (haveC >= need && haveC <= Math.max(need + 48, (need * 1.25) | 0));
+  if (mesh.userData.gpuArmed && fit && fitC && !mesh.userData.gpuParked) return false;
+  if (mesh.userData.gpuArmed && mat && mat !== gpuStub.mat) mesh.dispose();
+  mesh.instanceMatrix = new THREE.InstancedBufferAttribute(new Float32Array(need * 16), 16);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  mesh.instanceColor = colorCount > 0
+    ? new THREE.InstancedBufferAttribute(new Float32Array(need * 3), 3)
+    : null;
+  mesh.userData.gpuParked = false;
+  mesh.userData.gpuArmed = true;
+  return true;
+}
+function parkNet(net) {
+  net.visible = false;
+  if (net.userData.geoParked || !net.geometry) return;
+  net.geometry.dispose();
+  net.userData.geoParked = true;
+}
+function fitSheetAxis(mesh, n) {
+  const geo = mesh.geometry;
+  const cur = geo && geo.attributes && geo.attributes.sheetAxis;
+  if (!cur) return null;
+  const need = Math.max(n | 0, 1);
+  const have = cur.count | 0;
+  if (have >= need && have <= Math.max(need + 48, (need * 1.25) | 0)) {
+    cur.gpuHeld = 1;
+    return cur;
+  }
+  // The tail of a full-length axis stays on the GPU until this buffer is
+  // deleted. A fresh one is only as long as the instances in the frame.
+  if (cur.gpuHeld) {
+    releaseGpuAttr(cur, false);
+    cur.gpuHeld = 0;
+  }
+  const next = new THREE.InstancedBufferAttribute(new Float32Array(need), 1);
+  next.setUsage(THREE.DynamicDrawUsage);
+  next.gpuHeld = 1;
+  geo.setAttribute("sheetAxis", next);
+  return next;
+}
+const PARK_TEX_KEYS = ["map", "emissiveMap", "normalMap", "roughnessMap", "metalnessMap", "alphaMap", "aoMap", "lightMap", "bumpMap", "displacementMap", "envMap"];
+function noteParkTex(tex, shown, live, idle) {
+  if (!tex || !tex.isTexture) return;
+  if (tex === wetReflect.texture || tex === roofReflect.texture) return;
+  if (shown) live.add(tex);
+  else idle.add(tex);
+}
+function noteParkMat(mat, shown, live, idle) {
+  if (!mat) return;
+  for (let k = 0; k < PARK_TEX_KEYS.length; k++) noteParkTex(mat[PARK_TEX_KEYS[k]], shown, live, idle);
+  const uniforms = mat.uniforms;
+  if (!uniforms) return;
+  for (const key in uniforms) {
+    const value = uniforms[key] && uniforms[key].value;
+    if (value && value.isTexture) noteParkTex(value, shown, live, idle);
+    else if (value && value.isWebGLRenderTarget) noteParkTex(value.texture, shown, live, idle);
+  }
+}
+// A hidden mesh keeps its canvas on the GPU until the texture is disposed.
+// Anything a visible mesh, sprite, or line still samples is left in place.
+function releaseUnusedTextures() {
+  const live = new Set();
+  const idle = new Set();
+  scene.traverse(obj => {
+    const mat = obj.material;
+    if (!mat) return;
+    if (!obj.isMesh && !obj.isSprite && !obj.isPoints && !obj.isLine) return;
+    const shown = obj.visible && (!obj.isInstancedMesh || obj.count > 0);
+    if (Array.isArray(mat)) {
+      for (let i = 0; i < mat.length; i++) noteParkMat(mat[i], shown, live, idle);
+    } else noteParkMat(mat, shown, live, idle);
+  });
+  idle.forEach(tex => {
+    if (!live.has(tex)) tex.dispose();
+  });
+}
+function packShopStay(mesh) {
+  // Alley rooms stream with the walk camera. A front on the outer roads, or
+  // on the open ground outside the wall, is marked stay and remains in the
+  // aerial view. A shut gate on that front still draws; an open one does not.
+  const s = mesh.userData.shopStream;
+  const src = s.base;
+  const ids = s.ids;
+  let n = 0;
+  for (let i = 0; i < s.n; i++) {
+    s.shown[i] = 0;
+    if (!s.stay[i]) continue;
+    const flag = s.hours ? s.hours[i] : 0;
+    const trade = s.trade ? s.trade[i] : 0;
+    const shutGate = flag === 2 && !shopHourOn(1, trade);
+    if (!shutGate && flag) continue;
+    ids[n++] = i;
+    s.shown[i] = 1;
+  }
+  if (n < 1) {
+    parkInstanceMesh(mesh);
+    return;
+  }
+  armInstanceMesh(mesh, n, s.color ? n : 0);
+  const dst = mesh.instanceMatrix.array;
+  const col = s.color ? mesh.instanceColor.array : null;
+  for (let p = 0; p < n; p++) {
+    const i = ids[p];
+    const a = i * 16;
+    const b = p * 16;
+    for (let k = 0; k < 16; k++) dst[b + k] = src[a + k];
+    if (col) {
+      const ca = i * 3;
+      const cb = p * 3;
+      col[cb] = s.color[ca];
+      col[cb + 1] = s.color[ca + 1];
+      col[cb + 2] = s.color[ca + 2];
+    }
+    if (s.packedBay) s.packedBay[p] = s.bay[i];
+  }
+  mesh.visible = true;
+  mesh.count = n;
+  mesh.instanceMatrix.needsUpdate = true;
+  if (col) mesh.instanceColor.needsUpdate = true;
+  if (s.packedBay) mesh.userData.bayData = s.packedBay;
 }
 function packShopMesh(mesh) {
   const s = mesh.userData.shopStream;
   const src = s.base;
-  const dst = mesh.instanceMatrix.array;
   const cam = camera.position;
+  const ids = s.ids;
   let n = 0;
   for (let i = 0; i < s.n; i++) {
     const flag = s.hours ? s.hours[i] : 0;
@@ -26038,21 +26251,33 @@ function packShopMesh(mesh) {
     }
     s.shown[i] = show ? 1 : 0;
     if (!show) continue;
-    const a = i * 16;
-    const b = n * 16;
-    for (let k = 0; k < 16; k++) dst[b + k] = src[a + k];
-    if (s.packedBay) s.packedBay[n] = s.bay[i];
-    n++;
+    ids[n++] = i;
   }
   if (n < 1) {
-    mesh.count = 0;
-    mesh.visible = false;
-  } else {
-    mesh.visible = true;
-    mesh.count = n;
-    mesh.instanceMatrix.needsUpdate = true;
-    if (s.packedBay) mesh.userData.bayData = s.packedBay;
+    parkInstanceMesh(mesh);
+    return;
   }
+  armInstanceMesh(mesh, n, s.color ? n : 0);
+  const dst = mesh.instanceMatrix.array;
+  const col = s.color ? mesh.instanceColor.array : null;
+  for (let p = 0; p < n; p++) {
+    const a = ids[p] * 16;
+    const b = p * 16;
+    for (let k = 0; k < 16; k++) dst[b + k] = src[a + k];
+    if (col) {
+      const ca = ids[p] * 3;
+      const cb = p * 3;
+      col[cb] = s.color[ca];
+      col[cb + 1] = s.color[ca + 1];
+      col[cb + 2] = s.color[ca + 2];
+    }
+    if (s.packedBay) s.packedBay[p] = s.bay[ids[p]];
+  }
+  mesh.visible = true;
+  mesh.count = n;
+  mesh.instanceMatrix.needsUpdate = true;
+  if (col) mesh.instanceColor.needsUpdate = true;
+  if (s.packedBay) mesh.userData.bayData = s.packedBay;
 }
 function syncShopFronts() {
   if (!shopStreams.length) return;
@@ -26062,6 +26287,7 @@ function syncShopFronts() {
     if (shopCam.walk || flipped || walkMode) {
       for (let i = 0; i < shopStreams.length; i++) packShopStay(shopStreams[i]);
       shopCam.walk = false;
+      if (!walkMode) releaseUnusedTextures();
     }
     return;
   }
@@ -26234,10 +26460,16 @@ function applyCityLod(full) {
   for (let i = 0; i < cityLods.length; i++) {
     const rec = cityLods[i];
     const geo = rec.geo;
-    geo.setIndex(full ? geo.userData.fullIndex : geo.userData.viewIndex);
-    if (geo.index) geo.index.needsUpdate = true;
+    const next = full ? geo.userData.fullIndex : geo.userData.viewIndex;
+    const prev = geo.index;
+    if (prev !== next) {
+      geo.setIndex(next);
+      // The first call is before any draw, so neither index is on the GPU yet.
+      if (applyCityLod.live && prev) releaseGpuIndex(prev);
+    }
     if (rec.fullSpans) rec.mesh.userData.pickSpans = full ? rec.fullSpans : rec.viewSpans;
   }
+  applyCityLod.live = true;
 }
 function buildCityViewLod() {
   const seen = new Set();
@@ -26291,14 +26523,17 @@ function captureAlleyStreams() {
       pr[i] = ub.r * Math.max(sx, sy, sz, 0.05) + 0.35;
     }
     const col = mesh.instanceColor ? mesh.instanceColor.array : null;
+    const axisAttr = mesh.geometry && mesh.geometry.attributes && mesh.geometry.attributes.sheetAxis;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.userData.alleyStream = {
       n: n,
       px: px, py: py, pz: pz, pr: pr,
       base: mesh.instanceMatrix.array.slice(0, n * 16),
       color: col ? col.slice(0, n * 3) : null,
+      axis: axisAttr ? axisAttr.array.slice(0) : null,
       pipe: mesh.userData.pipeAz ? mesh.userData.pipeAz.slice(0) : null,
-      pipeLive: mesh.userData.pipeAz ? new Float32Array(n) : null
+      pipeLive: mesh.userData.pipeAz ? new Float32Array(n) : null,
+      ids: new Uint32Array(n)
     };
     alleyStreams.push(mesh);
   });
@@ -26309,16 +26544,18 @@ function streetPropsLive() {
 function syncAlleyStreams() {
   const live = streetPropsLive();
   if (!live) {
-    if (syncAlleyStreams.parked) return;
-    syncAlleyStreams.parked = true;
-    for (let i = 0; i < alleyStreams.length; i++) {
-      const mesh = alleyStreams[i];
-      mesh.count = 0;
-      mesh.visible = false;
+    if (!syncAlleyStreams.parked) {
+      syncAlleyStreams.parked = true;
+      for (let i = 0; i < alleyStreams.length; i++) parkInstanceMesh(alleyStreams[i]);
+      for (let i = 0; i < alleyNets.length; i++) parkNet(alleyNets[i]);
     }
-    for (let i = 0; i < alleyNets.length; i++) alleyNets[i].visible = false;
+    if (!walkMode && syncAlleyStreams.texHeld !== 0) {
+      releaseUnusedTextures();
+      syncAlleyStreams.texHeld = 0;
+    }
     return;
   }
+  syncAlleyStreams.texHeld = 1;
   if (!syncAlleyStreams.cam) {
     syncAlleyStreams.cam = new THREE.Vector3();
     syncAlleyStreams.quat = new THREE.Quaternion();
@@ -26339,7 +26576,7 @@ function syncAlleyStreams() {
     const mesh = alleyStreams[s];
     const rec = mesh.userData.alleyStream;
     const src = rec.base;
-    const dst = mesh.instanceMatrix.array;
+    const ids = rec.ids;
     let n = 0;
     for (let i = 0; i < rec.n; i++) {
       const dx = rec.px[i] - cam.x;
@@ -26349,25 +26586,35 @@ function syncAlleyStreams() {
       keeperView.sphere.center.set(rec.px[i], rec.py[i], rec.pz[i]);
       keeperView.sphere.radius = rec.pr[i];
       if (!keeperView.frustum.intersectsSphere(keeperView.sphere)) continue;
-      const a = i * 16;
-      const b = n * 16;
+      ids[n++] = i;
+    }
+    if (!n) {
+      parkInstanceMesh(mesh);
+      continue;
+    }
+    armInstanceMesh(mesh, n, rec.color ? n : 0);
+    const dst = mesh.instanceMatrix.array;
+    const col = rec.color ? mesh.instanceColor.array : null;
+    const axis = rec.axis ? fitSheetAxis(mesh, n) : null;
+    for (let p = 0; p < n; p++) {
+      const a = ids[p] * 16;
+      const b = p * 16;
       for (let k = 0; k < 16; k++) dst[b + k] = src[a + k];
-      if (rec.color) {
-        const ca = i * 3;
-        const cb = n * 3;
-        const col = mesh.instanceColor.array;
+      if (col) {
+        const ca = ids[p] * 3;
+        const cb = p * 3;
         col[cb] = rec.color[ca];
         col[cb + 1] = rec.color[ca + 1];
         col[cb + 2] = rec.color[ca + 2];
       }
-      if (rec.pipe) rec.pipeLive[n] = rec.pipe[i];
-      n++;
+      if (axis) axis.array[p] = rec.axis[ids[p]];
+      if (rec.pipe) rec.pipeLive[p] = rec.pipe[ids[p]];
     }
     mesh.count = n;
-    mesh.visible = n > 0;
-    if (!n) continue;
+    mesh.visible = true;
     mesh.instanceMatrix.needsUpdate = true;
-    if (rec.color && mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    if (col) mesh.instanceColor.needsUpdate = true;
+    if (axis) axis.needsUpdate = true;
     if (rec.pipe) mesh.userData.pipeAz = rec.pipeLive;
   }
   for (let i = 0; i < alleyNets.length; i++) {
@@ -26378,7 +26625,12 @@ function syncAlleyStreams() {
     const dz = p.z - cam.z;
     keeperView.sphere.center.set(p.x, p.y, p.z);
     keeperView.sphere.radius = 2.4;
-    net.visible = dx * dx + dy * dy + dz * dz < reach && keeperView.frustum.intersectsSphere(keeperView.sphere);
+    const show = dx * dx + dy * dy + dz * dz < reach && keeperView.frustum.intersectsSphere(keeperView.sphere);
+    if (!show) parkNet(net);
+    else {
+      net.userData.geoParked = false;
+      net.visible = true;
+    }
   }
 }
 captureAlleyStreams();
@@ -27483,7 +27735,7 @@ function updateWetReflCamera(farLimit, planeY, clipDrop) {
   return true;
 }
 function renderWetReflection() {
-  if (!walkMode || uWet.value < 0.08) {
+  if (uWet.value < 0.08) {
     uWetReflOn.value = 0;
     return;
   }
