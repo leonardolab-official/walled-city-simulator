@@ -377,6 +377,25 @@
   #ui.cat-on #cat .mode-eye { display: block; }
   #ui.cat-on #mode .mode-walk { display: block; }
   #ui.cat-on #mode .mode-eye { display: none; }
+  #roof-go {
+    position: fixed;
+    left: 50%;
+    bottom: max(var(--frame), env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 8;
+    display: none;
+    min-width: 92px;
+    padding: 8px 18px;
+    justify-content: center;
+    letter-spacing: 0.18em;
+    font-size: 13px;
+    color: #f4e7cf;
+    background: #1a1411;
+    border: 1px solid #ffc56a;
+    box-shadow: 0 0 12px rgba(255, 190, 70, 0.35);
+  }
+  #roof-go.on { display: inline-flex; }
+  #roof-go[hidden] { display: none !important; }
   #ui:not(.walk-bare) #dock-wrap,
   #ui:not(.walk-bare) #toggle-legend { display: none; }
   #ui.walk-bare #dock-wrap { display: none; }
@@ -1017,6 +1036,7 @@ applyBoot();
       <path fill="currentColor" fill-rule="evenodd" d="M356 166a100 100 0 1 1-200 0 100 100 0 1 1 200 0zm-33 0a67 67 0 1 0-134 0 67 67 0 1 0 134 0z"/>
     </svg>
   </button>
+<button type="button" id="roof-go" hidden>進入</button>
 <button type="button" id="mode" aria-label="步行">
     <span class="mode-walk" aria-hidden="true"></span>
     <svg class="mode-eye" viewBox="0 0 512 332" aria-hidden="true">
@@ -6114,6 +6134,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     const bp = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.22, 0.18 - SHOP_SEAT, 0);
     addShopMesh(shopGeo.pot, solidMat("wbucket", 0x66726e, 0.82, 0.06), bp.x, sitY(bp.x, bp.z, -0.14, 0.7), bp.z, 0, 0.55, 0.7, 0.55);
   }
+  if (kind === "door" && variant === 2) noteOpenEntrance(bay, face);
   if (variant === "shut" || kind === "door") {
     addShopMesh.pinX = addShopMesh.pinZ = null;
     addShopMesh.hours = 0;
@@ -6288,6 +6309,7 @@ function placeStair(bay, face, data, lotZ, pinX, pinZ, stair) {
   const gateTop = 2.02;
   const gateBot = Math.min(0.3, stairFoot + 0.02);
   const sv = stair.variant || 0;
+  if (sv === 0) noteOpenEntrance(bay, face);
   if (sv === 0) {
     const foldAlong = stair.atEnd ? 1 - edge - 0.1 : edge + 0.1;
     putCollapsedGate(put, span, foldAlong, gateBot, gateTop, 0, -0.05);
@@ -7178,6 +7200,10 @@ function addMass(x, z, w, d, floors, meta) {
     if (step.e > 0.2 && zd > 0.3) ledge(step.e, zd, x + w - step.e / 2, (z0 + z1) / 2);
   }
 
+  roofDeck = {
+    x: top.x, z: top.z, w: top.w, d: top.d, y: h + 0.17, blocks: []
+  };
+  roofDecks.push(roofDeck);
   facePlans.forEach(fp => {
     fp.plans.forEach(p => placeBay(p.bay, fp.face, p.kind, p.rng, data, fp.clearance, z, x + w * 0.5, z + d * 0.5));
   });
@@ -7214,7 +7240,23 @@ function addMass(x, z, w, d, floors, meta) {
   // walker box back to that plaster, so the lane you see is the lane you walk.
   walkSolids.push({ x, z, x2: x + w, z2: z + d, ground: openFaces.join("") });
   dressRoof(top.x, top.z, top.w, top.d, h);
+  roofDeck = null;
   return data;
+}
+// A folded gate is the way in. The stand is a step inside the lot line,
+// where the plaster has been pulled back and the walker can actually stop.
+function noteOpenEntrance(bay, face) {
+  const deck = roofDeck;
+  if (!deck || deck.w < 1.7 || deck.d < 1.7) return;
+  const p = facePose(bay.x, bay.z, bay.w, bay.d, face, 0.5, -0.22, 0);
+  const outYaw = face === "n" ? 0 : face === "s" ? Math.PI : face === "w" ? Math.PI / 2 : -Math.PI / 2;
+  roofDoors.push({
+    x: p.x, z: p.z, face: face, deck: deck, live: false,
+    outYaw: outYaw, inYaw: outYaw + Math.PI,
+    ox: face === "w" ? -1 : face === "e" ? 1 : 0,
+    oz: face === "n" ? -1 : face === "s" ? 1 : 0,
+    upX: 0, upZ: 0
+  });
 }
 
 function segNS(x, z0, z1, width) {
@@ -7513,6 +7555,11 @@ function fillBlock(x0, z0, x1, z1) {
   }
 }
 const roofMeshes = [];
+const roofDecks = [];
+const roofDoors = [];
+let roofDeck = null;
+let roofStay = null;
+let roofOffer = null;
 const roofQ = { yagi: [], stair: [], tank: [], stand: [], shed: [], rpipe: [], cyl: [], cylStand: [], pot: [], line: [] };
 // Years of rain on a tank leave rust runs, a soot skirt and a dull skin.
 // The hash is taken from the seat, so neighbouring roofs do not match.
@@ -7678,6 +7725,10 @@ function dressRoof(x, z, w, d, h) {
   const rng = roofRand(x, z, 0x5a17);
   const roofTop = h + 0.17;
   const inset = 0.95;
+  function occupy(px, pz, hx, hz) {
+    if (!roofDeck) return;
+    roofDeck.blocks.push({ x: px - hx, z: pz - hz, x2: px + hx, z2: pz + hz });
+  }
   if (w < inset * 2 + 0.4 || d < inset * 2 + 0.4) return;
   const taken = [];
   function claim(px, pz, rad) {
@@ -7709,12 +7760,14 @@ function dressRoof(x, z, w, d, h) {
       sy: 0.84 + rng() * 0.36,
       tint: soilTint(p.x, p.z, 1)
     });
+    occupy(p.x, p.z, 0.16, 0.16);
   }
   if (w < 4.6 || d < 4.6) return;
   if (rng() > 0.28) {
     const p = spot(1.15, 1.2) || { x: x + 1.2, z: z + 1.15 };
     claim(p.x, p.z, 1.1);
     roofQ.stair.push({ x: p.x, z: p.z, y: roofTop, roofTop, sx: 1.05, sy: 1.1, sz: 0.9, lift: 0.55, tint: soilTint(p.x, p.z, 3) });
+    occupy(p.x, p.z, 0.55, 0.48);
   }
   const nRound = (w > 7.2 && d > 6.4 && rng() > 0.7) ? 2 : 1;
   if (rng() > 0.14) {
@@ -7725,6 +7778,7 @@ function dressRoof(x, z, w, d, h) {
       const rust = rng() > 0.22;
       roofQ.cyl.push({ x: p.x, z: p.z, y: roofTop, roofTop, yaw, rust, lift: 0.45, tint: soilTint(p.x, p.z, rust ? 2 : 1) });
       roofQ.cylStand.push({ x: p.x, z: p.z, y: roofTop, roofTop, yaw, lift: 0, tint: soilTint(p.x, p.z, 2) });
+      occupy(p.x, p.z, 0.5, 0.5);
     }
   }
   if (rng() > 0.32) {
@@ -7733,6 +7787,7 @@ function dressRoof(x, z, w, d, h) {
       const sy = 0.68;
       const rust = rng() > 0.18;
       roofQ.tank.push({ x: p.x, z: p.z, y: roofTop, roofTop, sx: 1.28, sy, sz: 0.96, lift: 0.22 + sy / 2, rust, tint: soilTint(p.x, p.z, rust ? 2 : 1) });
+      occupy(p.x, p.z, 0.68, 0.52);
       roofQ.stand.push({ x: p.x, z: p.z, y: roofTop, roofTop, sx: 1.08, sy: 0.22, sz: 0.78, lift: 0.11, tint: soilTint(p.x, p.z, 2) });
       const plen = Math.min(w * 0.28, 2.2);
       roofQ.rpipe.push({
@@ -7745,10 +7800,13 @@ function dressRoof(x, z, w, d, h) {
     const sy = 1.45;
     const p = spot(1.3, 1.35);
     if (p) {
+      const shedX = Math.min(2.15, w * 0.3);
+      const shedZ = Math.min(1.7, d * 0.26);
       roofQ.shed.push({
         x: p.x, z: p.z, y: roofTop, roofTop,
-        sx: Math.min(2.15, w * 0.3), sy, sz: Math.min(1.7, d * 0.26), lift: sy / 2, tint: soilTint(p.x, p.z, 2)
+        sx: shedX, sy, sz: shedZ, lift: sy / 2, tint: soilTint(p.x, p.z, 2)
       });
+      occupy(p.x, p.z, shedX * 0.5, shedZ * 0.5);
     }
   }
   if (rng() > 0.42) {
@@ -7760,7 +7818,10 @@ function dressRoof(x, z, w, d, h) {
   }
   if (rng() > 0.48) {
     const p = spot(0.7, 0.8);
-    if (p) roofQ.pot.push({ x: p.x, z: p.z, y: roofTop, roofTop, lift: 0.1, tint: soilTint(p.x, p.z, 1) });
+    if (p) {
+      roofQ.pot.push({ x: p.x, z: p.z, y: roofTop, roofTop, lift: 0.1, tint: soilTint(p.x, p.z, 1) });
+      occupy(p.x, p.z, 0.22, 0.22);
+    }
   }
 }
 function mergedBoxes(parts) {
@@ -9428,11 +9489,11 @@ function dressAlleys() {
       box.z = best.point.z - dirZ * bite;
     }
   });
-  // A gate or a board belongs on plaster. Shop fronts now step the ground
-  // wall back from the lot line, and the old pin left the panel standing in
-  // that gap: bars across an empty opening, a board with daylight behind it.
-  // Anything that does not meet a wall within a hand's breadth goes, and so
-  // does the cord that used to pretend to hold a mid-lane board.
+  // A gate, a poster or a loose sheet belongs on plaster. Shop fronts step
+  // the ground wall back from the lot line, and a panel left on that line
+  // stands in the opening: bars across an empty mouth, a board with daylight
+  // behind it. Anything that does not meet a wall within a hand's breadth
+  // goes, and so does the cord that used to pretend to hold a mid-lane board.
   function plasterBehind(box) {
     const y = Math.min(2.4, Math.max(0.45, box.y));
     const axes = [];
@@ -9483,6 +9544,9 @@ function dressAlleys() {
       if (Math.abs(cord.x - s.x) < 0.06 && Math.abs(cord.z - s.z) < 0.06) cross.cord.splice(c, 1);
     }
   }
+  // Corrugated sheets were leaned onto the lot line. Where that line is a
+  // shop setback, the sheet stands in the alley with the gate behind it.
+  goods.sheet = goods.sheet.filter(onPlaster);
   function bridgePipes(list) {
     const k = SHEAR_K;
     const extra = [];
@@ -15040,7 +15104,7 @@ function beginWalkGlide(x, z, yaw, pitch, fov, direct) {
     catIdle = 0;
     catSit = 0;
   }
-  const toPos = catMode ? catCamPos(x, z, yaw, pitch) : new THREE.Vector3(x, GROUND_Y + WALK_EYE, z);
+  const toPos = catMode ? catCamPos(x, z, yaw, pitch) : new THREE.Vector3(x, (roofStay ? roofStay.y : GROUND_Y) + WALK_EYE, z);
   if (catMode) fov = 54;
   const toQuat = walkFacing(yaw, pitch);
   const fromPos = camera.position.clone();
@@ -15624,6 +15688,8 @@ const I18N = {
     cutLabel: "剖面位置", hint: "拖曳旋轉 · 滾輪縮放 · 點選樓塊 · 1 俯瞰 · 5 步行 · 6 貓",
     walkBtn: "步行",
     catBtn: "貓",
+    enterBtn: "進入",
+    exitBtn: "離開",
     backBtn: "返回",
     hintWalk: "拖曳張望 · W A S D 行走 · Shift 加快 · 再按步行或 5 返回",
     hintCat: "拖曳張望 · W A S D 行走 · Shift 加快 · 再按貓或 6 返回",
@@ -15678,6 +15744,8 @@ const I18N = {
     cutLabel: "Cut position", hint: "drag orbit · scroll zoom · click a mass · 1 aerial · 5 walks · 6 cat",
     walkBtn: "Walk",
     catBtn: "Cat",
+    enterBtn: "Enter",
+    exitBtn: "Exit",
     backBtn: "Back",
     hintWalk: "Drag to look · W A S D walks · Shift is quicker · Walk or 5 returns",
     hintCat: "Drag to look · W A S D moves · Shift is quicker · Cat or 6 returns",
@@ -15732,6 +15800,8 @@ const I18N = {
     cutLabel: "断面の位置", hint: "ドラッグで周回 · スクロール · 棟をクリック · 1 俯瞰 · 5 で歩行 · 6 で猫",
     walkBtn: "歩く",
     catBtn: "猫",
+    enterBtn: "入る",
+    exitBtn: "出る",
     backBtn: "戻る",
     hintWalk: "ドラッグで見る · W A S D で歩く · Shift で速く · 歩くか 5 で戻る",
     hintCat: "ドラッグで見る · W A S D で歩く · Shift で速く · 猫か 6 で戻る",
@@ -16174,22 +16244,103 @@ splash.visible = false;
 vfx.add(splash);
 const lamps = [];
 const lampBulbs = [];
-// Six alley fittings only. Positions are not a surveyed lamp map.
-[[9.75, 3.2, 48, 0xd7f0e4, "z"], [57.75, 2.6, 82, 0xd4eee2, "z"], [104.25, 3.6, 100, 0xc5ead2, "z"], [138.75, 3.4, 52, 0xb7e2c8, "z"], [180.75, 3.2, 72, 0xd7f0e4, "z"], [160, 2.4, 95.25, 0xd7f0e4, "x"]].forEach(([x, y, z, color, axis]) => {
+// Six alley fittings. The old boxes sat on the lane centreline with nothing
+// holding them: a white bar in front of a balcony, and the same bar seen
+// from below as a strip up a light well. Each one now bites the nearest
+// plaster, in a metal channel. The point light stays with the tube.
+const fittingWalls = [];
+city.updateMatrixWorld(true);
+for (let ci = 0; ci < city.children.length; ci++) {
+  const o = city.children[ci];
+  if (!o.isMesh || !o.geometry || !o.geometry.userData || o.geometry.userData.pack !== 1) continue;
+  if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+  fittingWalls.push({ mesh: o, box: o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld) });
+}
+const fitRay = new THREE.Raycaster();
+const fitOrigin = new THREE.Vector3();
+const fitDir = new THREE.Vector3();
+const fitBack = new THREE.MeshStandardMaterial({
+  color: 0x2a2826, roughness: 0.58, metalness: 0.42, clippingPlanes: clips
+});
+function mountFitting(x, y, z) {
+  const heights = [y, y + 0.85, Math.max(0.9, y - 0.55)];
+  const axes = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  let best = null;
+  let dirX = 0;
+  let dirZ = 0;
+  let seatY = y;
+  for (let h = 0; h < heights.length; h++) {
+    const yy = heights[h];
+    const near = [];
+    for (let w = 0; w < fittingWalls.length; w++) {
+      const b = fittingWalls[w].box;
+      if (x < b.min.x - 1.9 || x > b.max.x + 1.9) continue;
+      if (z < b.min.z - 1.9 || z > b.max.z + 1.9) continue;
+      if (yy < b.min.y - 0.3 || yy > b.max.y + 0.3) continue;
+      near.push(fittingWalls[w].mesh);
+    }
+    if (!near.length) continue;
+    for (let a = 0; a < axes.length; a++) {
+      fitOrigin.set(x, yy, z);
+      fitDir.set(axes[a][0], 0, axes[a][1]);
+      fitRay.set(fitOrigin, fitDir);
+      fitRay.far = 1.85;
+      const hits = fitRay.intersectObjects(near, false);
+      if (hits.length && (!best || hits[0].distance < best.distance)) {
+        best = hits[0];
+        dirX = axes[a][0];
+        dirZ = axes[a][1];
+        seatY = yy;
+      }
+    }
+    if (best && best.distance < 1.35) break;
+  }
+  if (!best) return null;
+  const alongZ = Math.abs(dirX) > 0.5;
+  const len = 0.86;
+  const depth = 0.05;
+  const bite = depth * 0.5 - 0.004;
+  return {
+    x: best.point.x - dirX * bite,
+    y: seatY,
+    z: best.point.z - dirZ * bite,
+    bx: best.point.x - dirX * 0.01,
+    bz: best.point.z - dirZ * 0.01,
+    alongZ: alongZ,
+    len: len
+  };
+}
+[[9.75, 3.2, 48, 0xd7f0e4], [57.75, 2.6, 82, 0xd4eee2], [104.25, 3.6, 100, 0xc5ead2], [138.75, 3.4, 52, 0xb7e2c8], [180.75, 3.2, 72, 0xd7f0e4], [160, 2.4, 95.25]].forEach(([x, y, z, color]) => {
+  const tint = new THREE.Color(color);
+  const seat = mountFitting(x, y, z);
   const lamp = new THREE.PointLight(color, 0.55, 18, 2);
-  lamp.position.set(x, y, z);
+  lamp.position.set(seat ? seat.x : x, seat ? seat.y : y, seat ? seat.z : z);
   vfx.add(lamp);
   lamps.push(lamp);
   rainUniforms.uLampPos.value[lamps.length - 1] = lamp.position;
   rainUniforms.uLampCol.value[lamps.length - 1] = lamp.color;
-  const tint = new THREE.Color(color);
+  if (!seat) {
+    lampBulbs.push(null);
+    return;
+  }
+  const bulbMat = new THREE.MeshStandardMaterial({
+    color: tint.clone(), emissive: tint.clone(), emissiveIntensity: 0.55,
+    roughness: 0.34, metalness: 0, clippingPlanes: clips
+  });
+  shopGlow.push({ mat: bulbMat, day: 0.35, night: 1.15 });
   const bulb = new THREE.Mesh(
-    new THREE.BoxGeometry(axis === "x" ? 1.15 : 0.07, 0.05, axis === "x" ? 0.07 : 1.15),
-    new THREE.MeshBasicMaterial({ color: tint.clone(), clippingPlanes: clips })
+    new THREE.BoxGeometry(seat.alongZ ? 0.05 : seat.len, 0.042, seat.alongZ ? seat.len : 0.05),
+    bulbMat
   );
-  bulb.position.copy(lamp.position);
+  bulb.position.set(seat.x, seat.y, seat.z);
   bulb.userData.tint = tint;
-  vfx.add(bulb);
+  const back = new THREE.Mesh(
+    new THREE.BoxGeometry(seat.alongZ ? 0.028 : seat.len + 0.08, 0.078, seat.alongZ ? seat.len + 0.08 : 0.028),
+    fitBack
+  );
+  back.position.set(seat.bx, seat.y, seat.bz);
+  city.add(back);
+  city.add(bulb);
   lampBulbs.push(bulb);
 });
 // Tung Tau Tsuen Road only. A slim galvanised pole on the north pavement, a
@@ -19631,17 +19782,27 @@ function dressHead(head, spec, matOf) {
   const eyeY = kind === "young" ? 0.01 : 0.004;
   const browTilt = kind === "soft" ? 0.1 : kind === "worn" ? -0.16 : kind === "young" ? 0.06 : 0;
   [-1, 1].forEach(function (side) {
-    const eye = place(parts.eyeWhite, wrap(eyeWhite), side * 0.046, eyeY, 0.074);
-    const pupil = place(parts.pupil, wrap(pupilMat), side * 0.046, eyeY, 0.082);
-    if (kind === "worn") {
-      eye.scale.y = 0.7;
-      pupil.scale.set(0.85, 0.75, 1);
-    } else if (kind === "young") {
-      eye.scale.set(1.12, 1.18, 1);
-      pupil.scale.set(1.05, 1.05, 1);
+    if (spec.asleep) {
+      // The whites are baked into the skull, so a sleeper never gets them.
+      // A skin lid and a dark line are the shut eye.
+      const lid = place(parts.eyeWhite, skin, side * 0.046, eyeY, 0.078);
+      lid.scale.set(1.05, 0.34, 0.6);
+      const lash = place(parts.brow, wrap(pupilMat), side * 0.046, eyeY - 0.001, 0.086);
+      lash.scale.set(1.12, 0.9, 0.9);
+      lash.rotation.z = side * 0.12;
+    } else {
+      const eye = place(parts.eyeWhite, wrap(eyeWhite), side * 0.046, eyeY, 0.074);
+      const pupil = place(parts.pupil, wrap(pupilMat), side * 0.046, eyeY, 0.082);
+      if (kind === "worn") {
+        eye.scale.y = 0.7;
+        pupil.scale.set(0.85, 0.75, 1);
+      } else if (kind === "young") {
+        eye.scale.set(1.12, 1.18, 1);
+        pupil.scale.set(1.05, 1.05, 1);
+      }
     }
-    const brow = place(parts.brow, hairMat, side * 0.044, eyeY + 0.026, 0.076);
-    brow.rotation.z = side * browTilt;
+    const brow = place(parts.brow, hairMat, side * 0.044, eyeY + (spec.asleep ? 0.016 : 0.026), 0.076);
+    brow.rotation.z = side * (spec.asleep ? 0.06 : browTilt);
   });
   // Sits on the front of the cube. Half of it is inside the skull, so there is no gap.
   place(parts.nose, skin, 0, -0.01, 0.074);
@@ -20371,6 +20532,17 @@ function poseIdle(rig, ud, now, w, rainUp) {
     rig.torso.rotation.y += (0.22 * side - rig.torso.rotation.y) * w;
     rig.head.rotation.y += (0.7 * side - rig.head.rotation.y) * w;
     if (!rainUp && rig.prop !== "pole") poseToward(rig.armR, -1.42, 0.18 * side, -0.38, 0.04 * side, w);
+  } else if (act === "swing") {
+    // A short jab, not a wind-up. The other arm stays in across the ribs.
+    const hit = Math.max(0, Math.sin(now * 8.5 + ud.offset * 2));
+    rig.torso.rotation.y += ((0.45 - hit * 1.05) * side - rig.torso.rotation.y) * w;
+    rig.torso.rotation.x += (0.08 + hit * 0.12 - rig.torso.rotation.x) * w;
+    rig.head.rotation.y += (0.15 * side - rig.head.rotation.y) * w;
+    rig.hip.rotation.z += hit * 0.08 * side * w;
+    if (!rainUp && rig.prop !== "pole") {
+      poseToward(rig.armR, -0.35 - hit * 1.55, 0.12 * side, -0.45 - hit * 0.35, 0.08 * side, w);
+      poseToward(rig.armL, -0.85, -0.55 * side, -1.45, -0.12 * side, w);
+    }
   }
   if (ud.scale < 0.8 && act !== "rest") rig.head.rotation.y += Math.sin(now * 1.15 + ud.offset) * 0.22 * w;
   rig.torso.rotation.x += Math.sin(now * 1.35 + ud.offset * 2) * 0.012 * w;
@@ -20381,6 +20553,12 @@ function poseIdle(rig, ud, now, w, rainUp) {
     rig.torso.rotation.z += Math.sin(n * 1.15) * 0.035 * w;
     rig.head.rotation.y += Math.sin(n * 2.05) * 0.07 * w;
     rig.head.rotation.x += Math.sin(n * 0.83) * 0.04 * w;
+  }
+  if (ud.gang && w > 0.02) {
+    const n = now + (ud.offset || 0);
+    rig.hip.position.x += Math.sin(n * 2.1) * 0.018 * w;
+    rig.torso.rotation.z += Math.sin(n * 1.7) * 0.04 * w;
+    rig.head.rotation.y += Math.sin(n * 2.4) * 0.06 * w;
   }
 }
 function stepWalker(fig, now) {
@@ -20400,6 +20578,7 @@ function turnToward(ud, x, z) {
 }
 function considerPerson(ud, other, best) {
   if (!other || other === ud || other.heat || other.keeper || other.post || other.wait > 0 || walkerHome(other)) return best;
+  if (other.day && !dayCrowdNow() && !other.fig) return best;
   if (other.who < ud.who) return best;
   const dx = other.x - ud.x, dz = other.z - ud.z;
   const d2 = dx * dx + dz * dz;
@@ -20479,13 +20658,13 @@ function advanceWalker(ud, now, fig) {
   ud.clock = (ud.clock == null ? now : ud.clock) + dt;
   now = ud.clock;
   if (ud.nextAct == null) ud.nextAct = now + 1.2 + Math.abs(ud.offset * 5) % 4;
-  const fleeing = !!(ud.heat && ud.flight);
-  if (fleeing) {
+  const offLane = !!(ud.heat && ud.corner);
+  if (offLane) {
     ud.wait = 0;
     ud.held = false;
     ud.act = null;
   }
-  if (!fleeing && ud.wait > 0) {
+  if (!offLane && ud.wait > 0) {
     ud.wait -= dt;
     if (ud.act && ud.actLeft != null) {
       ud.actLeft -= dt;
@@ -20499,13 +20678,14 @@ function advanceWalker(ud, now, fig) {
       ud.actLeft = 0;
       ud.nextAct = now + 3.6 + Math.abs(ud.offset * 4) % 3.2;
     }
-  } else if (!fleeing) {
+  } else if (!offLane) {
     let speed = ud.speed;
     ud.held = false;
     const crowd = ud.inside ? cityFolk : walkers;
     for (let i = 0; i < crowd.length; i++) {
       const other = ud.inside ? crowd[i] : crowd[i].userData;
       if (other === ud || other.heat || other.path !== path || other.along == null || walkerHome(other)) continue;
+      if (other.day && !dayCrowdNow() && !other.fig) continue;
       const ahead = (other.along - ud.along) * ud.dir;
       if (other.wait > 0 && ahead > 0.04 && ahead < 0.8) {
         speed = 0;
@@ -20519,7 +20699,7 @@ function advanceWalker(ud, now, fig) {
     } else {
       let face = ud.dir;
       let step = speed * dt;
-      if (ud.heat && step > 0.12) step = 0.12;
+      if (ud.heat && step > 0.18) step = 0.18;
       let landed = ud.along + step * face;
       if (landed >= span) {
         landed = span;
@@ -20542,7 +20722,7 @@ function advanceWalker(ud, now, fig) {
   }
   let along = ud.along;
   let dy = 0;
-  if (!fleeing) {
+  if (!offLane) {
     const frame = walkerFrame(path, along, ud.dir);
     const yaw = frame.yaw;
     const pz = frame.worldZ;
@@ -20861,6 +21041,7 @@ function tuckBrolly(fig) {
     tuckBrolly.sample = { x: +cx.toFixed(2), z: +cz.toFixed(2), y: +brollyTuck.wp.y.toFixed(2), worst: +worst.toFixed(2) };
   }
 }
+let alleySleep = null;
 function gatherStreetPaths() {
   bakeWalk();
   const out = [];
@@ -20955,6 +21136,7 @@ function addWalker(path, spec, i, place) {
   ud.act = null;
   ud.chatCool = 0;
   ud.who = addWalker.seq = (addWalker.seq || 0) + 1;
+  ud.day = place && place.day ? 1 : 0;
   ud.meetCool = (ud.who % 5) * 0.4;
   ud.lookCool = (ud.who % 13) * 0.9;
   ud.fig = fig;
@@ -21008,14 +21190,33 @@ streetPaths.forEach(p => {
 streetPaths.forEach(p => {
   if (p.b - p.a >= 28) roster.push({ path: p, slot: 2 });
 });
+// Extra residents from eight until ten. A short lane gains one, a long lane
+// two, in the gaps the standing roster leaves. They are records until the
+// lens is clear, the same as the people already on these paths.
+streetPaths.forEach(p => {
+  const span = p.b - p.a;
+  if (span < 12) return;
+  const frac = span < 18 ? 0.72 : span < 28 ? 0.44 : 0.88;
+  roster.push({ path: p, frac, day: 1 });
+  if (span >= 26) roster.push({ path: p, frac: 0.08, day: 1 });
+});
 roster.forEach((entry, i) => {
   const span = entry.path.b - entry.path.a;
-  const frac = entry.slot === 0 ? 0.2 : entry.slot === 1 ? 0.68 : 0.44;
-  const along = (span * frac + (i % 6) * 0.6) % span;
-  addWalker(entry.path, outfits[(i + entry.slot * 4) % outfits.length], i, {
-    dir: entry.slot % 2 ? -1 : 1,
+  let along;
+  if (entry.day) {
+    along = span * entry.frac + ((i % 5) - 2) * 0.28;
+    if (along < 1) along = 1;
+    if (along > span - 1) along = span - 1;
+  } else {
+    const frac = entry.slot === 0 ? 0.2 : entry.slot === 1 ? 0.68 : 0.44;
+    along = (span * frac + (i % 6) * 0.6) % span;
+  }
+  const slot = entry.slot || 0;
+  addWalker(entry.path, outfits[(i + slot * 4) % outfits.length], i, {
+    dir: slot % 2 ? -1 : 1,
     along,
-    inside: true
+    inside: true,
+    day: entry.day ? 1 : 0
   });
 });
 // What the person behind the counter is wearing, and what their hands do
@@ -21181,24 +21382,64 @@ function dropKeepers() {
     if (keeperPosts[i].fig) dropKeeper(keeperPosts[i]);
   }
 }
-function keeperSeen(post, radius, reach) {
-  const cam = camera.position;
-  const dx = post.x - cam.x;
-  const dy = post.y + 0.72 - cam.y;
-  const dz = post.z - cam.z;
-  if (dx * dx + dy * dy + dz * dz > reach * reach) return false;
-  keeperView.sphere.center.set(post.x, post.y + 0.72, post.z);
-  keeperView.sphere.radius = radius;
-  return keeperView.frustum.intersectsSphere(keeperView.sphere);
+function refreshFigureView() {
+  camera.updateMatrixWorld();
+  keeperView.mat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  keeperView.frustum.setFromProjectionMatrix(keeperView.mat);
 }
-// Walk mode only. A shop in the frame gains its keeper while that trade is
-// open. One that leaves the frame, or whose gate has shut, loses the keeper.
-// Two builds a frame, nearest first, so a turn does not hitch.
+// How far a body sphere sits inside the lens. Positive is in the picture,
+// zero is touching the frame, negative is fully outside.
+function figureViewGap(x, y, z, radius) {
+  const c = keeperView.sphere.center;
+  c.set(x, y, z);
+  const planes = keeperView.frustum.planes;
+  let gap = Infinity;
+  for (let i = 0; i < planes.length; i++) {
+    const g = planes[i].distanceToPoint(c) + radius;
+    if (g < gap) gap = g;
+  }
+  return gap;
+}
+function figureInView(x, y, z, radius) {
+  return figureViewGap(x, y, z, radius) >= 0;
+}
+function figureNearCam(x, y, z, reach) {
+  const dx = x - camera.position.x;
+  const dy = y - camera.position.y;
+  const dz = z - camera.position.z;
+  return dx * dx + dy * dy + dz * dz <= reach * reach;
+}
+// A body is built only once it is fully off the lens, and it is thrown away
+// only once it is fully off the lens. Closing time, the late crowd, and
+// leaving the street all wait for that. Two builds a frame, the ones closest
+// to the frame first, so a turn does not hitch and does not pop a person in.
+const FIGURE_CLEAR = -0.08;
+function emptyFigureOffer() {
+  return { a: -1, b: -1, ag: -Infinity, bg: -Infinity, ad: Infinity, bd: Infinity };
+}
+function offerFigure(slot, gap, dist2, index) {
+  if (gap > slot.ag || (gap === slot.ag && dist2 < slot.ad)) {
+    slot.bg = slot.ag; slot.b = slot.a; slot.bd = slot.ad;
+    slot.ag = gap; slot.a = index; slot.ad = dist2;
+  } else if (gap > slot.bg || (gap === slot.bg && dist2 < slot.bd)) {
+    slot.bg = gap; slot.b = index; slot.bd = dist2;
+  }
+}
 // After eleven the pavements thin out. The same one in three stays, and
 // the rest are back after eight. The shop gates keep their own hours.
+// Someone still in the picture keeps walking until they leave it.
 function streetBusyNow() {
-  const hour = ((stepSky.clock % 1) + 1) % 1 * 24;
+  const hour = clockHour();
   return hour >= 8 && hour < 23;
+}
+// The extra residents are out from eight until ten. After ten they keep
+// walking only while they are still in the picture, then the record waits.
+function dayCrowdNow() {
+  const hour = clockHour();
+  return hour >= 8 && hour < 22;
+}
+function folkOut(ud) {
+  return walkerHome(ud) || !!(ud && ud.day && !dayCrowdNow());
 }
 function walkerHome(ud) {
   return !!(ud && ud.who && !streetBusyNow() && (ud.who % 3) !== 0);
@@ -21221,34 +21462,30 @@ function noteShopHours() {
 }
 function syncKeepers(now) {
   noteShopHours();
-  if (!walkMode) {
-    if (keepers.length) dropKeepers();
-    return;
-  }
-  camera.updateMatrixWorld();
-  keeperView.mat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-  keeperView.frustum.setFromProjectionMatrix(keeperView.mat);
-  let a = -1, b = -1, ad = Infinity, bd = Infinity;
+  refreshFigureView();
+  const offer = emptyFigureOffer();
   const budget = pace.tier === 0 ? 1 : 2;
   for (let i = 0; i < keeperPosts.length; i++) {
     const post = keeperPosts[i];
-    if (!shopOpenNow(post.kind)) {
-      if (post.fig) dropKeeper(post);
-      continue;
-    }
+    const py = post.y + 0.85;
+    const gap = figureViewGap(post.x, py, post.z, 0.95);
+    const seen = gap >= 0;
+    const want = walkMode && shopOpenNow(post.kind);
     if (post.fig) {
-      if (!keeperSeen(post, 1.35, KEEPER_REACH_OUT)) dropKeeper(post);
+      const near = figureNearCam(post.x, py, post.z, KEEPER_REACH_OUT);
+      if (!seen && (!want || !near)) dropKeeper(post);
+      else if (seen) wakeFigure(post.fig);
+      else dozeFigure(post.fig);
       continue;
     }
-    if (!keeperSeen(post, 0.72, KEEPER_REACH)) continue;
+    if (!want || gap >= FIGURE_CLEAR) continue;
+    if (!figureNearCam(post.x, py, post.z, KEEPER_REACH)) continue;
     const dx = post.x - camera.position.x;
     const dz = post.z - camera.position.z;
-    const d = dx * dx + dz * dz;
-    if (d < ad) { bd = ad; b = a; ad = d; a = i; }
-    else if (d < bd) { bd = d; b = i; }
+    offerFigure(offer, gap, dx * dx + dz * dz, i);
   }
-  if (a >= 0) spawnKeeper(keeperPosts[a], now);
-  if (budget > 1 && b >= 0) spawnKeeper(keeperPosts[b], now);
+  if (offer.a >= 0) spawnKeeper(keeperPosts[offer.a], now);
+  if (budget > 1 && offer.b >= 0) spawnKeeper(keeperPosts[offer.b], now);
 }
 function spawnFolk(ud) {
   if (ud.fig) return;
@@ -21275,59 +21512,77 @@ function dropFolk(ud) {
   disposeOwned(fig);
   renderWetReflection.figs = null;
 }
-function folkSeen(ud, radius, reach) {
-  const cam = camera.position;
-  const dx = ud.x - cam.x;
-  const dy = (ud.y || 0) + 0.75 - cam.y;
-  const dz = ud.z - cam.z;
-  if (dx * dx + dy * dy + dz * dz > reach * reach) return false;
-  keeperView.sphere.center.set(ud.x, (ud.y || 0) + 0.75, ud.z);
-  keeperView.sphere.radius = radius;
-  return keeperView.frustum.intersectsSphere(keeperView.sphere);
-}
-// Lane residents share the shopkeeper rule: a body only while walking, and
-// only while it sits in the frame. The outer pavements are not in this list.
+// Lane residents use the same rule as the keepers. A body is built off the
+// lens and dropped off the lens. After eleven, one who is still in the
+// picture keeps walking until the frame has let them go.
 function syncCityFolk(now) {
-  if (!walkMode) {
-    for (let i = 0; i < cityFolk.length; i++) if (cityFolk[i].fig) dropFolk(cityFolk[i]);
-  } else {
-    camera.updateMatrixWorld();
-    keeperView.mat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-    keeperView.frustum.setFromProjectionMatrix(keeperView.mat);
-    let a = -1, b = -1, ad = Infinity, bd = Infinity;
-    const budget = pace.tier === 0 ? 1 : 2;
-    for (let i = 0; i < cityFolk.length; i++) {
-      const ud = cityFolk[i];
-      if (walkerHome(ud)) {
-        if (ud.fig) dropFolk(ud);
-        continue;
-      }
-      if (ud.fig) {
-        if (!folkSeen(ud, 1.4, KEEPER_REACH_OUT)) dropFolk(ud);
-        continue;
-      }
-      if (!folkSeen(ud, 0.75, KEEPER_REACH)) continue;
-      const dx = ud.x - camera.position.x;
-      const dz = ud.z - camera.position.z;
-      const d = dx * dx + dz * dz;
-      if (d < ad) { bd = ad; b = a; ad = d; a = i; }
-      else if (d < bd) { bd = d; b = i; }
-    }
-    if (a >= 0) spawnFolk(cityFolk[a]);
-    if (budget > 1 && b >= 0) spawnFolk(cityFolk[b]);
-  }
+  refreshFigureView();
+  const offer = emptyFigureOffer();
+  const budget = pace.tier === 0 ? 1 : 2;
   for (let i = 0; i < cityFolk.length; i++) {
     const ud = cityFolk[i];
-    if (walkerHome(ud)) continue;
+    const py = (ud.y || 0) + 0.85;
+    const gap = figureViewGap(ud.x, py, ud.z, 0.95);
+    const seen = gap >= 0;
+    const want = walkMode && !folkOut(ud);
+    if (ud.fig) {
+      const near = figureNearCam(ud.x, py, ud.z, KEEPER_REACH_OUT);
+      if (!seen && (!want || !near)) dropFolk(ud);
+      else if (seen) wakeFigure(ud.fig);
+      else dozeFigure(ud.fig);
+      continue;
+    }
+    if (!want || gap >= FIGURE_CLEAR) continue;
+    if (!figureNearCam(ud.x, py, ud.z, KEEPER_REACH)) continue;
+    const dx = ud.x - camera.position.x;
+    const dz = ud.z - camera.position.z;
+    offerFigure(offer, gap, dx * dx + dz * dz, i);
+  }
+  if (offer.a >= 0) spawnFolk(cityFolk[offer.a]);
+  if (budget > 1 && offer.b >= 0) spawnFolk(cityFolk[offer.b]);
+  for (let i = 0; i < cityFolk.length; i++) {
+    const ud = cityFolk[i];
+    if (folkOut(ud) && !ud.fig) continue;
     advanceWalker(ud, now, ud.fig || null);
+  }
+}
+function syncPavement(now) {
+  refreshFigureView();
+  for (let i = 0; i < walkers.length; i++) {
+    const fig = walkers[i];
+    const ud = fig.userData;
+    if (ud.inside) continue;
+    const home = walkerHome(ud);
+    const py = (ud.y == null ? fig.position.y : ud.y) + 0.85;
+    const px = ud.x == null ? fig.position.x : ud.x;
+    const pz = ud.z == null ? fig.position.z : ud.z;
+    const gap = figureViewGap(px, py, pz, 0.95);
+    if (home) {
+      // Still in the picture: keep walking. Hide only once the body is out.
+      if (gap >= 0 && fig.visible) {
+        wakeFigure(fig);
+        stepWalker(fig, now);
+        continue;
+      }
+      if (gap < 0 && fig.visible) fig.visible = false;
+      dozeFigure(fig);
+      continue;
+    }
+    if (!fig.visible) {
+      if (gap >= FIGURE_CLEAR) continue;
+      fig.visible = true;
+    }
+    wakeFigure(fig);
+    stepWalker(fig, now);
   }
 }
 // A short scuffle and a chase in the next alley, some nights between
 // midnight and four. Separate from the residents, so the late crowd
-// does not send two of them home. When the lane runs out, each one
-// peels off on their own and is dropped the moment they leave the lens.
+// does not send two of them home. They stay on the lane and take a
+// corner where two alleys actually meet. Once the chase is over they
+// are dropped together, and only after the last of them has left the lens.
 const alleyHeat = [];
-const heat = { phase: "quiet", nights: 0, prev: null, rolled: false, t: 0, spot: null, leaving: false };
+const heat = { phase: "quiet", nights: 0, prev: null, rolled: false, decided: false, want: false, t: 0, spot: null, leaving: false };
 const HEAT_WEAR = [
   { role: "run", top: 0xe8e2d4, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 0, shoes: 0x1a1816, towel: true, habit: "smoke", gait: "walk" },
   { role: "shove", top: 0x8a949a, sleeve: "short", pants: 0x1c1a18, hair: "short", skin: 2, shoes: 0x1a1816, gait: "walk" },
@@ -21345,7 +21600,7 @@ function heatNearPath(x, z) {
   for (let i = 0; i < streetPaths.length; i++) {
     const p = streetPaths[i];
     const span = p.b - p.a;
-    if (span < 8) continue;
+    if (p.world || span < 8) continue;
     const along = p.axis === "z"
       ? Math.max(0, Math.min(span, z - p.a))
       : Math.max(0, Math.min(span, x - p.a));
@@ -21384,9 +21639,7 @@ function dropHeatOne(rec) {
   if (at >= 0) alleyHeat.splice(at, 1);
 }
 function heatRefreshView() {
-  camera.updateMatrixWorld();
-  keeperView.mat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-  keeperView.frustum.setFromProjectionMatrix(keeperView.mat);
+  refreshFigureView();
 }
 function heatSeen(rec) {
   const foot = rec.y == null ? GROUND_Y : rec.y;
@@ -21398,10 +21651,9 @@ function heatSeen(rec) {
 function cullHeatUnseen() {
   if (!heat.leaving && !alleyHeat.some(function (rec) { return rec.leaving; })) return;
   heatRefreshView();
+  for (let i = 0; i < alleyHeat.length; i++) if (heatSeen(alleyHeat[i])) return;
   for (let i = alleyHeat.length - 1; i >= 0; i--) {
-    const rec = alleyHeat[i];
-    if (!rec.leaving || heatSeen(rec)) continue;
-    dropHeatOne(rec);
+    if (alleyHeat[i].leaving) dropHeatOne(alleyHeat[i]);
   }
   if (!alleyHeat.length) {
     heat.phase = "quiet";
@@ -21417,13 +21669,11 @@ function attachHeat(rec) {
   rec.fig = fig;
   fig.userData = rec;
   const footY = rec.y == null ? (rec.path.y == null ? GROUND_Y : rec.path.y) : rec.y;
-  if (!rec.flight) {
-    const frame = walkerFrame(rec.path, rec.along, rec.dir);
-    rec.x = frame.worldX;
-    rec.y = footY;
-    rec.z = frame.worldZ;
-    rec.yaw = frame.yaw;
-  }
+  const frame = walkerFrame(rec.path, rec.along, rec.dir);
+  rec.x = frame.worldX;
+  rec.y = footY;
+  rec.z = frame.worldZ;
+  rec.yaw = frame.yaw;
   const localX = rec.x - SHEAR_K * rec.z;
   fig.position.set(localX, footY, rec.z);
   fig.rotation.y = rec.yaw || 0;
@@ -21462,99 +21712,172 @@ function heatBeat(role, t) {
   for (let i = 0; i < seq.length; i++) if (t >= seq[i].t) beat = seq[i];
   return beat;
 }
-function heatGap(rec, speed) {
-  let out = speed;
-  for (let i = 0; i < alleyHeat.length; i++) {
-    const other = alleyHeat[i];
-    if (other === rec || other.flight || other.path !== rec.path || other.along == null) continue;
-    const ahead = (other.along - rec.along) * rec.dir;
-    if (ahead > 0.45 && ahead < 1.85) out *= Math.max(0.35, (ahead - 0.45) / 1.4);
+// Alleys meet at their ends. A chase uses those corners. Cutting across the
+// lane at the end of a straight puts a body in the wall.
+function heatBuildGraph() {
+  if (heatBuildGraph.map) return heatBuildGraph.map;
+  const paths = [];
+  for (let i = 0; i < streetPaths.length; i++) {
+    const p = streetPaths[i];
+    if (p.world || p.b - p.a < 6) continue;
+    paths.push(p);
   }
-  return out;
-}
-function heatShouldFlee(rec, span) {
-  if (rec.flight) return false;
-  const end = rec.dir > 0 ? span - rec.along : rec.along;
-  if (end < 0.8) return true;
-  for (let i = 0; i < alleyHeat.length; i++) {
-    const other = alleyHeat[i];
-    if (other === rec || other.path !== rec.path || other.along == null) continue;
-    const ahead = (other.along - rec.along) * rec.dir;
-    if (ahead < -0.05 || ahead > 1.7) continue;
-    const otherEnd = other.dir > 0 ? span - other.along : other.along;
-    if (other.flight || otherEnd < 1.3 || ahead < 0.95) return true;
+  const map = new Map();
+  function ends(path) {
+    let rec = map.get(path);
+    if (!rec) map.set(path, rec = [[], []]);
+    return rec;
   }
-  return false;
+  function atPoint(path, along) {
+    const frame = walkerFrame(path, along, 1);
+    return { x: frame.worldX, z: frame.worldZ };
+  }
+  function open(x0, z0, x1, z1) {
+    const n = 5;
+    for (let i = 1; i < n; i++) {
+      const t = i / n;
+      if (walkBlocked(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t, { pad: 0.08, bodies: false })) return false;
+    }
+    return true;
+  }
+  for (let i = 0; i < paths.length; i++) {
+    const p = paths[i];
+    const spanP = p.b - p.a;
+    for (let e = 0; e < 2; e++) {
+      const from = atPoint(p, e ? spanP : 0);
+      for (let j = 0; j < paths.length; j++) {
+        if (i === j) continue;
+        const q = paths[j];
+        const span = q.b - q.a;
+        let along, lateral;
+        if (q.axis === "z") {
+          along = from.z - q.a;
+          lateral = Math.abs(from.x - q.c);
+        } else {
+          along = from.x - q.a;
+          lateral = Math.abs(from.z - q.c);
+        }
+        if (lateral > 1.9) continue;
+        if (along < -1.1 || along > span + 1.1) continue;
+        const at = Math.max(0.5, Math.min(span - 0.5, along));
+        const to = atPoint(q, at);
+        if (Math.hypot(to.x - from.x, to.z - from.z) > 2.15) continue;
+        if (!open(from.x, from.z, to.x, to.z)) continue;
+        const dir = (span - at) >= at ? 1 : -1;
+        const run = dir > 0 ? span - at : at;
+        if (run < 3) continue;
+        ends(p)[e].push({ path: q, at: at, dir: dir, x: to.x, z: to.z, run: run });
+      }
+    }
+  }
+  heatBuildGraph.map = map;
+  return map;
 }
-function beginFlight(rec) {
-  if (!rec || rec.flight) return;
-  const yaw = rec.yaw || 0;
-  const fx = Math.sin(yaw), fz = Math.cos(yaw);
-  const rx = Math.cos(yaw), rz = -Math.sin(yaw);
-  const side = rec.role === "follow" ? -0.95 : rec.role === "shove" ? 0.75 : 0.7;
-  const fwd = rec.role === "shove" ? 0.4 : 1;
-  let vx = fx * fwd + rx * side;
-  let vz = fz * fwd + rz * side;
-  const len = Math.hypot(vx, vz) || 1;
-  rec.flight = {
-    x: vx / len,
-    z: vz / len,
-    speed: rec.role === "shove" ? 1.9 : 2.75,
-    steer: side < 0 ? -1 : 1,
-    stuck: 0
-  };
-  rec.leaving = true;
-  heat.leaving = true;
-  rec.wait = 0;
-  rec.act = null;
-  rec.bias = 0;
-  rec.speed = rec.flight.speed;
+function heatChooseLink(rec) {
+  const map = heatBuildGraph();
+  const ends = map.get(rec.path);
+  if (!ends) return null;
+  const end = rec.dir > 0 ? 1 : 0;
+  const options = ends[end];
+  if (!options || !options.length) return null;
+  if (rec.role !== "run") {
+    if (!heat.trail) return null;
+    for (let i = heat.trail.length - 1; i >= 0; i--) {
+      if (heat.trail[i].from === rec.path) return heat.trail[i].link;
+    }
+    return null;
+  }
+  let best = null, bestScore = -1;
+  for (let i = 0; i < options.length; i++) {
+    const opt = options[i];
+    if (opt.path === rec.path) continue;
+    const turn = opt.path.axis !== rec.path.axis ? 2 : 0;
+    const score = turn + Math.min(opt.run, 24) / 24;
+    if (score > bestScore) { bestScore = score; best = opt; }
+  }
+  return best;
 }
-function stepHeatFlee(rec, dt) {
-  const fly = rec.flight;
-  if (!fly) return;
-  const step = Math.min(0.12, fly.speed * Math.max(0, dt || 0));
-  let nx = (rec.x || 0) + fly.x * step;
-  let nz = (rec.z || 0) + fly.z * step;
+function heatConsiderTurn(rec) {
+  if (rec.corner || !rec.path) return;
+  const span = rec.path.b - rec.path.a;
+  const remain = rec.dir > 0 ? span - rec.along : rec.along;
+  const probe = rec.along + rec.dir * 0.8;
+  const blocked = probe > 0.3 && probe < span - 0.3 && walkerBlocked(rec.path, probe, rec.dir);
+  if (remain > 1.7 && !blocked) {
+    if (remain > 2.2) rec.turned = 0;
+    return;
+  }
+  if (rec.turned) return;
+  const link = heatChooseLink(rec);
+  if (!link) {
+    if (rec.role === "run") {
+      rec.turned = 1;
+      rec.dir = -rec.dir;
+    } else rec.speed = 0;
+    return;
+  }
+  rec.turned = 1;
+  if (rec.role === "run") {
+    if (!heat.trail) heat.trail = [];
+    heat.trail.push({ from: rec.path, link: link });
+  }
+  rec.corner = link;
+}
+function stepHeatCorner(rec, dt) {
+  const corner = rec.corner;
+  if (!corner) return;
+  if ((rec.speed || 0) < 0.05) return;
+  const step = Math.min(0.12, rec.speed * Math.max(0, dt || 0));
+  const dx = corner.x - (rec.x || 0);
+  const dz = corner.z - (rec.z || 0);
+  const dist = Math.hypot(dx, dz);
+  if (dist <= step + 0.08) {
+    rec.path = corner.path;
+    rec.along = corner.at;
+    rec.dir = corner.dir;
+    rec.turned = 0;
+    rec.corner = null;
+    const frame = walkerFrame(rec.path, rec.along, rec.dir);
+    rec.x = frame.worldX;
+    rec.z = frame.worldZ;
+    rec.yaw = frame.yaw;
+    rec.y = GROUND_Y;
+    if (rec.fig) {
+      rec.fig.position.set(frame.worldX - SHEAR_K * frame.worldZ, GROUND_Y, frame.worldZ);
+      rec.fig.rotation.y = rec.yaw;
+    }
+    return;
+  }
+  const nx = (rec.x || 0) + dx / dist * step;
+  const nz = (rec.z || 0) + dz / dist * step;
   if (walkBlocked(nx, nz, { pad: 0.06, bodies: false })) {
-    fly.stuck += dt;
-    const yaw = Math.atan2(fly.x, fly.z) + fly.steer * (fly.stuck > 0.4 ? 1.15 : 0.65);
-    fly.x = Math.sin(yaw);
-    fly.z = Math.cos(yaw);
-    nx = (rec.x || 0) + fly.x * step * 0.65;
-    nz = (rec.z || 0) + fly.z * step * 0.65;
-    if (walkBlocked(nx, nz, { pad: 0.06, bodies: false })) {
-      nx = rec.x;
-      nz = rec.z;
-    }
-  } else fly.stuck = 0;
-  for (let i = 0; i < alleyHeat.length; i++) {
-    const other = alleyHeat[i];
-    if (other === rec) continue;
-    const dx = nx - (other.x || 0), dz = nz - (other.z || 0);
-    const dist = Math.hypot(dx, dz);
-    if (dist < 0.98 && dist > 0.001) {
-      nx += dx / dist * (0.98 - dist);
-      nz += dz / dist * (0.98 - dist);
-    }
+    rec.corner = null;
+    rec.dir = -rec.dir;
+    rec.turned = 1;
+    return;
   }
   rec.x = nx;
   rec.z = nz;
   rec.y = GROUND_Y;
-  const want = Math.atan2(fly.x, fly.z);
+  const want = Math.atan2(dx, dz);
   let turn = want - (rec.yaw || 0);
   turn = Math.atan2(Math.sin(turn), Math.cos(turn));
-  rec.yaw = (rec.yaw || 0) + turn * Math.min(1, dt * 7);
-  const fig = rec.fig;
-  if (!fig) return;
-  fig.position.set(nx - SHEAR_K * nz, GROUND_Y, nz);
-  fig.rotation.y = rec.yaw;
+  rec.yaw = (rec.yaw || 0) + turn * Math.min(1, (dt || 0.05) * 8);
+  if (rec.fig) {
+    rec.fig.position.set(nx - SHEAR_K * nz, GROUND_Y, nz);
+    rec.fig.rotation.y = rec.yaw;
+  }
+}
+function heatMarkLeaving() {
+  heat.leaving = true;
+  for (let i = 0; i < alleyHeat.length; i++) alleyHeat[i].leaving = true;
 }
 function beginHeat(spot) {
   heat.spot = spot;
   heat.phase = "scuffle";
   heat.t = 0;
   heat.leaving = false;
+  heat.trail = [];
   const span = spot.path.b - spot.path.a;
   const d = spot.dir;
   const seats = [
@@ -21591,6 +21914,17 @@ function beginHeat(spot) {
     alleyHeat.push(rec);
   }
 }
+function heatCastHidden(spot) {
+  const span = spot.path.b - spot.path.a;
+  const d = spot.dir;
+  const seats = [spot.start + 1.05 * d, spot.start, spot.start - 0.85 * d];
+  for (let i = 0; i < seats.length; i++) {
+    const along = Math.max(0.35, Math.min(span - 0.35, seats[i]));
+    const frame = walkerFrame(spot.path, along, d);
+    if (figureInView(frame.worldX, GROUND_Y + 0.85, frame.worldZ, 0.95)) return false;
+  }
+  return true;
+}
 function heatCastReady() {
   for (let i = 0; i < alleyHeat.length; i++) if (!alleyHeat[i].fig) return false;
   return alleyHeat.length > 0;
@@ -21601,7 +21935,9 @@ function stepAlleyHeat(now, dt) {
   else if (clock < heat.prev - 0.002) {
     heat.nights++;
     heat.rolled = false;
-    for (let i = 0; i < alleyHeat.length; i++) beginFlight(alleyHeat[i]);
+    heat.decided = false;
+    heat.want = false;
+    if (alleyHeat.length) heatMarkLeaving();
   }
   heat.prev = clock;
   const hour = clock * 24;
@@ -21615,37 +21951,47 @@ function stepAlleyHeat(now, dt) {
     }
     return;
   }
-  if (!open) {
-    for (let i = 0; i < alleyHeat.length; i++) beginFlight(alleyHeat[i]);
-  }
+  if (!open && alleyHeat.length) heatMarkLeaving();
   if (!heat.rolled && !alleyHeat.length) {
     heat.phase = "armed";
     const startHour = heatUnit(heat.nights) * 4;
     if (hour + 1e-4 < startHour || !walkMode) return;
-    heat.rolled = true;
-    if (heatUnit(heat.nights * 2 + 1) < 0.5) {
+    if (!heat.decided) {
+      heat.decided = true;
+      heat.want = heatUnit(heat.nights * 2 + 1) >= 0.5;
+    }
+    if (!heat.want) {
+      heat.rolled = true;
       heat.phase = "quiet";
       return;
     }
     const spot = heatNearPath(walkX, walkZ);
     if (!spot) {
+      heat.rolled = true;
       heat.phase = "quiet";
       return;
     }
+    // The scuffle starts off the lens. While the alley is in the picture,
+    // wait. The roll for tonight is already decided.
+    heatRefreshView();
+    if (!heatCastHidden(spot)) return;
+    heat.rolled = true;
     beginHeat(spot);
   }
   if (heat.phase !== "scuffle" && heat.phase !== "chase") return;
-  if (!walkMode) {
-    dropHeatMeshes();
+  if (!walkMode) heatMarkLeaving();
+  heatRefreshView();
+  for (let i = 0; i < alleyHeat.length; i++) {
+    const rec = alleyHeat[i];
+    if (rec.fig || rec.leaving || heat.leaving) continue;
+    if (heatSeen(rec)) continue;
+    attachHeat(rec);
+    break;
+  }
+  if (!heatCastReady()) {
+    if (heat.leaving || alleyHeat.some(function (rec) { return rec.leaving; })) cullHeatUnseen();
     return;
   }
-  for (let i = 0; i < alleyHeat.length; i++) {
-    if (!alleyHeat[i].fig) {
-      attachHeat(alleyHeat[i]);
-      break;
-    }
-  }
-  if (!heatCastReady()) return;
   const step = Math.min(0.05, Math.max(0, dt || 0));
   heat.t += step;
   if (heat.phase === "scuffle" && heat.t >= 6) {
@@ -21654,15 +22000,12 @@ function stepAlleyHeat(now, dt) {
   }
   const spot = heat.spot;
   if (!spot) return;
-  const chaseDir = spot.dir;
-  const span = spot.path.b - spot.path.a;
   const runner = heatRole("run");
   const shove = heatRole("shove");
   const follow = heatRole("follow");
   if (heat.phase === "scuffle") {
     for (let i = 0; i < alleyHeat.length; i++) {
       const rec = alleyHeat[i];
-      if (rec.flight) continue;
       const beat = heatBeat(rec.role, heat.t);
       rec.wait = 1.6;
       rec.act = beat.act;
@@ -21677,7 +22020,6 @@ function stepAlleyHeat(now, dt) {
   } else {
     for (let i = 0; i < alleyHeat.length; i++) {
       const rec = alleyHeat[i];
-      if (rec.flight) continue;
       const loose = rec.role === "run" || (rec.role === "follow" && heat.t >= 1) || (rec.role === "shove" && heat.t >= 2);
       if (!loose) {
         rec.wait = 1.6;
@@ -21688,22 +22030,561 @@ function stepAlleyHeat(now, dt) {
       rec.wait = 0;
       rec.act = null;
       rec.bias = 0;
-      rec.dir = rec.role === "shove" ? -chaseDir : chaseDir;
-      const pace = rec.role === "run" ? 2.55 : rec.role === "follow" ? 2.15 : 0.85;
-      rec.speed = heatGap(rec, pace);
-      if (heatShouldFlee(rec, span)) beginFlight(rec);
+      const lead = heatRole("run");
+      const spanNow = rec.path.b - rec.path.a;
+      if (rec.role !== "run" && lead && lead.path === rec.path && !lead.corner) rec.dir = lead.dir;
+      const remain = rec.dir > 0 ? spanNow - rec.along : rec.along;
+      const runnerGone = !!(lead && lead.path !== rec.path);
+      const left = !!(heat.trail && heat.trail.some(function (step) { return step.from === rec.path; }));
+      if (rec.role === "run") rec.speed = 2.55;
+      else if (lead && lead.path === rec.path && lead.corner && remain < 2.4) rec.speed = 0;
+      else if (lead && lead.path === rec.path && !lead.corner) {
+        const ahead = (lead.along - rec.along) * lead.dir;
+        if (ahead < 0.8) rec.speed = 0;
+        else if (ahead < 1.35) rec.speed = 1.45;
+        else if (ahead > 2.3) rec.speed = 3.3;
+        else rec.speed = 2.3;
+      } else if (runnerGone && left) rec.speed = 2.7;
+      else if (remain < 1.2) rec.speed = 0;
+      else rec.speed = 2.3;
+      if (rec.speed > 0) heatConsiderTurn(rec);
     }
-    if (heat.t >= 10) {
-      for (let i = 0; i < alleyHeat.length; i++) beginFlight(alleyHeat[i]);
-    }
+    if (heat.t >= 16) heatMarkLeaving();
   }
   for (let i = 0; i < alleyHeat.length; i++) {
     const rec = alleyHeat[i];
-    if (rec.flight) stepHeatFlee(rec, step);
+    if (rec.corner) stepHeatCorner(rec, step);
     advanceWalker(rec, now, rec.fig || null);
   }
   // Off the rail and out of the lens: drop that body now. The others keep going.
   cullHeatUnseen();
+}
+// A fight on the street in front of 天后廟, from one until three. The
+// number is fixed for the night, between five and eight. The bodies are
+// a separate cast from the alley chase. They are built only fully off the
+// lens, two a frame, and only while someone is on the street nearby. After
+// three, or once the street is left, a body that is still in the picture
+// keeps going until the lens has left it.
+const GANG_WEAR = [
+  { top: 0xe8e2d4, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 0, shoes: 0x1a1816, towel: true, habit: "smoke", gait: "walk" },
+  { top: 0x8a949a, sleeve: "short", pants: 0x1c1a18, hair: "short", skin: 2, shoes: 0x1a1816, gait: "walk" },
+  { top: 0x2a3344, sleeve: "short", pants: 0x243044, hair: "short", skin: 4, shoes: 0x2a241c, gait: "walk" },
+  { top: 0x6a1820, sleeve: "skin", pants: 0x1a1816, hair: "short", skin: 1, shoes: 0x1a1816, shorts: true, towel: true, gait: "walk" },
+  { top: 0x1a1c20, sleeve: "short", pants: 0x2a241c, hair: "short", skin: 3, shoes: 0x1a1816, habit: "smoke", gait: "walk" },
+  { top: 0xd5d0c4, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 0, shoes: 0x1a1816, shorts: true, gait: "walk" },
+  { top: 0x3c2a24, sleeve: "short", pants: 0x241c18, hair: "short", skin: 2, shoes: 0x1a1816, gait: "walk" },
+  { top: 0x8a3030, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 4, shoes: 0x7a3030, shorts: true, towel: true, gait: "walk" }
+];
+const GANG_BEAT = [
+  { t: 0, act: "swing" },
+  { t: 0.55, act: "point" },
+  { t: 1.15, act: "talk" },
+  { t: 1.7, act: "swing" },
+  { t: 2.35, act: "stoop" },
+  { t: 2.9, act: "swing" }
+];
+const GANG_LOOP = 3.4;
+// Pairs on 天后廟街, south of the gate. The posts are at about x 125.46
+// and 127.30, z 26.47, so these seats sit past the posts and out of the door.
+const GANG_SEATS = [
+  { x: 124.78, z: 26.72, dir: 1 },
+  { x: 125.22, z: 26.92, dir: -1 },
+  { x: 125.88, z: 26.70, dir: 1 },
+  { x: 126.42, z: 26.92, dir: -1 },
+  { x: 126.92, z: 26.70, dir: 1 },
+  { x: 127.58, z: 26.92, dir: -1 },
+  { x: 128.12, z: 26.70, dir: 1 },
+  { x: 128.68, z: 26.92, dir: -1 }
+];
+const gangFight = [];
+const gang = { nights: 0, prev: null, rolled: false, count: 0, leaving: false, t: 0 };
+function gangHour() {
+  const hour = clockHour();
+  return hour >= 1 && hour < 3;
+}
+function gangSeatPath(seat) {
+  return {
+    axis: "x", c: seat.z, a: seat.x - 0.2, b: seat.x + 0.3,
+    keep: 0, thick: 1.2, world: true, y: GROUND_Y
+  };
+}
+function gangActAt(rec, t) {
+  const local = ((t + (rec.offset || 0) * 0.37) % GANG_LOOP + GANG_LOOP) % GANG_LOOP;
+  let act = GANG_BEAT[0].act;
+  for (let i = 0; i < GANG_BEAT.length; i++) if (local >= GANG_BEAT[i].t) act = GANG_BEAT[i].act;
+  return act;
+}
+function dropGangOne(rec) {
+  const at = gangFight.indexOf(rec);
+  if (at >= 0) gangFight.splice(at, 1);
+  if (!rec.fig) return;
+  city.remove(rec.fig);
+  disposeOwned(rec.fig);
+  rec.fig = null;
+  rec.rig = null;
+  renderWetReflection.figs = null;
+}
+function attachGang(rec) {
+  if (rec.fig) return;
+  const fig = makeCitizen(rec.wear);
+  rec.rig = fig.userData.rig;
+  rec.fig = fig;
+  fig.userData = rec;
+  const frame = walkerFrame(rec.path, rec.along, rec.dir);
+  rec.x = frame.worldX;
+  rec.y = GROUND_Y;
+  rec.z = frame.worldZ;
+  rec.yaw = frame.yaw;
+  fig.position.set(rec.x - SHEAR_K * rec.z, rec.y, rec.z);
+  fig.rotation.y = rec.yaw || 0;
+  city.add(fig);
+  renderWetReflection.figs = null;
+}
+function beginGang() {
+  gangFight.length = 0;
+  gang.count = 5 + Math.floor(heatUnit(gang.nights * 5 + 11) * 4);
+  gang.t = 0;
+  for (let i = 0; i < gang.count; i++) {
+    const seat = GANG_SEATS[i];
+    gangFight.push({
+      gang: 1, live: true, wear: GANG_WEAR[i], path: gangSeatPath(seat),
+      along: 0.2, dir: seat.dir, speed: 0, wait: 1.6, act: "swing", bias: 0,
+      offset: i * 1.7 + 0.4, scale: 1, x: seat.x, y: GROUND_Y, z: seat.z,
+      yaw: seat.dir > 0 ? Math.PI / 2 : -Math.PI / 2
+    });
+  }
+}
+function stepGangFight(now, dt) {
+  const clock = stepSky.clock == null ? OPEN_CLOCK : stepSky.clock;
+  if (gang.prev == null) gang.prev = clock;
+  if (clock < gang.prev - 0.002) {
+    gang.nights++;
+    gang.rolled = false;
+    if (gangFight.length) gang.leaving = true;
+  }
+  gang.prev = clock;
+  const hourOpen = gangHour();
+  if (walkMode && hourOpen && !gang.rolled && !gang.leaving && !gangFight.length) {
+    gang.rolled = true;
+    beginGang();
+  }
+  if (gangFight.length && (!walkMode || !hourOpen)) gang.leaving = true;
+  refreshFigureView();
+  const offer = emptyFigureOffer();
+  const budget = pace.tier === 0 ? 1 : 2;
+  const want = walkMode && hourOpen && !gang.leaving;
+  for (let i = gangFight.length - 1; i >= 0; i--) {
+    const rec = gangFight[i];
+    const py = (rec.y || GROUND_Y) + 0.9;
+    const gap = figureViewGap(rec.x, py, rec.z, 0.95);
+    const seen = gap >= 0;
+    if (rec.fig) {
+      const hold = figureNearCam(rec.x, py, rec.z, KEEPER_REACH_OUT);
+      if (!seen && (!want || !hold)) {
+        dropGangOne(rec);
+        continue;
+      }
+      if (seen) {
+        wakeFigure(rec.fig);
+        rec.wait = 1.6;
+        rec.act = gangActAt(rec, gang.t);
+        rec.speed = 0;
+        advanceWalker(rec, now, rec.fig);
+      } else dozeFigure(rec.fig);
+      continue;
+    }
+    if (!want || gap >= FIGURE_CLEAR) continue;
+    if (!figureNearCam(rec.x, py, rec.z, KEEPER_REACH)) continue;
+    const dx = rec.x - camera.position.x;
+    const dz = rec.z - camera.position.z;
+    offerFigure(offer, gap, dx * dx + dz * dz, i);
+  }
+  if (want) {
+    if (offer.a >= 0) attachGang(gangFight[offer.a]);
+    if (budget > 1 && offer.b >= 0) attachGang(gangFight[offer.b]);
+    gang.t += dt;
+  }
+  if (gang.leaving && !gangFight.length) gang.leaving = false;
+}
+// Passed out against an alley wall after midnight. The same places each
+// night, off the walking line. The body only exists on the street, the way
+// a keeper does, and it is gone again by morning.
+const SLEEP_WEAR = [
+  { top: 0xe8e2d4, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 0, shoes: 0x1a1816, shorts: true, towel: true, gait: "walk" },
+  { top: 0xe6e0d2, sleeve: "skin", pants: 0x22201e, hair: "short", skin: 2, shoes: 0x1a1816, shorts: true, gait: "slow" },
+  { top: "check", sleeve: "short", pants: 0x2a241c, hair: "short", skin: 1, shoes: 0x1a1816, gait: "walk" },
+  { top: 0x8d7b62, sleeve: "long", pants: 0x2c2824, hair: "grey", skin: 3, shoes: 0x2a241c, gait: "slow" },
+  { top: 0x6d7870, sleeve: "short", pants: 0x1e1c1a, hair: "short", skin: 4, shoes: 0x1a1816, shorts: true, gait: "walk" },
+  { top: 0xd9d3c6, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 0, shoes: 0x1a1816, shorts: true, towel: true, gait: "slow" },
+  { top: 0x3c5160, sleeve: "short", pants: 0x1c1a18, hair: "short", skin: 2, shoes: 0x1a1816, gait: "walk" }
+];
+function sleepNight() {
+  return clockHour() < 8;
+}
+// The void rectangle is wider than the walls you walk between. A body placed
+// from that rectangle ends up in the lane. This ray is the face beside the spot.
+function sleepWallHits(path, along, sign) {
+  const index = sleepWallHits.index || (sleepWallHits.index = (function () {
+    const list = [];
+    const box = new THREE.Box3();
+    const cell = 8;
+    const grid = new Map();
+    scene.traverse(function (o) {
+      if (!o.isMesh || !o.matrixWorld || !o.visible) return;
+      if (o.userData && o.userData.live) return;
+      const geo = o.geometry;
+      if (!geo) return;
+      if (!geo.boundingSphere) geo.computeBoundingSphere();
+      const rad = geo.boundingSphere ? geo.boundingSphere.radius : 0;
+      if (rad * o.matrixWorld.getMaxScaleOnAxis() < 0.55) return;
+      if (!geo.boundingBox) geo.computeBoundingBox();
+      box.copy(geo.boundingBox).applyMatrix4(o.matrixWorld);
+      const rec = { mesh: o, minX: box.min.x, minY: box.min.y, minZ: box.min.z, maxX: box.max.x, maxY: box.max.y, maxZ: box.max.z };
+      const id = list.length;
+      list.push(rec);
+      const x0 = Math.floor(rec.minX / cell), x1 = Math.floor(rec.maxX / cell);
+      const z0 = Math.floor(rec.minZ / cell), z1 = Math.floor(rec.maxZ / cell);
+      for (let gx = x0; gx <= x1; gx++) {
+        for (let gz = z0; gz <= z1; gz++) {
+          const key = gx + ":" + gz;
+          let bucket = grid.get(key);
+          if (!bucket) grid.set(key, bucket = []);
+          bucket.push(id);
+        }
+      }
+    });
+    return { list: list, grid: grid, cell: cell, mark: new Uint32Array(list.length), qid: 1, pick: [] };
+  })());
+  const origin = sleepWallHits.origin || (sleepWallHits.origin = new THREE.Vector3());
+  const dir = sleepWallHits.dir || (sleepWallHits.dir = new THREE.Vector3());
+  const nrm = sleepWallHits.nrm || (sleepWallHits.nrm = new THREE.Vector3());
+  const ray = sleepWallHits.ray || (sleepWallHits.ray = new THREE.Raycaster());
+  const found = [];
+  const heights = [0.45, 1.15];
+  for (let h = 0; h < heights.length; h++) {
+    if (path.axis === "z") {
+      origin.set(path.c, GROUND_Y + heights[h], path.a + along);
+      dir.set(sign, 0, 0);
+    } else {
+      origin.set(path.a + along, GROUND_Y + heights[h], path.c);
+      dir.set(0, 0, sign);
+    }
+    const reach = 2.6;
+    const cell = index.cell;
+    let x0, x1, z0, z1;
+    if (path.axis === "z") {
+      const far = origin.x + sign * reach;
+      x0 = Math.floor(Math.min(origin.x, far) / cell);
+      x1 = Math.floor(Math.max(origin.x, far) / cell);
+      z0 = Math.floor((origin.z - 0.6) / cell);
+      z1 = Math.floor((origin.z + 0.6) / cell);
+    } else {
+      const far = origin.z + sign * reach;
+      z0 = Math.floor(Math.min(origin.z, far) / cell);
+      z1 = Math.floor(Math.max(origin.z, far) / cell);
+      x0 = Math.floor((origin.x - 0.6) / cell);
+      x1 = Math.floor((origin.x + 0.6) / cell);
+    }
+    const qid = ++index.qid;
+    const pick = index.pick;
+    pick.length = 0;
+    for (let gx = x0; gx <= x1; gx++) {
+      for (let gz = z0; gz <= z1; gz++) {
+        const bucket = index.grid.get(gx + ":" + gz);
+        if (!bucket) continue;
+        for (let bi = 0; bi < bucket.length; bi++) {
+          const id = bucket[bi];
+          if (index.mark[id] === qid) continue;
+          index.mark[id] = qid;
+          const rec = index.list[id];
+          if (rec.maxY < origin.y - 0.3 || rec.minY > origin.y + 0.3) continue;
+          pick.push(rec.mesh);
+        }
+      }
+    }
+    ray.set(origin, dir);
+    ray.far = reach;
+    const hits = ray.intersectObjects(pick, false);
+    for (let i = 0; i < hits.length && i < 6; i++) {
+      const hit = hits[i];
+      if (!hit.face) continue;
+      nrm.copy(hit.face.normal).transformDirection(hit.object.matrixWorld);
+      if (Math.abs(nrm.y) > 0.55) continue;
+      if (nrm.dot(dir) > -0.35) continue;
+      found.push(hit.distance);
+    }
+  }
+  found.sort(function (a, b) { return a - b; });
+  return found;
+}
+function sleepWall(path, along, sign) {
+  const samples = [-0.5, 0.05, 0.55];
+  const sets = [];
+  for (let i = 0; i < samples.length; i++) {
+    const at = along + samples[i];
+    if (at < 1.2 || at > path.b - path.a - 1.2) return null;
+    const hits = sleepWallHits(path, at, sign);
+    if (!hits.length) return null;
+    sets.push(hits);
+  }
+  // Poles and cages break the first hit. A real face shows up at the same
+  // distance on the head, the hip and the feet, so take the nearest of those.
+  const seed = sets[0];
+  for (let i = 0; i < seed.length; i++) {
+    const d = seed[i];
+    if (d < 0.75 || d > 2.5) continue;
+    let acc = d, ok = true;
+    for (let s = 1; s < sets.length; s++) {
+      let best = null;
+      const row = sets[s];
+      for (let k = 0; k < row.length; k++) {
+        if (best == null || Math.abs(row[k] - d) < Math.abs(best - d)) best = row[k];
+      }
+      if (best == null || Math.abs(best - d) > 0.32) { ok = false; break; }
+      acc += best;
+    }
+    if (!ok) continue;
+    const mean = acc / sets.length;
+    // A pole or a shutter between the lane and that face would run through the body.
+    let through = false;
+    for (let s = 0; s < sets.length && !through; s++) {
+      const row = sets[s];
+      for (let k = 0; k < row.length; k++) {
+        if (row[k] < mean - 0.2 && row[k] > mean - 0.72) through = true;
+      }
+    }
+    if (!through) return mean;
+  }
+  return null;
+}
+function sleepFrame(path, along, wall, wallD) {
+  const span = path.b - path.a;
+  const at = Math.max(1.5, Math.min(span - 1.5, along));
+  // The back of a curled body needs this much, plus a hand of air at the wall.
+  const lat = wall * Math.max(0.25, wallD - 0.1 - 0.36);
+  if (Math.abs(lat) < 0.2) return null;
+  const head = 0.62;
+  const foot = 0.55;
+  let x, z, hx, hz, fx, fz, yaw;
+  if (path.axis === "z") {
+    x = path.c + lat;
+    z = path.a + at;
+    hx = x;
+    hz = z + head;
+    fx = x;
+    fz = z - foot;
+    yaw = 0;
+  } else {
+    z = path.c + lat;
+    x = path.a + at;
+    hx = x + head;
+    hz = z;
+    fx = x - foot;
+    fz = z;
+    yaw = Math.PI / 2;
+  }
+  if (!path.world) {
+    const az = streetAz(x, z);
+    const use = az == null ? anchorNear(x, z) : az;
+    if (use != null) {
+      const shift = SHEAR_K * use;
+      x += shift;
+      hx += shift;
+      fx += shift;
+    }
+  }
+  return {
+    path: path, along: at, wall: wall, wallD: wallD, axis: path.axis, thick: path.thick, c: path.c,
+    x: x, z: z, hx: hx, hz: hz, fx: fx, fz: fz, yaw: yaw,
+    halfAlong: 0.62, halfCross: 0.28, fig: null, rig: null
+  };
+}
+function gatherSleepSpots() {
+  const spots = [];
+  const paths = [];
+  for (let i = 0; i < streetPaths.length; i++) {
+    const p = streetPaths[i];
+    if (p.world || p.b - p.a < 8 || p.thick < 1.35) continue;
+    paths.push(p);
+  }
+  for (let i = 0; i < paths.length && spots.length < 7; i++) {
+    const path = paths[i];
+    const span = path.b - path.a;
+    const prefer = i % 2 ? 1 : -1;
+    let placed = false;
+    for (let along = span * 0.22; along < span * 0.82 && !placed; along += 4.2) {
+      const near = [];
+      for (let s = 0; s < 2; s++) {
+        const sign = s === 0 ? prefer : -prefer;
+        const dist = sleepWall(path, along, sign);
+        if (dist == null) continue;
+        near.push({ sign: sign, dist: dist });
+      }
+      near.sort(function (a, b) { return a.dist - b.dist; });
+      for (let w = 0; w < near.length && !placed; w++) {
+        const wall = near[w].sign;
+        const spot = sleepFrame(path, along, wall, near[w].dist);
+        if (!spot) continue;
+        // The shoulders sit just inside the plaster. If that point is already
+        // inside a solid, the visible wall and the collision disagree.
+        const shoulder = Math.max(0.2, spot.wallD - 0.42);
+        const sx = spot.axis === "z" ? spot.c + spot.wall * shoulder : spot.x;
+        const sz = spot.axis === "z" ? spot.z : spot.c + spot.wall * shoulder;
+        if (walkBlocked(sx, sz, { pad: 0.02, bodies: false })) continue;
+        let clash = false;
+        for (let s = 0; s < spots.length; s++) {
+          if (Math.hypot(spots[s].x - spot.x, spots[s].z - spot.z) < 8) clash = true;
+        }
+        if (clash) continue;
+        spot.wear = SLEEP_WEAR[spots.length % SLEEP_WEAR.length];
+        spot.phase = spots.length * 1.7;
+        spots.push(spot);
+        placed = true;
+      }
+    }
+  }
+  return spots;
+}
+function ensureLay(fig, rec) {
+  if (rec.lay) return rec.lay;
+  const roll = new THREE.Group();
+  const pitch = new THREE.Group();
+  const kids = fig.children.slice();
+  for (let i = 0; i < kids.length; i++) pitch.add(kids[i]);
+  roll.add(pitch);
+  fig.add(roll);
+  rec.lay = { roll: roll, pitch: pitch };
+  return rec.lay;
+}
+function poseSleep(fig, rec, now) {
+  const rig = rec.rig;
+  const lay = ensureLay(fig, rec);
+  const breath = Math.sin(now * 0.72 + rec.phase) * 0.012;
+  const twitch = Math.pow(Math.max(0, Math.sin(now * 0.31 + rec.phase)), 22);
+  // Pitch and roll live on their own pivots. One euler on the figure
+  // turned the spine diagonal and left the legs across the lane.
+  fig.rotation.set(0, rec.yaw, 0);
+  lay.pitch.rotation.set(Math.PI / 2, 0, 0);
+  lay.roll.rotation.set(0, 0, -1.35 * rec.wall);
+  rig.hip.position.set(0, 0.58, 0);
+  rig.hip.rotation.set(0.08 + breath, 0, 0);
+  const thighL = -1.05, thighR = -1.12;
+  const kneeL = 1.9 + twitch * 0.12, kneeR = 1.82;
+  rig.legL.pivot.rotation.set(thighL, 0, 0);
+  rig.legR.pivot.rotation.set(thighR, 0, 0);
+  rig.legL.knee.rotation.set(kneeL, 0, 0);
+  rig.legR.knee.rotation.set(kneeR, 0, 0);
+  rig.legL.ankle.rotation.x = -(thighL + kneeL);
+  rig.legR.ankle.rotation.x = -(thighR + kneeR);
+  poseToward(rig.armL, -1.55, -0.2, -1.7, 0.12, 1);
+  poseToward(rig.armR, -0.7, 0.22, -1.45, -0.16, 1);
+  rig.head.rotation.set(-0.28 + breath, 0.1 * rec.wall, 0.06 * rec.wall);
+  rig.torso.rotation.set(0.05 + breath, 0, 0);
+}
+function seatSleep(fig, rec) {
+  poseSleep(fig, rec, rec.phase);
+  fig.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(fig);
+  const cx = (box.min.x + box.max.x) * 0.5;
+  const cz = (box.min.z + box.max.z) * 0.5;
+  fig.position.x += (rec.x - SHEAR_K * rec.z) - cx;
+  fig.position.z += rec.z - cz;
+  fig.position.y += (GROUND_Y + 0.01) - box.min.y;
+  fig.updateMatrixWorld(true);
+  // The guessed spot is still short of the plaster. Slide the back to it.
+  let fit = new THREE.Box3().setFromObject(fig);
+  const sign = rec.wall;
+  const plane = rec.c + sign * rec.wallD;
+  const gap = 0.08;
+  if (rec.axis === "z") {
+    const face = sign > 0 ? fit.max.x : fit.min.x;
+    fig.position.x += (plane - sign * gap) - face;
+  } else {
+    const face = sign > 0 ? fit.max.z : fit.min.z;
+    fig.position.z += (plane - sign * gap) - face;
+  }
+  for (let n = 0; n < 6; n++) {
+    fig.updateMatrixWorld(true);
+    fit = new THREE.Box3().setFromObject(fig);
+    const mx = (fit.min.x + fit.max.x) * 0.5;
+    const mz = (fit.min.z + fit.max.z) * 0.5;
+    if (!walkBlocked(mx, mz, { pad: 0.04, bodies: false })) break;
+    if (rec.axis === "z") fig.position.x -= sign * 0.05;
+    else fig.position.z -= sign * 0.05;
+  }
+  fig.updateMatrixWorld(true);
+  fit = new THREE.Box3().setFromObject(fig);
+  if (rec.axis === "z") {
+    rec.halfAlong = Math.max(0.45, (fit.max.z - fit.min.z) * 0.5 + 0.04);
+    rec.halfCross = Math.max(0.2, (fit.max.x - fit.min.x) * 0.5 + 0.04);
+    rec.x = (fit.min.x + fit.max.x) * 0.5 + SHEAR_K * rec.z;
+    rec.z = (fit.min.z + fit.max.z) * 0.5;
+  } else {
+    rec.halfAlong = Math.max(0.45, (fit.max.x - fit.min.x) * 0.5 + 0.04);
+    rec.halfCross = Math.max(0.2, (fit.max.z - fit.min.z) * 0.5 + 0.04);
+    rec.x = (fit.min.x + fit.max.x) * 0.5 + SHEAR_K * rec.z;
+    rec.z = (fit.min.z + fit.max.z) * 0.5;
+  }
+}
+function attachSleep(rec) {
+  if (rec.fig) return;
+  const fig = makeCitizen(Object.assign({ asleep: true }, rec.wear));
+  rec.rig = fig.userData.rig;
+  rec.fig = fig;
+  rec.sleep = true;
+  fig.userData = rec;
+  fig.position.set(rec.x - SHEAR_K * rec.z, GROUND_Y, rec.z);
+  for (let i = 0; i < fig.children.length; i++) {
+    const ch = fig.children[i];
+    if (ch.isMesh && ch.position.y < 0.05) ch.visible = false;
+  }
+  city.add(fig);
+  seatSleep(fig, rec);
+  renderWetReflection.figs = null;
+}
+function dropSleep(rec) {
+  const fig = rec.fig;
+  if (!fig) return;
+  rec.fig = null;
+  rec.rig = null;
+  rec.lay = null;
+  disposeOwned(fig);
+  renderWetReflection.figs = null;
+}
+function dropSleepMeshes() {
+  if (!alleySleep) return;
+  for (let i = 0; i < alleySleep.length; i++) dropSleep(alleySleep[i]);
+}
+function stepAlleySleep(now) {
+  const want = walkMode && sleepNight();
+  if (!alleySleep) {
+    if (!want) return;
+    alleySleep = gatherSleepSpots();
+  }
+  refreshFigureView();
+  const offer = emptyFigureOffer();
+  const budget = pace.tier === 0 ? 1 : 2;
+  for (let i = 0; i < alleySleep.length; i++) {
+    const rec = alleySleep[i];
+    const py = GROUND_Y + 0.32;
+    const gap = figureViewGap(rec.x, py, rec.z, 0.95);
+    const seen = gap >= 0;
+    if (rec.fig) {
+      const near = figureNearCam(rec.x, py, rec.z, KEEPER_REACH_OUT);
+      // Morning, or leaving the street: a sleeper still in the picture stays
+      // until the lens has moved off them.
+      if (!seen && (!want || !near)) dropSleep(rec);
+      else poseSleep(rec.fig, rec, now);
+      continue;
+    }
+    if (!want || gap >= FIGURE_CLEAR) continue;
+    if (!figureNearCam(rec.x, py, rec.z, KEEPER_REACH)) continue;
+    const dx = rec.x - camera.position.x;
+    const dz = rec.z - camera.position.z;
+    offerFigure(offer, gap, dx * dx + dz * dz, i);
+  }
+  if (offer.a >= 0) attachSleep(alleySleep[offer.a]);
+  if (budget > 1 && offer.b >= 0) attachSleep(alleySleep[offer.b]);
 }
 function dropHeatMeshes() {
   let any = false;
@@ -22996,6 +23877,14 @@ function walkBlocked(x, z, opts) {
     if (!fig.visible || walkerHome(fig.userData) || fig.userData.heat) continue;
     if (Math.abs(x - wx) < 0.34 && Math.abs(z - fig.position.z) < 0.34) return true;
   }
+  if (alleySleep && sleepNight()) {
+    for (let i = 0; i < alleySleep.length; i++) {
+      const rec = alleySleep[i];
+      const along = rec.axis === "z" ? z - rec.z : x - rec.x;
+      const cross = rec.axis === "z" ? x - rec.x : z - rec.z;
+      if (Math.abs(along) < rec.halfAlong && Math.abs(cross) < rec.halfCross) return true;
+    }
+  }
   return false;
 }
 // City face of each kerb. The sidewalk between the wall and the stone stays
@@ -23059,151 +23948,271 @@ function placeCatCamera() {
     camera.updateProjectionMatrix();
   }
 }
+// Voxel cat. One shared cube, nearest-neighbour coats, so the blocks read as
+// a Crossy Road animal and the paint is this tabby: brown ground, black
+// stripes, an M on the brow, green eyes, a white muzzle.
 function makeCat() {
   if (catFig) return;
-  const fur = clothMat(0xc47a3a, 0.92, "cloth");
-  const mid = clothMat(0x8d4e2c, 0.9, "cloth");
-  const dark = clothMat(0x3a2418, 0.94, "cloth");
-  const cream = clothMat(0xf0d2b0, 0.88, "cloth");
-  const earIn = clothMat(0xe7b09a, 0.8, "cloth");
-  const eye = clothMat(0xd7a441, 0.35, "leather");
+  const FUR = "#94633c";
+  const DARK = "#2a1e16";
+  const MID = "#6b452c";
+  const LITE = "#c4a06e";
+  const WHITE = "#f3ece3";
+  const NOSE = "#d08a80";
+  const NOSED = "#a85a58";
+  const EAR = "#e7a090";
+  const EYE = "#7d9a62";
+  const EYED = "#3e5230";
+  const PUPIL = "#14120e";
+  function tex(draw, w, h) {
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    draw(c.getContext("2d"), w, h);
+    const t = new THREE.CanvasTexture(c);
+    t.encoding = THREE.sRGBEncoding;
+    t.magFilter = THREE.NearestFilter;
+    t.minFilter = THREE.NearestFilter;
+    t.generateMipmaps = false;
+    t.needsUpdate = true;
+    return t;
+  }
+  function coat(map, color) {
+    const mat = new THREE.MeshStandardMaterial({
+      map: map || null, color: color == null ? 0xffffff : color,
+      roughness: 0.92, metalness: 0, flatShading: true, clippingPlanes: clips
+    });
+    // Hex colours are sRGB. The canvas maps already are. ACES would wash a
+    // linear hex out to tan, so the solid blocks would not match the paint.
+    if (color != null) mat.color.convertSRGBToLinear();
+    mat.userData.streetGrade = "figure";
+    return mat;
+  }
+  function paintFlank(g, w, h) {
+    g.fillStyle = FUR;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = DARK;
+    for (let y = 1; y < h; y += 5) {
+      g.fillRect(0, y, w, 2);
+      g.fillStyle = FUR;
+      g.fillRect(3, y, 2, 2);
+      g.fillRect(9, y, 3, 2);
+      g.fillStyle = LITE;
+      g.fillRect(6, y + 2, 2, 1);
+      g.fillStyle = DARK;
+    }
+    g.fillStyle = MID;
+    g.fillRect(0, 0, w, 2);
+  }
+  function paintBack(g, w, h) {
+    g.fillStyle = FUR;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = DARK;
+    g.fillRect((w / 2) - 2, 0, 4, h);
+    for (let y = 2; y < h; y += 6) g.fillRect(1, y, w - 2, 1);
+    g.fillStyle = MID;
+    g.fillRect(0, h - 3, w, 3);
+  }
+  function paintBelly(g, w, h) {
+    g.fillStyle = "#e7d3b8";
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = WHITE;
+    g.fillRect(2, 2, w - 4, h - 4);
+    g.fillStyle = "#cbb89a";
+    for (let i = 0; i < 6; i++) g.fillRect((i * 5) % (w - 2), (i * 7) % (h - 2), 2, 2);
+  }
+  function paintBrow(g, w, h) {
+    g.fillStyle = FUR;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = DARK;
+    g.fillRect(w * 0.18, 2, 3, h - 4);
+    g.fillRect(w * 0.72, 2, 3, h - 4);
+    g.fillRect(w * 0.42, 4, 4, h * 0.45);
+    g.fillStyle = LITE;
+    g.fillRect(2, h - 4, w - 4, 2);
+  }
+  // The cube's -Z face is the nose. Canvas y grows down the brow toward the chin.
+  function paintFace(g, w, h) {
+    g.fillStyle = FUR;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = DARK;
+    g.fillRect(6, 1, 3, 7);
+    g.fillRect(23, 1, 3, 7);
+    g.fillRect(13, 3, 6, 6);
+    g.fillRect(9, 6, 4, 2);
+    g.fillRect(19, 6, 4, 2);
+    g.fillStyle = LITE;
+    g.fillRect(4, 8, 7, 2);
+    g.fillRect(21, 8, 7, 2);
+    g.fillStyle = DARK;
+    g.fillRect(1, 12, 4, 1);
+    g.fillRect(1, 15, 5, 1);
+    g.fillRect(27, 12, 4, 1);
+    g.fillRect(26, 15, 5, 1);
+    g.fillStyle = WHITE;
+    g.fillRect(7, 18, 18, 13);
+    g.fillRect(5, 23, 22, 8);
+    g.fillStyle = NOSE;
+    g.fillRect(13, 18, 6, 4);
+    g.fillStyle = NOSED;
+    g.fillRect(15, 21, 2, 2);
+    g.fillStyle = "#5c4038";
+    g.fillRect(15, 23, 2, 3);
+    g.fillRect(12, 25, 3, 1);
+    g.fillRect(17, 25, 3, 1);
+  }
+  function paintCheek(g, w, h, flip) {
+    g.save();
+    if (flip) { g.translate(w, 0); g.scale(-1, 1); }
+    g.fillStyle = FUR;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = DARK;
+    g.fillRect(4, 2, 3, 8);
+    g.fillRect(2, 12, 10, 1);
+    g.fillRect(2, 16, 12, 1);
+    g.fillRect(6, 20, 8, 1);
+    g.fillStyle = LITE;
+    g.fillRect(14, 6, 8, 4);
+    g.fillStyle = WHITE;
+    g.fillRect(16, 20, 14, 10);
+    g.fillStyle = EYE;
+    g.fillRect(18, 10, 6, 4);
+    g.fillStyle = PUPIL;
+    g.fillRect(20, 10, 2, 4);
+    g.restore();
+  }
+  const flankMap = tex(paintFlank, 16, 16);
+  const backMap = tex(paintBack, 16, 16);
+  const bellyMap = tex(paintBelly, 16, 16);
+  const browMap = tex(paintBrow, 16, 16);
+  const faceMap = tex(paintFace, 32, 32);
+  const cheekR = tex(function (g, w, h) { paintCheek(g, w, h, false); }, 32, 32);
+  const cheekL = tex(function (g, w, h) { paintCheek(g, w, h, true); }, 32, 32);
+  const flank = coat(flankMap);
+  const solidFur = coat(null, 0x94633c);
+  const solidDark = coat(null, 0x2a1e16);
+  const solidWhite = coat(null, 0xf3ece3);
+  const solidEar = coat(null, 0xe7a090);
+  const solidNose = coat(null, 0xd08a80);
+  const solidEye = coat(null, 0x62884a);
+  const solidRim = coat(null, 0x241c14);
+  const unit = new THREE.BoxGeometry(1, 1, 1);
+  function brick(parent, mat, x, y, z, sx, sy, sz) {
+    const mesh = figMesh(unit, mat);
+    mesh.position.set(x, y, z);
+    mesh.scale.set(sx, sy, sz);
+    parent.add(mesh);
+    return mesh;
+  }
+  function block(w, h, d) {
+    const geo = new THREE.BoxGeometry(w, h, d);
+    geo.userData.own = 1;
+    return geo;
+  }
   const g = new THREE.Group();
   g.userData.live = 1;
   const torso = new THREE.Group();
   g.add(torso);
   const hips = new THREE.Group();
-  hips.position.set(0, 0.185, 0.055);
+  hips.position.set(0, 0.168, 0.07);
   torso.add(hips);
-  const haunch = figMesh(new THREE.BoxGeometry(0.125, 0.09, 0.11), fur);
-  haunch.position.set(0, 0.01, 0.01);
+  // Haunch and rib stay at scale 1. The breath multiplies that scale.
+  const haunch = figMesh(block(0.112, 0.086, 0.1), [
+    flank, flank, coat(backMap), coat(bellyMap), coat(backMap), flank
+  ]);
+  haunch.position.set(0, 0.01, -0.006);
   hips.add(haunch);
-  const rump = figMesh(new THREE.BoxGeometry(0.1, 0.055, 0.07), mid);
-  rump.position.set(0, 0.045, 0.02);
-  hips.add(rump);
-  [-1, 1].forEach(function (side) {
-    const cheek = figMesh(new THREE.BoxGeometry(0.03, 0.055, 0.07), fur);
-    cheek.position.set(side * 0.07, -0.005, 0.01);
-    hips.add(cheek);
-  });
-  const waist = figMesh(new THREE.BoxGeometry(0.1, 0.074, 0.08), fur);
-  waist.position.set(0, 0.012, -0.028);
-  hips.add(waist);
+  brick(haunch, solidDark, 0, 0.046, 0.004, 0.02, 0.012, 0.086);
   const chest = new THREE.Group();
-  chest.position.set(0, 0.01, -0.068);
+  chest.position.set(0, 0.006, -0.078);
   hips.add(chest);
-  const rib = figMesh(new THREE.BoxGeometry(0.108, 0.086, 0.12), fur);
-  rib.position.set(0, 0.012, -0.01);
+  const rib = figMesh(block(0.104, 0.08, 0.092), [
+    flank, flank, coat(browMap), coat(bellyMap), flank, flank
+  ]);
+  rib.position.set(0, 0.008, -0.006);
   chest.add(rib);
-  const belly = figMesh(new THREE.BoxGeometry(0.09, 0.04, 0.09), cream);
-  belly.position.set(0, -0.028, -0.01);
-  chest.add(belly);
-  const shoulder = figMesh(new THREE.BoxGeometry(0.118, 0.04, 0.07), fur);
-  shoulder.position.set(0, 0.04, -0.03);
-  chest.add(shoulder);
-  const stripeA = figMesh(new THREE.BoxGeometry(0.028, 0.012, 0.09), dark);
-  stripeA.position.set(0, 0.058, 0.015);
-  hips.add(stripeA);
-  const stripeB = figMesh(new THREE.BoxGeometry(0.026, 0.012, 0.08), dark);
-  stripeB.position.set(0, 0.058, -0.03);
-  chest.add(stripeB);
+  brick(rib, solidDark, 0, 0.044, 0, 0.018, 0.01, 0.078);
+  brick(rib, solidWhite, 0, -0.028, -0.03, 0.046, 0.026, 0.02);
   const neck = new THREE.Group();
-  neck.position.set(0, 0.028, -0.05);
+  neck.position.set(0, 0.028, -0.04);
   chest.add(neck);
-  const throat = figMesh(new THREE.BoxGeometry(0.07, 0.055, 0.07), fur);
-  throat.position.set(0, 0.012, -0.012);
-  neck.add(throat);
+  brick(neck, coat(backMap), 0, 0.004, -0.004, 0.05, 0.046, 0.04);
   const head = new THREE.Group();
-  head.position.set(0, 0.028, -0.018);
+  head.position.set(0, 0.016, -0.016);
   neck.add(head);
-  const skull = figMesh(new THREE.BoxGeometry(0.092, 0.078, 0.084), fur);
-  skull.position.set(0, 0.01, 0);
+  // Box faces are +X, -X, +Y, -Y, +Z, -Z. The nose is the -Z face.
+  const skull = figMesh(block(0.096, 0.084, 0.088), [
+    coat(cheekR), coat(cheekL), coat(browMap), coat(bellyMap), coat(backMap), coat(faceMap)
+  ]);
+  skull.position.set(0, 0.01, -0.006);
   head.add(skull);
-  const brow = figMesh(new THREE.BoxGeometry(0.07, 0.02, 0.03), mid);
-  brow.position.set(0, 0.028, -0.03);
-  head.add(brow);
-  const muzzle = figMesh(new THREE.BoxGeometry(0.046, 0.032, 0.04), cream);
-  muzzle.position.set(0, -0.012, -0.05);
-  head.add(muzzle);
-  const nose = figMesh(new THREE.BoxGeometry(0.016, 0.012, 0.012), lipMat);
-  nose.position.set(0, -0.004, -0.072);
-  head.add(nose);
-  const chin = figMesh(new THREE.BoxGeometry(0.03, 0.012, 0.02), cream);
-  chin.position.set(0, -0.028, -0.04);
-  head.add(chin);
+  brick(head, solidWhite, 0, -0.016, -0.042, 0.052, 0.03, 0.028);
+  const nose = brick(head, solidNose, 0, -0.008, -0.06, 0.016, 0.012, 0.012);
+  brick(head, solidDark, 0, -0.02, -0.056, 0.008, 0.006, 0.008);
   const ears = [];
+  const eyes = [];
+  const whiskers = [];
   [-1, 1].forEach(function (side) {
     const ear = new THREE.Group();
-    ear.position.set(side * 0.03, 0.048, -0.004);
-    ear.rotation.z = side * 0.28;
-    ear.rotation.x = -0.15;
+    ear.position.set(side * 0.03, 0.05, 0);
     head.add(ear);
-    const shell = figMesh(new THREE.BoxGeometry(0.028, 0.05, 0.016), fur);
-    shell.position.y = 0.02;
-    ear.add(shell);
-    const inner = figMesh(new THREE.BoxGeometry(0.014, 0.028, 0.008), earIn);
-    inner.position.set(0, 0.018, -0.006);
-    ear.add(inner);
+    brick(ear, solidFur, 0, 0.016, 0, 0.024, 0.034, 0.016);
+    brick(ear, solidDark, side * 0.004, 0.02, 0.002, 0.008, 0.02, 0.008);
+    brick(ear, solidEar, 0, 0.012, -0.006, 0.012, 0.02, 0.008);
     ears.push(ear);
-    const look = figMesh(new THREE.BoxGeometry(0.016, 0.014, 0.008), eye);
-    look.position.set(side * 0.024, 0.008, -0.042);
-    head.add(look);
-    const pupil = figMesh(new THREE.BoxGeometry(0.005, 0.01, 0.004), pupilMat);
-    pupil.position.set(side * 0.024, 0.008, -0.047);
-    head.add(pupil);
+    const socket = new THREE.Group();
+    socket.position.set(side * 0.02, 0.016, -0.05);
+    head.add(socket);
+    brick(socket, solidRim, 0, 0, 0.002, 0.024, 0.02, 0.006);
+    brick(socket, solidEye, 0, 0, -0.002, 0.018, 0.014, 0.008);
+    brick(socket, pupilMat, 0, 0, -0.007, 0.004, 0.012, 0.005);
+    brick(socket, catchMat, side * 0.004, 0.003, -0.009, 0.0035, 0.0035, 0.003);
+    eyes.push(socket);
     for (let w = 0; w < 3; w++) {
-      const whisk = figMesh(new THREE.BoxGeometry(0.045, 0.004, 0.004), cream);
-      whisk.position.set(side * 0.048, -0.01 - w * 0.006, -0.05);
-      whisk.rotation.y = side * (0.3 + w * 0.12);
-      head.add(whisk);
+      const hold = new THREE.Group();
+      hold.position.set(side * 0.028, -0.012 - w * 0.006, -0.046);
+      head.add(hold);
+      brick(hold, solidWhite, side * 0.02, 0, 0, 0.04, 0.0035, 0.0035);
+      whiskers.push(hold);
     }
   });
   function catLeg(parent, x, y, z, hind) {
-    const upperLen = hind ? 0.086 : 0.078;
-    const lowerLen = hind ? 0.08 : 0.078;
+    const upperLen = hind ? 0.074 : 0.068;
+    const lowerLen = hind ? 0.078 : 0.074;
     const hip = new THREE.Group();
     hip.position.set(x, y, z);
     parent.add(hip);
-    const thigh = figMesh(new THREE.BoxGeometry(hind ? 0.05 : 0.04, upperLen * 1.28, hind ? 0.052 : 0.042), fur);
-    thigh.position.y = -upperLen * 0.46;
-    hip.add(thigh);
+    brick(hip, flank, 0, -upperLen * 0.5, 0, hind ? 0.038 : 0.034, upperLen * 1.42, hind ? 0.04 : 0.034);
     const knee = new THREE.Group();
     knee.position.y = -upperLen;
     hip.add(knee);
-    const shin = figMesh(new THREE.BoxGeometry(hind ? 0.034 : 0.03, lowerLen * 1.22, hind ? 0.034 : 0.03), fur);
-    shin.position.y = -lowerLen * 0.44;
-    knee.add(shin);
+    brick(knee, flank, 0, -lowerLen * 0.5, 0, hind ? 0.03 : 0.026, lowerLen * 1.38, hind ? 0.03 : 0.026);
     const paw = new THREE.Group();
     paw.position.y = -lowerLen;
     knee.add(paw);
-    const pad = figMesh(new THREE.BoxGeometry(hind ? 0.04 : 0.036, 0.014, 0.034), dark);
-    pad.position.set(0, -0.006, -0.004);
-    paw.add(pad);
-    const toes = figMesh(new THREE.BoxGeometry(hind ? 0.038 : 0.034, 0.01, 0.014), dark);
-    toes.position.set(0, -0.004, -0.018);
-    paw.add(toes);
-    return { hip: hip, knee: knee, paw: paw, hind: !!hind, side: x < 0 ? -1 : 1 };
+    brick(paw, solidFur, 0, -0.004, -0.008, hind ? 0.034 : 0.03, 0.014, hind ? 0.038 : 0.032);
+    brick(paw, solidDark, 0, -0.01, -0.008, hind ? 0.026 : 0.022, 0.006, hind ? 0.028 : 0.024);
+    return { hip: hip, knee: knee, paw: paw, hind: !!hind, side: x < 0 ? -1 : 1, baseY: y, baseZ: z };
   }
   const legs = [
-    catLeg(chest, -0.042, -0.02, -0.02, false),
-    catLeg(chest, 0.042, -0.02, -0.02, false),
-    catLeg(hips, -0.046, -0.012, 0.02, true),
-    catLeg(hips, 0.046, -0.012, 0.02, true)
+    catLeg(chest, -0.032, -0.02, -0.02, false),
+    catLeg(chest, 0.032, -0.02, -0.02, false),
+    catLeg(hips, -0.034, -0.006, 0.012, true),
+    catLeg(hips, 0.034, -0.006, 0.012, true)
   ];
   const tail = new THREE.Group();
-  tail.position.set(0, 0.02, 0.055);
+  tail.position.set(0, 0.03, 0.04);
   hips.add(tail);
   const tailSeg = [];
   let tailParent = tail;
-  const tailLen = [0.062, 0.055, 0.048, 0.04];
-  const tailThick = [0.03, 0.026, 0.022, 0.016];
-  for (let i = 0; i < 4; i++) {
+  const tailLen = [0.036, 0.034, 0.032, 0.03, 0.026];
+  const tailW = [0.022, 0.02, 0.016, 0.014, 0.012];
+  for (let i = 0; i < tailLen.length; i++) {
     const seg = new THREE.Group();
     if (i > 0) seg.position.z = tailLen[i - 1];
     tailParent.add(seg);
-    const mat = i === 3 ? dark : (i % 2 ? mid : fur);
-    const mesh = figMesh(new THREE.BoxGeometry(tailThick[i], tailThick[i], tailLen[i] * 1.45), mat);
-    mesh.position.z = tailLen[i] * 0.4;
-    seg.add(mesh);
+    const mat = i === tailLen.length - 1 ? solidDark : (i % 2 ? coat(flankMap) : solidFur);
+    brick(seg, mat, 0, 0, tailLen[i] * 0.5, tailW[i], tailW[i] * 0.85, tailLen[i]);
     tailSeg.push(seg);
     tailParent = seg;
   }
@@ -23211,29 +24220,66 @@ function makeCat() {
   city.add(g);
   catFig = g;
   catRig = {
-    torso: torso, hips: hips, chest: chest, neck: neck, head: head, ears: ears,
-    legs: legs, tail: tail, tailSeg: tailSeg,
-    phase: 0, move: 0, gait: 0, tailLag: 0, tailLag2: 0, lean: 0, lastYaw: 0
+    torso: torso, hips: hips, chest: chest, neck: neck, head: head, ears: ears, eyes: eyes, whiskers: whiskers,
+    legs: legs, tail: tail, tailSeg: tailSeg, haunch: haunch, rib: rib, nose: nose,
+    phase: 0, move: 0, gait: 0, tailWave: [0, 0, 0, 0], lean: 0, lastYaw: 0
   };
   settleCat(0, false, 0);
 }
-function catLegPose(phase, hind, gait) {
+function catSwing(phase, gait) {
+  const c = Math.cos(phase);
+  if (c <= 0) return 0;
+  const soft = c * c * (3 - 2 * c);
+  return Math.pow(soft, 1 - gait * 0.28);
+}
+function catIk(upper, lower, ty, tz, hind) {
+  const raw = Math.hypot(ty, tz) || 0.001;
+  const reach = Math.min(upper + lower - 0.004, Math.max(Math.abs(upper - lower) + 0.004, raw));
+  const fit = reach / raw;
+  ty *= fit;
+  tz *= fit;
+  const targetAng = Math.atan2(-tz, -ty);
+  const cosHip = (upper * upper + reach * reach - lower * lower) / (2 * upper * reach);
+  const hipOff = Math.acos(Math.max(-1, Math.min(1, cosHip)));
+  const hipX = hind ? targetAng - hipOff : targetAng + hipOff;
+  const ky = -upper * Math.cos(hipX);
+  const kz = -upper * Math.sin(hipX);
+  const kneeX = Math.atan2(-(tz - kz), -(ty - ky)) - hipX;
+  return { hipX: hipX, kneeX: kneeX, pawX: -(hipX + kneeX) };
+}
+function catFoot(phase, hind, gait) {
+  const lift = catSwing(phase, gait);
   const s = Math.sin(phase);
-  const lift = Math.pow(Math.max(0, Math.cos(phase)), 1.2);
-  if (hind) {
-    return {
-      hipX: -0.16 + s * (0.28 + gait * 0.16),
-      kneeX: 0.52 + lift * (0.78 + gait * 0.55),
-      pawX: -0.4 - s * 0.1,
-      hipZ: 0
-    };
-  }
-  return {
-    hipX: s * (0.32 + gait * 0.16),
-    kneeX: -0.3 - lift * (0.72 + gait * 0.5),
-    pawX: 0.12 - s * 0.06,
-    hipZ: 0
-  };
+  // The paw travels from in front of the hip to behind it while it is down,
+  // then lifts through the middle of the recovery. A run lengthens that reach.
+  const stride = (hind ? 0.048 : 0.056) * (0.92 + gait * 0.7);
+  const reach = (hind ? 0.14 : 0.126) - lift * (hind ? 0.034 : 0.03) * (1 + gait * 0.9);
+  const tz = -s * stride * (1 - lift * 0.2) + (hind ? 0.004 : -0.002);
+  return { ty: -reach, tz: tz, lift: lift, s: s };
+}
+function catLegPose(phase, hind, gait) {
+  const foot = catFoot(phase, hind, gait);
+  const upper = hind ? 0.074 : 0.068;
+  const lower = hind ? 0.078 : 0.074;
+  const pose = catIk(upper, lower, foot.ty, foot.tz, hind);
+  // Toes drop while the paw is in the air, and again as it pushes off.
+  const push = Math.max(0, -foot.s) * (1 - foot.lift);
+  pose.pawX += -foot.lift * (0.36 + gait * 0.22) - push * 0.2;
+  pose.hipZ = 0;
+  pose.lift = foot.lift;
+  return pose;
+}
+function catSitLeg(hind) {
+  const upper = hind ? 0.074 : 0.068;
+  const lower = hind ? 0.078 : 0.074;
+  // Hind paw sits under the haunch, not jackknifed out behind it.
+  // Front paw stays under the shoulder so the foreleg reads as a column.
+  const pose = hind
+    ? catIk(upper, lower, -0.092, 0.006, true)
+    : catIk(upper, lower, -0.12, -0.018, false);
+  pose.hipZ = hind ? 0.1 : 0.03;
+  pose.lift = 0;
+  return pose;
 }
 function settleCat(dt, moving, speed) {
   if (!catFig) makeCat();
@@ -23242,78 +24288,119 @@ function settleCat(dt, moving, speed) {
   catFig.rotation.y = catYaw;
   const rig = catRig;
   const sit = catSit;
-  const wantGait = moving ? Math.max(0, Math.min(1, ((speed || 2.55) - 2.3) / 2.2)) : 0;
+  const wantGait = moving ? Math.max(0, Math.min(1, ((speed || 2.55) - 2.2) / 2.3)) : 0;
   const wantMove = moving ? 1 : 0;
-  const k = Math.min(1, dt * 4.5);
-  rig.move += (wantMove - rig.move) * (dt > 0 ? k : 1);
-  rig.gait += (wantGait - rig.gait) * (dt > 0 ? Math.min(1, dt * 3.2) : 1);
+  const snap = dt === 0 ? 1 : 0;
+  rig.move += (wantMove - rig.move) * (snap || Math.min(1, dt * 2.6));
+  rig.gait += (wantGait - rig.gait) * (snap || Math.min(1, dt * 2.1));
   const move = rig.move * (1 - sit);
   const gait = rig.gait;
   let dyaw = catYaw - rig.lastYaw;
   dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
   rig.lastYaw = catYaw;
-  const wantLean = Math.max(-0.28, Math.min(0.28, -dyaw * 5.5));
-  rig.lean += (wantLean - rig.lean) * Math.min(1, dt * 7 + (dt === 0 ? 1 : 0));
-  const cadence = (sit > 0.65 ? 1.1 : 1.35) + move * (6.2 + gait * 5.4);
+  const wantLean = Math.max(-0.22, Math.min(0.22, -dyaw * 4.2));
+  rig.lean += (wantLean - rig.lean) * (snap || Math.min(1, dt * 6));
+  const cadence = (sit > 0.7 ? 0.7 : 1.05) + move * (6.4 + gait * 4.8);
   rig.phase += dt * cadence;
   const step = rig.phase;
-  const breath = Math.sin(rig.phase * 0.55);
-  const bob = Math.pow(Math.abs(Math.sin(step * 2)), 0.65) * (0.006 + gait * 0.01) * move;
-  rig.torso.position.y = bob * (1 - sit) - 0.012 * sit;
-  rig.torso.rotation.z = breath * 0.02 * (1 - move) * (1 - sit) + rig.lean * (0.28 + move * 0.45);
-  rig.hips.rotation.x = breath * 0.018 * (1 - sit) + 0.2 * sit + Math.sin(step * 2) * 0.035 * move;
-  rig.hips.rotation.y = Math.sin(step) * 0.06 * move;
-  rig.hips.rotation.z = Math.sin(step) * (0.055 + gait * 0.03) * move;
-  rig.chest.rotation.x = (-0.04 * move - Math.sin(step * 2) * 0.04 * move + breath * 0.028 * (1 - move)) * (1 - sit) + 0.06 * sit;
-  rig.chest.rotation.z = -rig.hips.rotation.z * 0.85;
-  rig.chest.rotation.y = Math.sin(step + 0.8) * 0.04 * move;
-  rig.neck.rotation.x = -rig.chest.rotation.x * 0.45 - 0.08 * sit;
-  const glance = Math.sin(step * (move > 0.2 ? 0.45 : 0.7));
-  rig.head.rotation.x = -0.14 * sit + (move > 0.2 ? -0.04 * gait : glance * 0.04);
-  rig.head.rotation.y = glance * (move > 0.2 ? 0.06 : 0.16) * (1 - sit * 0.4) - rig.hips.rotation.y * 0.5;
-  rig.head.rotation.z = -rig.torso.rotation.z * 0.35;
+  const breath = Math.sin(step * 0.42);
+  const gather = move * (1 - move) * 4;
+  const accel = Math.max(0, wantMove - rig.move) + Math.max(0, wantGait - rig.gait);
+  const crouch = (gather * 0.45 + accel * 1.4) * (1 - sit);
+  const sitW = sit * sit * (3 - 2 * sit);
+  const moveW = move * move * (3 - 2 * move);
+  const bob = Math.pow(Math.abs(Math.sin(step * 2)), 0.75) * (0.005 + gait * 0.016) * moveW;
+  rig.torso.position.y = (bob - crouch * 0.016) * (1 - sitW) - 0.016 * sitW;
+  const puff = 1 + breath * 0.02 * (1 - moveW * 0.65);
+  if (rig.rib) rig.rib.scale.y = puff;
+  if (rig.haunch) rig.haunch.scale.y = 1 + breath * 0.012 * (1 - move);
+  rig.torso.rotation.z = breath * 0.035 * (1 - move) * (1 - sitW) + rig.lean * (0.18 + moveW * 0.4);
+  const wave = Math.sin(step);
+  const bound = Math.sin(step * (1 + gait));
+  rig.hips.rotation.x = breath * 0.025 * (1 - move) * (1 - sitW) + bound * (0.05 + gait * 0.09) * moveW + 0.16 * sitW;
+  rig.hips.rotation.y = wave * (0.09 + gait * 0.04) * moveW;
+  rig.hips.rotation.z = wave * (0.07 + gait * 0.04) * moveW;
+  rig.chest.rotation.x = (-bound * (0.07 + gait * 0.1) * moveW + breath * 0.04 * (1 - move) - crouch * 0.12) * (1 - sitW) + 0.02 * sitW;
+  rig.chest.rotation.z = -rig.hips.rotation.z * 1.15;
+  rig.chest.rotation.y = Math.sin(step + 1.2) * (0.07 + gait * 0.03) * moveW;
+  rig.neck.rotation.x = -rig.chest.rotation.x * 0.45 * (1 - sitW) - 0.02 * sitW;
+  rig.neck.rotation.y = -rig.chest.rotation.y * 0.55;
+  const glance = Math.sin(step * 0.31);
+  const spineX = rig.hips.rotation.x + rig.chest.rotation.x + rig.neck.rotation.x;
+  rig.head.rotation.x = -spineX * (0.94 - gait * 0.28) + (move < 0.35 ? glance * 0.05 : 0) * (1 - sitW) - 0.04 * sitW;
+  rig.head.rotation.y = (move < 0.35 ? glance * 0.2 : wave * -0.03) * (1 - sitW * 0.6) - rig.hips.rotation.y * 0.45;
+  rig.head.rotation.z = -rig.torso.rotation.z * 0.85 - rig.hips.rotation.z * 0.3;
+  const flick = Math.pow(Math.max(0, Math.sin(step * 0.23)), 18);
+  const flickEar = Math.sin(step * 0.07) > 0 ? 0 : 1;
   for (let i = 0; i < rig.ears.length; i++) {
     const ear = rig.ears[i];
     const side = i === 0 ? -1 : 1;
-    const twitch = Math.pow(Math.max(0, Math.sin(step * 0.37 + i)), 10);
-    ear.rotation.z = side * (0.28 + twitch * 0.18 * (1 - move));
-    ear.rotation.x = -0.15 - gait * 0.38 * move + twitch * 0.08;
+    const tick = i === flickEar ? flick : flick * 0.15;
+    ear.rotation.z = side * (0.28 + tick * 0.22 * (1 - moveW) + sitW * 0.06);
+    // Idle tips the ear forward. A run lays the tip back toward the tail.
+    ear.rotation.x = -0.12 + gait * 0.7 * moveW - sitW * 0.06 + tick * 0.16;
   }
-  const lead = 0.45;
-  const phases = [step, step + Math.PI, step + Math.PI + lead, step + lead];
+  const blink = Math.pow(Math.max(0, Math.sin(step * 0.17 + 1.1)), 30);
+  for (let i = 0; i < rig.eyes.length; i++) rig.eyes[i].scale.y = 1 - blink * (move > 0.8 ? 0.15 : 0.9);
+  for (let i = 0; i < rig.whiskers.length; i++) {
+    const whisk = rig.whiskers[i];
+    const side = whisk.position.x < 0 ? -1 : 1;
+    const back = gait * moveW * 0.5;
+    whisk.rotation.y = side * ((0.24 + (i % 3) * 0.12) * (1 - back) + back * 0.05);
+    whisk.rotation.z = side * (0.06 - (i % 3) * 0.05) + Math.sin(step * 1.1 + i) * 0.035 * (1 - sitW);
+  }
+  // A walk keeps the diagonals. A run draws each pair together into a bound,
+  // the hind feet leaving the ground just before the front feet reach.
+  const split = Math.PI * (1 - gait * 0.9);
+  const lead = 0.7 + gait * 0.45;
+  const phases = [step, step + split, step + split + lead, step + lead];
+  const idlePose = [catLegPose(Math.PI, false, 0), catLegPose(Math.PI, true, 0)];
+  const sitPose = [catSitLeg(false), catSitLeg(true)];
   for (let i = 0; i < 4; i++) {
     const leg = rig.legs[i];
     const gaitPose = catLegPose(phases[i], leg.hind, gait);
-    const idle = leg.hind
-      ? { hipX: -0.16, kneeX: 0.52, pawX: -0.4, hipZ: 0 }
-      : { hipX: 0.02, kneeX: -0.3, pawX: 0.12, hipZ: 0 };
-    const sat = leg.hind
-      ? { hipX: -0.42, kneeX: 1.05, pawX: -0.58, hipZ: leg.side * 0.5 }
-      : { hipX: 0.16, kneeX: -0.42, pawX: 0.22, hipZ: leg.side * 0.05 };
+    const idle = idlePose[leg.hind ? 1 : 0];
+    const sat = sitPose[leg.hind ? 1 : 0];
     const live = {
-      hipX: idle.hipX + (gaitPose.hipX - idle.hipX) * move,
-      kneeX: idle.kneeX + (gaitPose.kneeX - idle.kneeX) * move,
-      pawX: idle.pawX + (gaitPose.pawX - idle.pawX) * move,
-      hipZ: idle.hipZ + (gaitPose.hipZ - idle.hipZ) * move
+      hipX: idle.hipX + (gaitPose.hipX - idle.hipX) * moveW,
+      kneeX: idle.kneeX + (gaitPose.kneeX - idle.kneeX) * moveW,
+      pawX: idle.pawX + (gaitPose.pawX - idle.pawX) * moveW,
+      hipZ: 0,
+      lift: gaitPose.lift * moveW
     };
-    leg.hip.rotation.x = live.hipX + (sat.hipX - live.hipX) * sit;
-    leg.knee.rotation.x = live.kneeX + (sat.kneeX - live.kneeX) * sit;
-    leg.paw.rotation.x = live.pawX + (sat.pawX - live.pawX) * sit;
-    leg.hip.rotation.z = live.hipZ + (sat.hipZ - live.hipZ) * sit;
+    const side = leg.side;
+    leg.hip.rotation.x = live.hipX + (sat.hipX - live.hipX) * sitW;
+    leg.knee.rotation.x = live.kneeX + (sat.kneeX - live.kneeX) * sitW;
+    leg.paw.rotation.x = live.pawX + (sat.pawX - live.pawX) * sitW;
+    leg.hip.rotation.z = (live.hipZ + (sat.hipZ * side - live.hipZ) * sitW);
+    const slide = leg.hind ? Math.sin(phases[i]) * 0.01 : Math.sin(phases[i]) * 0.016;
+    leg.hip.position.z = leg.baseZ + slide * moveW * (1 - sitW);
+    // The haunch drops onto the folded hock. The shoulder stays up on a straight foreleg.
+    const sitDrop = leg.hind ? 0.015 * sitW : 0;
+    leg.hip.position.y = leg.baseY + live.lift * (leg.hind ? 0.004 : 0.008) * (1 - sitW) - sitDrop;
   }
-  const tailSwing = -Math.sin(step) * (0.22 + gait * 0.2) * move + breath * 0.1 * (1 - move);
-  const tailFollow = Math.min(1, dt * (move > 0.5 ? 7 : 2.6) + (dt === 0 ? 1 : 0));
-  rig.tailLag += (tailSwing - rig.tailLag) * tailFollow;
-  rig.tailLag2 += (rig.tailLag - rig.tailLag2) * Math.min(1, dt * 4 + (dt === 0 ? 1 : 0));
-  const tailUp = (-0.55 + move * 0.18 - gait * 0.4) * (1 - sit) + 0.08 * sit;
+  const tailTarget = -wave * (0.22 + gait * 0.08) * moveW + breath * 0.06 * (1 - move);
+  const follow = snap ? 1 : Math.min(1, dt * (move > 0.55 ? 8 : 2.4));
+  if (rig.tailWave.length < rig.tailSeg.length) {
+    while (rig.tailWave.length < rig.tailSeg.length) rig.tailWave.push(0);
+  }
+  let prev = tailTarget;
+  for (let i = 0; i < rig.tailWave.length; i++) {
+    const rate = follow * (0.85 - i * 0.08);
+    rig.tailWave[i] += (prev - rig.tailWave[i]) * Math.max(0.15, rate);
+    prev = rig.tailWave[i];
+  }
+  const tailUp = (-0.42 + moveW * 0.08 - gait * 0.55) * (1 - sitW) + 0.22 * sitW;
   rig.tail.rotation.x = tailUp;
-  rig.tail.rotation.y = rig.tailLag * (1 - sit) + 1.25 * sit;
-  rig.tail.rotation.z = rig.lean * -0.35 * move;
+  rig.tail.rotation.y = rig.tailWave[0] * (1 - sitW) + 0.72 * sitW;
+  rig.tail.rotation.z = rig.lean * -0.22 * moveW;
   for (let i = 0; i < rig.tailSeg.length; i++) {
     const seg = rig.tailSeg[i];
     const curl = (i + 1) / rig.tailSeg.length;
-    seg.rotation.x = (-0.06 + curl * 0.05) * (1 - sit) + (0.05 + curl * 0.08) * sit;
-    seg.rotation.y = rig.tailLag2 * (0.28 + curl * 0.5) * (1 - sit) + (0.2 + curl * 0.55) * sit;
+    const wag = rig.tailWave[Math.min(rig.tailWave.length - 1, i)];
+    const tip = curl * curl;
+    seg.rotation.x = (-0.05 + curl * 0.04) * (1 - sitW) * (1 - gait * 0.8) + breath * tip * 0.12 * (1 - move) + (0.04 + curl * 0.1) * sitW;
+    seg.rotation.y = wag * (0.16 + curl * 0.7) * (1 - sitW) + (0.14 + curl * 0.32) * sitW;
   }
   if (!rig.probe) rig.probe = new THREE.Vector3();
   catFig.updateMatrixWorld(true);
@@ -23349,6 +24436,7 @@ function setWalk(on, fromPlace) {
 function setStreet(kind, fromPlace) {
   const on = kind !== "view";
   const nextCat = kind === "cat";
+  if (roofStay && (kind === "view" || kind === "cat")) leaveRoof(true);
   if (on === walkMode && nextCat === catMode) return;
   const wasStreet = walkMode;
   viewGlide = null;
@@ -23366,7 +24454,7 @@ function setStreet(kind, fromPlace) {
     else {
       camera.fov = walkPinned ? 62 : walkEntryPose().fov;
       camera.near = 0.05;
-      camera.position.set(walkX, GROUND_Y + WALK_EYE, walkZ);
+      camera.position.set(walkX, (roofStay ? roofStay.y : GROUND_Y) + WALK_EYE, walkZ);
       camera.up.set(0, 1, 0);
       camera.rotation.order = "YXZ";
       camera.rotation.set(walkPitch, walkYaw, 0);
@@ -23481,6 +24569,136 @@ function applyWalkGlide(g, s) {
   camera.near = 0.05;
   camera.updateProjectionMatrix();
 }
+function roofLanding(door) {
+  const deck = door.deck;
+  const m = 0.42;
+  const x0 = deck.x + m, x1 = deck.x + deck.w - m;
+  const z0 = deck.z + m, z1 = deck.z + deck.d - m;
+  if (x1 - x0 < 0.3 || z1 - z0 < 0.3) return null;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  let sx = clamp(door.x, x0, x1);
+  let sz = clamp(door.z, z0, z1);
+  if (door.face === "n") sz = z0;
+  else if (door.face === "s") sz = z1;
+  else if (door.face === "w") sx = x0;
+  else sx = x1;
+  function free(x, z) {
+    if (x < x0 || x > x1 || z < z0 || z > z1) return false;
+    const pad = 0.28;
+    const blocks = deck.blocks;
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      if (x > b.x - pad && x < b.x2 + pad && z > b.z - pad && z < b.z2 + pad) return false;
+    }
+    return true;
+  }
+  if (free(sx, sz)) return { x: sx, z: sz };
+  for (let ring = 1; ring <= 10; ring++) {
+    const step = 0.35 * ring;
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4;
+      const nx = sx + Math.cos(a) * step;
+      const nz = sz + Math.sin(a) * step;
+      if (free(nx, nz)) return { x: nx, z: nz };
+    }
+  }
+  const cx = (x0 + x1) * 0.5, cz = (z0 + z1) * 0.5;
+  if (free(cx, cz)) return { x: cx, z: cz };
+  return null;
+}
+function roofBlocked(x, z) {
+  const s = roofStay;
+  if (!s) return true;
+  if (x < s.x0 || x > s.x1 || z < s.z0 || z > s.z1) return true;
+  const blocks = s.blocks;
+  const pad = 0.22;
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (x > b.x - pad && x < b.x2 + pad && z > b.z - pad && z < b.z2 + pad) return true;
+  }
+  return false;
+}
+function seatRoofDoors() {
+  for (let i = 0; i < roofDoors.length; i++) {
+    const d = roofDoors[i];
+    const spot = roofLanding(d);
+    if (!spot) { d.live = false; continue; }
+    d.upX = spot.x;
+    d.upZ = spot.z;
+    let found = false;
+    for (let s = 0; s <= 10; s++) {
+      const nx = d.x + d.ox * s * 0.2;
+      const nz = d.z + d.oz * s * 0.2;
+      if (walkInside(nx, nz) && !walkBlocked(nx, nz, { bodies: false })) {
+        d.x = nx;
+        d.z = nz;
+        found = true;
+        break;
+      }
+    }
+    d.live = found;
+  }
+}
+function roofDoorNear() {
+  if (!walkMode || catMode || roofStay || walkGlide) return null;
+  let best = null;
+  let bestD = 1.55 * 1.55;
+  for (let i = 0; i < roofDoors.length; i++) {
+    const d = roofDoors[i];
+    if (!d.live) continue;
+    const dx = walkX - d.x, dz = walkZ - d.z;
+    const dd = dx * dx + dz * dz;
+    if (dd < bestD) { bestD = dd; best = d; }
+  }
+  return best;
+}
+function placeWalkEye() {
+  camera.position.set(walkX, (roofStay ? roofStay.y : GROUND_Y) + WALK_EYE, walkZ);
+  camera.up.set(0, 1, 0);
+  camera.rotation.order = "YXZ";
+  camera.rotation.set(walkPitch, walkYaw, 0);
+}
+function enterRoof(door) {
+  if (!door || !door.live || roofStay) return;
+  roofStay = {
+    door: door, y: door.deck.y, blocks: door.deck.blocks,
+    x0: door.deck.x + 0.42, z0: door.deck.z + 0.42,
+    x1: door.deck.x + door.deck.w - 0.42, z1: door.deck.z + door.deck.d - 0.42
+  };
+  walkX = door.upX;
+  walkZ = door.upZ;
+  walkYaw = door.inYaw;
+  const need = door.deck.y + 4.5;
+  if (floorPlane.constant < need) floorPlane.constant = need;
+  placeWalkEye();
+}
+function leaveRoof(keepEye) {
+  if (!roofStay) return;
+  const door = roofStay.door;
+  roofStay = null;
+  walkX = door.x;
+  walkZ = door.z;
+  walkYaw = door.outYaw;
+  setFloor(14);
+  if (!keepEye && walkMode && !catMode && !walkGlide) placeWalkEye();
+}
+function syncRoofButton() {
+  const btn = document.getElementById("roof-go");
+  if (!btn) return;
+  roofOffer = roofStay ? null : roofDoorNear();
+  const show = walkMode && !catMode && !walkGlide && (roofStay || roofOffer);
+  if (!show) {
+    btn.hidden = true;
+    btn.classList.remove("on");
+    return;
+  }
+  const key = roofStay ? "exitBtn" : "enterBtn";
+  if (btn.getAttribute("data-i18n") !== key) btn.setAttribute("data-i18n", key);
+  const label = t(key);
+  if (btn.textContent !== label) btn.textContent = label;
+  btn.hidden = false;
+  btn.classList.add("on");
+}
 function stepWalk(dt) {
   if (walkGlide) {
     // Frame time, capped by the caller, so a hitch does not skip the move.
@@ -23544,8 +24762,13 @@ function stepWalk(dt) {
       const s = Math.min(left, slice);
       const nx = walkX + ux * s;
       const nz = walkZ + uz * s;
-      if (walkInside(nx, walkZ) && !walkBlocked(nx, walkZ)) walkX = nx;
-      if (walkInside(walkX, nz) && !walkBlocked(walkX, nz)) walkZ = nz;
+      if (roofStay) {
+        if (!roofBlocked(nx, walkZ)) walkX = nx;
+        if (!roofBlocked(walkX, nz)) walkZ = nz;
+      } else {
+        if (walkInside(nx, walkZ) && !walkBlocked(nx, walkZ)) walkX = nx;
+        if (walkInside(walkX, nz) && !walkBlocked(walkX, nz)) walkZ = nz;
+      }
       left -= s;
     }
   }
@@ -23561,12 +24784,12 @@ function stepWalk(dt) {
       catYaw += turn * Math.min(1, dt * 9);
     } else catIdle = Math.min(8, catIdle + dt);
     const sitGoal = moving || catIdle < 5 ? 0 : 1;
-    catSit += (sitGoal - catSit) * Math.min(1, dt * 2.4);
+    catSit += (sitGoal - catSit) * Math.min(1, dt * 1.55);
     settleCat(dt, moving, travel);
   }
   else {
     if (catFig) catFig.visible = false;
-    camera.position.set(walkX, GROUND_Y + WALK_EYE, walkZ);
+    camera.position.set(walkX, (roofStay ? roofStay.y : GROUND_Y) + WALK_EYE, walkZ);
     camera.rotation.order = "YXZ";
     camera.rotation.set(walkPitch, walkYaw, 0);
   }
@@ -23591,6 +24814,14 @@ function leaveWalkToView() {
   const v = viewDefault();
   beginViewGlide(v.pos, v.tgt, { lift: true, fromFov: fromFov });
 }
+document.getElementById("roof-go").onclick = (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (roofStay) leaveRoof();
+  else if (roofOffer) enterRoof(roofOffer);
+  syncRoofButton();
+  e.currentTarget.blur();
+};
 document.getElementById("mode").onclick = (e) => {
   if (catMode) setStreet("walk");
   else if (walkMode) leaveWalkToView();
@@ -23670,7 +24901,7 @@ city.add(capGroup);
 city.add(widthGroup);
 city.add(labelGroup);
 [smokes, lamps, lampBulbs, laundry, drips, walkers].forEach(list => {
-  list.forEach(obj => city.add(obj));
+  list.forEach(obj => { if (obj) city.add(obj); });
 });
 if (streetLamps.meshes) streetLamps.meshes.forEach(mesh => city.add(mesh));
 windows.userData.keepShear = true;
@@ -23782,6 +25013,23 @@ seatPavement();
   spread(north, 8, 1);
   spread(south, 6, 3);
   spread(east, 3, 2);
+  // A second set on the same kerbs, from eight until ten. Half a step off
+  // the standing crowd, and only a mesh once the body is outside the lens.
+  function daySpread(path, count, salt) {
+    const span = path.b - path.a;
+    for (let s = 0; s < count; s++) {
+      const along = span * (0.34 + 0.62 * (s / count));
+      addWalker(path, outfits[(salt + s * 3) % outfits.length], 400 + salt * 20 + s, {
+        dir: s % 2 ? 1 : -1,
+        along,
+        inside: true,
+        day: 1
+      });
+    }
+  }
+  daySpread(north, 8, 1);
+  daySpread(south, 6, 3);
+  daySpread(east, 3, 2);
 })();
 // A few people on the filled plate. 義學大樓 and the old people's centre
 // share a party wall, so the old north-south track at x 98 was inside the
@@ -23862,6 +25110,7 @@ function bakeWalk() {
   }
 }
 bakeWalk();
+seatRoofDoors();
 if (streetLamps.posts) {
   streetLamps.posts.forEach(p => {
     const wx = p.x + SHEAR_K * p.z;
@@ -25664,12 +26913,23 @@ function stepRoofKids(now) {
       }
     }
   }
+  refreshFigureView();
   for (let i = 0; i < roofKids.length; i++) {
     const fig = roofKids[i];
-    fig.visible = show && !walkMode;
-    if (!fig.visible) continue;
+    const home = fig.userData.roof;
+    const gap = figureViewGap(home.x, home.y + 0.8, home.z, 0.95);
+    const want = show && !walkMode;
+    if (want) {
+      if (!fig.visible && gap >= FIGURE_CLEAR) { dozeFigure(fig); continue; }
+      fig.visible = true;
+    } else if (fig.visible && gap >= 0) {
+      // Day has ended, or the street has the camera, but they are still in shot.
+    } else {
+      fig.visible = false;
+    }
+    if (!fig.visible) { dozeFigure(fig); continue; }
+    wakeFigure(fig);
     const ud = fig.userData;
-    const home = ud.roof;
     const group = home.group;
     const rig = ud.rig;
     let mode = group.mode;
@@ -26540,12 +27800,19 @@ function fillBodyLights() {
     return { lamp: lamp, w: lamp.getWorldPosition(new THREE.Vector3()), d: 0 };
   }));
   const cx = camera.position.x, cz = camera.position.z;
-  for (let i = 0; i < list.length; i++) {
-    const w = list[i].w;
-    const dx = w.x - cx, dz = w.z - cz;
-    list[i].d = dx * dx + dz * dz;
+  // The lamps do not move. A millimetre of camera travel is the only thing
+  // that can change which six are nearest, so a resting view keeps the order.
+  const kx = (cx * 1000) | 0, kz = (cz * 1000) | 0;
+  if (fillBodyLights.kx !== kx || fillBodyLights.kz !== kz) {
+    fillBodyLights.kx = kx;
+    fillBodyLights.kz = kz;
+    for (let i = 0; i < list.length; i++) {
+      const w = list[i].w;
+      const dx = w.x - cx, dz = w.z - cz;
+      list[i].d = dx * dx + dz * dz;
+    }
+    list.sort(function (a, b) { return a.d - b.d; });
   }
-  list.sort(function (a, b) { return a.d - b.d; });
   for (let i = 0; i < 6; i++) {
     const item = list[i];
     const pos = bodyLight.pos[i];
@@ -26681,6 +27948,88 @@ function syncPace() {
   }
 }
 syncPace();
+// The scene root was forcing every matrix in the city on every frame, including
+// walls that have not moved since they were built. Rigid parts of a bus or the
+// aircraft stay frozen too: the root still moves, and that movement refreshes
+// the body. Bones, wheels, the shell, the rain and the sky keep composing.
+(function restMatrices() {
+  const keep = new Set();
+  function hold(obj) { if (obj) keep.add(obj); }
+  hold(sky); hold(sun); hold(fill); hold(rain); hold(splash);
+  function freezeBranch(obj) {
+    if (!obj) return;
+    if (obj.userData && obj.userData.rig) return;
+    if (!keep.has(obj) && obj.matrixAutoUpdate) {
+      obj.updateMatrix();
+      obj.matrixAutoUpdate = false;
+    }
+    const kids = obj.children;
+    for (let i = 0; i < kids.length; i++) freezeBranch(kids[i]);
+  }
+  function relax(obj) {
+    if (!obj) return;
+    const ud = obj.userData || {};
+    if (ud.rig) return;
+    if (ud.ride) {
+      const ride = ud.ride;
+      hold(obj);
+      hold(ride.shell);
+      if (ride.wheels) for (let i = 0; i < ride.wheels.length; i++) hold(ride.wheels[i]);
+      hold(ride.crank);
+      if (ride.pedals) for (let i = 0; i < ride.pedals.length; i++) hold(ride.pedals[i].pedal);
+      if (ride.riders) for (let i = 0; i < ride.riders.length; i++) hold(ride.riders[i]);
+      freezeBranch(obj);
+      return;
+    }
+    if (ud.beacons) {
+      hold(obj);
+      freezeBranch(obj);
+      return;
+    }
+    if (ud.live || keep.has(obj)) return;
+    if (obj.matrixAutoUpdate) {
+      obj.updateMatrix();
+      obj.matrixAutoUpdate = false;
+    }
+    const kids = obj.children;
+    for (let i = 0; i < kids.length; i++) relax(kids[i]);
+  }
+  function branchStill(obj) {
+    if (obj.matrixAutoUpdate) return false;
+    const kids = obj.children;
+    for (let i = 0; i < kids.length; i++) if (!branchStill(kids[i])) return false;
+    return true;
+  }
+  function seal(obj) {
+    const kids = obj.children;
+    for (let i = 0; i < kids.length; i++) {
+      const child = kids[i];
+      if (child.matrixAutoUpdate) continue;
+      if (branchStill(child)) child.updateMatrixWorld = stillMatrixWorld;
+      else seal(child);
+    }
+  }
+  relax(scene);
+  scene.updateMatrixWorld(true);
+  scene.matrixAutoUpdate = false;
+  scene.matrixWorldNeedsUpdate = false;
+  seal(scene);
+})();
+function stillMatrixWorld(force) {
+  if (force) THREE.Object3D.prototype.updateMatrixWorld.call(this, true);
+}
+// A hidden figure is not in the picture and not in the puddles. Skipping its
+// bones until it is shown again leaves the pose that was last composed.
+function dozeFigure(fig) {
+  if (!fig || fig.userData.doze) return;
+  fig.userData.doze = 1;
+  fig.updateMatrixWorld = stillMatrixWorld;
+}
+function wakeFigure(fig) {
+  if (!fig || !fig.userData.doze) return;
+  fig.userData.doze = 0;
+  fig.updateMatrixWorld = THREE.Object3D.prototype.updateMatrixWorld;
+}
 (function tick() {
   requestAnimationFrame(tick);
   const now = performance.now() * 0.001;
@@ -26736,12 +28085,17 @@ syncPace();
   if (rain.visible && lamps.length >= 6) {
     const near = rain.nearLamps || (rain.nearLamps = lamps.map(lamp => ({ lamp: lamp, d: 0 })));
     const cx = camera.position.x, cz = camera.position.z;
-    for (let i = 0; i < near.length; i++) {
-      const p = near[i].lamp.position;
-      const dx = p.x - cx, dz = p.z - cz;
-      near[i].d = dx * dx + dz * dz;
+    const kx = (cx * 1000) | 0, kz = (cz * 1000) | 0;
+    if (rain.lampKx !== kx || rain.lampKz !== kz) {
+      rain.lampKx = kx;
+      rain.lampKz = kz;
+      for (let i = 0; i < near.length; i++) {
+        const p = near[i].lamp.position;
+        const dx = p.x - cx, dz = p.z - cz;
+        near[i].d = dx * dx + dz * dz;
+      }
+      near.sort((a, b) => a.d - b.d);
     }
-    near.sort((a, b) => a.d - b.d);
     for (let i = 0; i < 6; i++) {
       rainUniforms.uLampPos.value[i] = near[i].lamp.position;
       rainUniforms.uLampCol.value[i] = near[i].lamp.color;
@@ -26797,16 +28151,7 @@ syncPace();
     uni.uFade.value = fade;
     uni.uBead.value = bead;
   });
-  walkers.forEach(fig => {
-    const ud = fig.userData;
-    if (ud.inside) return;
-    if (walkerHome(ud)) {
-      if (fig.visible) fig.visible = false;
-      return;
-    }
-    if (!fig.visible) fig.visible = true;
-    stepWalker(fig, now);
-  });
+  syncPavement(now);
   if (traffic.step) {
     const dt = Math.min(0.05, Math.max(0, now - (traffic.t || now)));
     traffic.t = now;
@@ -26848,10 +28193,17 @@ syncPace();
   stepWalk.t = now;
   if (walkMode) stepWalk(dt);
   else stepViewGlide(dt);
+  syncRoofButton();
+  if (catFig) {
+    if (catMode && catFig.visible) wakeFigure(catFig);
+    else dozeFigure(catFig);
+  }
   holdCameraAboveFloor();
   if (!walkMode) holdViewOutside();
   syncCityFolk(now);
   stepAlleyHeat(now, dt);
+  stepGangFight(now, dt);
+  stepAlleySleep(now);
   syncKeepers(now);
   syncShopFronts();
   for (let ki = 0; ki < keepers.length; ki++) stepKeeper(keepers[ki], now);
