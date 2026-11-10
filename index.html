@@ -384,11 +384,18 @@
     transform: translateX(-50%);
     z-index: 8;
     display: none;
-    min-width: 92px;
-    padding: 8px 18px;
+    box-sizing: border-box;
+    width: max-content;
+    max-width: calc(100vw - 2 * (max(var(--frame), env(safe-area-inset-left)) + 96px));
+    min-width: 0;
+    min-height: clamp(30px, 4.2vh, 42px);
+    padding: clamp(6px, 0.9vh, 8px) clamp(12px, 1.6vw, 18px);
+    align-items: center;
     justify-content: center;
-    letter-spacing: 0.18em;
-    font-size: 13px;
+    letter-spacing: 0.12em;
+    font-size: clamp(12px, 1.35vw, 13px);
+    line-height: 1.2;
+    white-space: nowrap;
     color: #f4e7cf;
     background: #1a1411;
     border: 1px solid #ffc56a;
@@ -650,16 +657,37 @@
     h1 { font-size: 18px; }
     #walk-stick { width: 72px; height: 72px; }
     #walk-stick i { width: 30px; height: 30px; }
+    #roof-go {
+      font-size: 12px;
+      min-height: 28px;
+      padding: 4px 12px;
+      letter-spacing: 0.08em;
+    }
   }
   @media (aspect-ratio > 1) and (max-height: 540px) and (max-width: 900px) {
     #ui { grid-template-columns: minmax(0, min(30vw, 190px)) minmax(64px, 1fr) minmax(0, min(30vw, 190px)); }
     #col-left, #col-right, #col-right:has(#card.open), #col-left:has(#legend.open) { width: 100%; max-width: 100%; }
     header.panel { padding: 6px 8px; width: max-content; max-width: 100%; }
     header.panel h1, h1 { font-size: 15px; white-space: normal; }
+    #roof-go {
+      font-size: 11px;
+      min-height: 26px;
+      padding: 3px 10px;
+      letter-spacing: 0.06em;
+      max-width: calc(100vw - 2 * (max(var(--frame), env(safe-area-inset-left)) + 64px));
+    }
     h1 > .when, #wx-read { flex-wrap: wrap; }
   }
+  @media (max-width: 560px) and (min-height: 541px) {
+    #roof-go {
+      font-size: clamp(11px, 3.2vw, 13px);
+      letter-spacing: 0.08em;
+      padding: 6px clamp(8px, 2.6vw, 14px);
+      max-width: calc(100vw - 2 * (max(var(--frame), env(safe-area-inset-left)) + 72px));
+    }
+  }
   @media (pointer: coarse) {
-    button, #tools button, .tabs button, .switch { min-height: 42px; }
+    button, #tools button, .tabs button, .switch, #roof-go { min-height: 42px; }
     #card .close { min-width: 42px; min-height: 42px; }
     input[type="range"] { height: 28px; }
     #walk-stick { width: 112px; height: 112px; }
@@ -1974,6 +2002,7 @@ const ROOF_SKY = [
   "uniform float uRoofPlane;",
   "uniform float uClock;",
   "uniform float uDark;",
+  "uniform float uBowl;",
   "uniform float uHaze;",
   "uniform float uRain;",
   "uniform float uMarket;",
@@ -1989,8 +2018,8 @@ const ROOF_SKY = [
   "  vec3 zenith = mix(vec3(0.20, 0.40, 0.66), vec3(0.012, 0.018, 0.042), dark);",
   "  vec3 horiz = mix(vec3(0.78, 0.84, 0.90), vec3(0.028, 0.034, 0.052), dark);",
   "  float dry = (1.0 - rain) * (1.0 - haze * 0.35);",
-  "  float dawn = smoothstep(0.18, 0.24, uClock) * (1.0 - smoothstep(0.30, 0.38, uClock));",
-  "  float dusk = smoothstep(0.66, 0.72, uClock) * (1.0 - smoothstep(0.78, 0.86, uClock));",
+  "  float dawn = smoothstep(0.167, 0.28, uClock) * (1.0 - smoothstep(0.32, 0.46, uClock));",
+  "  float dusk = smoothstep(0.64, 0.72, uClock) * (1.0 - smoothstep(0.76, 0.833, uClock));",
   "  zenith = mix(zenith, vec3(0.25, 0.34, 0.52), dawn * dry);",
   "  horiz = mix(horiz, vec3(0.95, 0.52, 0.28), dawn * dry);",
   "  zenith = mix(zenith, vec3(0.16, 0.16, 0.32), dusk * dry);",
@@ -2001,6 +2030,8 @@ const ROOF_SKY = [
   "  horiz = mix(horiz, mix(vec3(0.34, 0.38, 0.42), vec3(0.018, 0.024, 0.040), dark), rain);",
   "  horiz = mix(horiz, vec3(0.62, 0.24, 0.10), uMarket);",
   "  zenith = mix(zenith, vec3(0.03, 0.015, 0.035), uMarket);",
+  "  zenith = mix(zenith, zenith * vec3(0.34, 0.32, 0.40), uBowl);",
+  "  horiz = mix(horiz, horiz * vec3(0.55, 0.52, 0.60), uBowl);",
   "  float reach = mix(0.08, 0.42, clamp(haze * 0.9 + rain * 0.35, 0.0, 1.0));",
   "  vec3 col = mix(horiz, zenith, smoothstep(0.0, max(reach, 0.02), up));",
   "  vec3 sunDir = normalize(uSunDir);",
@@ -2425,6 +2456,7 @@ function attachWetRoof(mat) {
     shader.uniforms.uRoofPlane = uRoofPlane;
     shader.uniforms.uClock = su.uClock;
     shader.uniforms.uDark = su.uDark;
+    shader.uniforms.uBowl = su.uBowl;
     shader.uniforms.uHaze = su.uHaze;
     shader.uniforms.uRain = su.uRain;
     shader.uniforms.uMarket = su.uMarket;
@@ -8673,6 +8705,171 @@ function dressAlleys() {
       loomAlong(cross.cable, tight ? 2.58 : 3.02, a0, a1, -1);
       loomAlong(cross.loom, tight ? 2.86 : 3.2, a0, a1, 1);
     }
+    // A wire counts only when it actually reaches the other building. A run
+    // stapled to one wall does not close the gap.
+    function spansAcross(o) {
+      if (ns) return o.sx > o.sz * 1.8 && o.sx > 0.12;
+      return o.sz > o.sx * 1.8 && o.sz > 0.12;
+    }
+    function wireNear(along, rad) {
+      const band = thick * 0.75 + 0.45;
+      const lists = [cross.cable, cross.loom, cross.cord];
+      for (let li = 0; li < lists.length; li++) {
+        const list = lists[li];
+        for (let i = list.length - 1; i >= 0; i--) {
+          const o = list[i];
+          if (!spansAcross(o)) continue;
+          const da = ns ? Math.abs(o.z - along) : Math.abs(o.x - along);
+          if (da > rad) continue;
+          const dc = ns ? Math.abs(o.x - cx) : Math.abs(o.z - cz);
+          if (dc < band) return true;
+        }
+      }
+      return false;
+    }
+    // Bare stretches of a narrow lane get the same tangled crossing the dense
+    // slots already have. The strands leave the plaster above the shopfront
+    // and sag to the opposite face. Own dice, so the first loom stays put.
+    function tangleGap(a0, a1, dice) {
+      const tightLane = thick < 2.45;
+      const step = tightLane ? 0.58 : 0.72;
+      const reach = tightLane ? 0.3 : 0.36;
+      for (let t = a0 + 0.18; t < a1 - 0.12; t += step) {
+        if (wireNear(t, reach)) continue;
+        if (dice() < 0.05) continue;
+        const nStrand = tightLane ? 5 + (dice() * 3 | 0) : 4 + (dice() * 3 | 0);
+        for (let s = 0; s < nStrand; s++) {
+          const along = t + (dice() - 0.5) * 0.34;
+          const yWall = HEAD + 0.18 + dice() * 0.95;
+          const drop = 0.06 + dice() * (tightLane ? 0.34 : 0.22);
+          const gauge = 0.008 + dice() * 0.011;
+          const skew = (dice() - 0.5) * (tightLane ? 1.15 : 1.25);
+          const roll = dice();
+          const list = roll < 0.68 ? cross.cable : roll < 0.88 ? cross.loom : cross.cord;
+          sagStrand(list, yWall, along, drop, gauge, skew, dice, HEAD);
+        }
+      }
+    }
+    // Rubbish along the skirting of a narrow lane. The centre of the pour
+    // stays the walking line: a metre lane keeps the drain side clear, and
+    // nothing is laid where a pile, a gate or a shop mouth already sits.
+    // Own dice, so the buckets and the first piles stay put.
+    function litterBase(a0, a1, dice) {
+      if (!narrow || thick < 0.85) return;
+      const room = thick * 0.5 - 0.38;
+      if (room < 0.05) return;
+      const depthCap = Math.min(0.16, room);
+      const bulky = depthCap >= 0.1 && thick >= 1.15;
+      function clearOf(x, z) {
+        if (Math.hypot(x - 57.75, z - 74.25) < 2.4) return false;
+        if (Math.hypot(x - 21.2, z - 99) < 1.8) return false;
+        if (x > TEMPLE_X - 0.4 && x < TEMPLE_X + TEMPLE_W + 0.4 && z > TEMPLE_Z - 1.2 && z < TEMPLE_Z + TEMPLE_D + 1.2) return false;
+        if (nearFitting(x, z)) return false;
+        for (let i = 0; i < laneMouths.length; i++) {
+          const m = laneMouths[i];
+          const da = m.along === "x" ? Math.abs(x - m.x) : Math.abs(z - m.z);
+          const dc = m.along === "x" ? Math.abs(z - m.z) : Math.abs(x - m.x);
+          if (da < m.half && dc < 0.42) return false;
+        }
+        return true;
+      }
+      function busy(x, z, rad) {
+        const r2 = rad * rad;
+        const lists = [bits.grate, bits.puddle, bits.paper, bits.board, bits.plate, bits.scrap, goods.bucket, goods.sack, goods.bag, goods.crate, goods.sheet, goods.drum, goods.rag, gates];
+        for (let li = 0; li < lists.length; li++) {
+          const list = lists[li];
+          for (let i = list.length - 1; i >= 0; i--) {
+            const o = list[i];
+            const dx = x - o.x, dz = z - o.z;
+            if (dx * dx + dz * dz < r2) return true;
+          }
+        }
+        return false;
+      }
+      let side = dice() > 0.5 ? 1 : -1;
+      const step = thick < 1.4 ? 0.58 : 0.74;
+      for (let t = a0 + 0.26; t < a1 - 0.2; t += step * (0.7 + dice() * 0.5)) {
+        if (dice() < 0.16) continue;
+        let use = thick < 1.55 ? 1 : (side = -side);
+        if (!wallHolds(use, t)) {
+          if (thick < 1.55) continue;
+          use = -use;
+          if (!wallHolds(use, t)) continue;
+        }
+        const p = wallPos(use, 0.05, t);
+        if (!clearOf(p.x, p.z) || busy(p.x, p.z, 0.26)) continue;
+        const pick = dice();
+        const tone = dice();
+        // Stay on the alley pour, just in from the lot line. Seating these
+        // onto a recessed shop front dropped them off the slab.
+        function lay(box, depth) {
+          const q = wallPos(use, depth * 0.5 + 0.02, ns ? box.z : box.x);
+          box.x = q.x;
+          box.z = q.z;
+          return box;
+        }
+        if (!bulky || pick < 0.48) {
+          const n = 1 + (dice() > 0.52 ? 1 : 0) + (dice() > 0.84 ? 1 : 0);
+          for (let s = 0; s < n; s++) {
+            const along = t + (dice() - 0.5) * 0.2;
+            if (!wallHolds(use, along)) continue;
+            const len = 0.12 + dice() * 0.18;
+            const w = Math.min(depthCap, 0.045 + dice() * 0.05);
+            const spot = wallPos(use, w * 0.5 + 0.02, along);
+            if (!clearOf(spot.x, spot.z) || busy(spot.x, spot.z, 0.11)) continue;
+            if (dice() < 0.58) {
+              bits.scrap.push(lay({
+                x: spot.x, y: TOP + 0.01, z: spot.z,
+                sx: ns ? w : len, sy: 0.008, sz: ns ? len : w,
+                tint: tone < 0.5 ? [0.42, 0.32, 0.22] : [0.34, 0.3, 0.24]
+              }, w));
+            } else {
+              bits.paper.push(lay({
+                x: spot.x, y: TOP + 0.008, z: spot.z,
+                sx: ns ? w : len, sy: 0.008, sz: ns ? len : w,
+                tint: tone < 0.4 ? [0.72, 0.64, 0.5] : tone < 0.72 ? [0.58, 0.52, 0.42] : [0.78, 0.76, 0.68]
+              }, w));
+            }
+          }
+        } else if (pick < 0.7) {
+          const bh = 0.07 + dice() * 0.05;
+          const bw = Math.min(depthCap, 0.09 + dice() * 0.05);
+          const spot = wallPos(use, bw * 0.5 + 0.02, t);
+          goods.bag.push(lay({
+            x: spot.x, y: TOP + bh / 2, z: spot.z,
+            sx: ns ? bw : 0.1, sy: bh, sz: ns ? 0.1 : bw,
+            tint: tone < 0.34 ? [0.76, 0.58, 0.38] : tone < 0.67 ? [0.7, 0.72, 0.66] : [0.5, 0.52, 0.46]
+          }, bw));
+        } else if (pick < 0.86) {
+          const sh = 0.06 + dice() * 0.04;
+          const sw = Math.min(depthCap, 0.11 + dice() * 0.04);
+          const spot = wallPos(use, sw * 0.5 + 0.02, t);
+          goods.sack.push(lay({
+            x: spot.x, y: TOP + sh / 2, z: spot.z,
+            sx: ns ? sw : 0.09, sy: sh, sz: ns ? 0.09 : sw,
+            tint: tone < 0.5 ? [0.68, 0.58, 0.44] : [0.8, 0.76, 0.66]
+          }, sw));
+        } else if (thick >= 1.5) {
+          const ch = 0.09 + dice() * 0.05;
+          const cw = Math.min(depthCap, 0.11 + dice() * 0.04);
+          const spot = wallPos(use, cw * 0.5 + 0.02, t);
+          goods.crate.push(lay({
+            x: spot.x, y: TOP + ch / 2, z: spot.z,
+            sx: ns ? cw : 0.1, sy: ch, sz: ns ? 0.1 : cw
+          }, cw));
+        } else {
+          const rh = 0.035 + dice() * 0.02;
+          const rw = Math.min(depthCap, 0.08 + dice() * 0.04);
+          const rl = 0.12 + dice() * 0.1;
+          const spot = wallPos(use, rw * 0.5 + 0.02, t);
+          goods.rag.push(lay({
+            x: spot.x, y: TOP + rh / 2, z: spot.z,
+            sx: ns ? rw : rl, sy: rh, sz: ns ? rl : rw,
+            tint: tone < 0.5 ? [0.4, 0.38, 0.32] : [0.5, 0.32, 0.28]
+          }, rw));
+        }
+      }
+    }
     function dampCentre(a0, a1) {
       for (let a = a0 + 0.25; a < a1 - 0.25; a += 1.55 + weave() * 1.15) {
         const len = 0.85 + weave() * 1.35;
@@ -8693,7 +8890,11 @@ function dressAlleys() {
       const start = span[0] + 0.6;
       const end = span[1] - 0.6;
       const runLen = end - start;
-      if (runLen < 2.4) return;
+      if (runLen < 2.4) {
+        if (thick < 3.35 && runLen > 1.45) tangleGap(start, end, roofRand(cx + 4.2, span[0] + 8.1, 0xC0B1));
+        if (narrow && runLen > 1.35) litterBase(start, end, roofRand(cx + 2.8, span[0] + 5.4, 0xD3B5));
+        return;
+      }
       if (narrow) {
         pushRunClipped("cable", -1, 2.45, start, end);
         pushRunClipped("cable", 1, 2.68, start, end);
@@ -9302,6 +9503,8 @@ function dressAlleys() {
           t += gap * (0.72 + fly() * 0.55);
         }
       });
+      if (thick < 3.35) tangleGap(start, end, roofRand(cx + 4.2, span[0] + 8.1, 0xC0B1));
+      if (narrow) litterBase(start, end, roofRand(cx + 2.8, span[0] + 5.4, 0xD3B5));
     });
   });
   function splitLong(list) {
@@ -22869,6 +23072,13 @@ function darknessOf(clock) {
   const elev = Math.cos((clock - 0.5) * Math.PI * 2);
   return 1 - THREE.MathUtils.smoothstep(elev, -0.45, 0.58);
 }
+// The dome drops from half past seven and stays down until half past four.
+// Lamps still follow darknessOf. This only deepens the sky.
+function nightBowlOf(clock) {
+  const hour = ((clock % 1) + 1) % 1 * 24;
+  if (hour >= 12) return THREE.MathUtils.smoothstep(hour, 19.5, 20);
+  return 1 - THREE.MathUtils.smoothstep(hour, 4, 4.5);
+}
 function skyPhase(clock) {
   const elev = Math.cos((clock - 0.5) * Math.PI * 2);
   let day = THREE.MathUtils.smoothstep(elev, -0.02, 0.55);
@@ -22928,6 +23138,7 @@ const sky = new THREE.Mesh(
     uniforms: {
       uClock: { value: OPEN_CLOCK },
       uDark: { value: darkness },
+      uBowl: { value: nightBowlOf(OPEN_CLOCK) },
       uHaze: { value: 0 },
       uRain: { value: 1 },
       uMarket: { value: 0 },
@@ -22949,6 +23160,7 @@ const sky = new THREE.Mesh(
       "varying vec3 vDir;",
       "uniform float uClock;",
       "uniform float uDark;",
+      "uniform float uBowl;",
       "uniform float uHaze;",
       "uniform float uRain;",
       "uniform float uMarket;",
@@ -22971,9 +23183,9 @@ const sky = new THREE.Mesh(
       "  vec3 dir = normalize(skyWorld.xyz / skyWorld.w - cameraPosition);",
       "  dir = mix(dir, normalize(vDir), step(uView.x * uView.y, 1.0));",
       "  float up = clamp(dir.y, 0.0, 1.0);",
-      "  float dawn = smoothstep(0.12, 0.28, uClock) * (1.0 - smoothstep(0.32, 0.46, uClock));",
-      "  float dusk = smoothstep(0.60, 0.72, uClock) * (1.0 - smoothstep(0.78, 0.90, uClock));",
-      "  float afternoon = smoothstep(0.52, 0.66, uClock) * (1.0 - smoothstep(0.72, 0.84, uClock));",
+      "  float dawn = smoothstep(0.167, 0.28, uClock) * (1.0 - smoothstep(0.32, 0.46, uClock));",
+      "  float dusk = smoothstep(0.64, 0.72, uClock) * (1.0 - smoothstep(0.76, 0.833, uClock));",
+      "  float afternoon = smoothstep(0.52, 0.66, uClock) * (1.0 - smoothstep(0.70, 0.80, uClock));",
       "  vec3 zenith = mix(vec3(0.20, 0.40, 0.66), vec3(0.012, 0.018, 0.042), uDark);",
       "  vec3 horiz = mix(vec3(0.78, 0.84, 0.90), vec3(0.028, 0.034, 0.052), uDark);",
       "  float dry = (1.0 - uRain) * (1.0 - uHaze * 0.35);",
@@ -22990,6 +23202,8 @@ const sky = new THREE.Mesh(
       "  horiz = mix(horiz, rainH, uRain);",
       "  horiz = mix(horiz, vec3(0.62, 0.24, 0.10), uMarket);",
       "  zenith = mix(zenith, vec3(0.03, 0.015, 0.035), uMarket);",
+      "  zenith = mix(zenith, zenith * vec3(0.34, 0.32, 0.40), uBowl);",
+      "  horiz = mix(horiz, horiz * vec3(0.55, 0.52, 0.60), uBowl);",
       "  float reach = mix(0.08, 0.42, clamp(uHaze * 0.9 + uRain * 0.35, 0.0, 1.0));",
       "  reach = mix(reach, 0.2, uRain * (1.0 - uDark));",
       "  vec3 col = mix(horiz, zenith, smoothstep(0.0, reach, up));",
@@ -27874,6 +28088,7 @@ if (addMass.roofMat) {
     shader.uniforms.uRoofPlane = uRoofPlane;
     shader.uniforms.uClock = su.uClock;
     shader.uniforms.uDark = su.uDark;
+    shader.uniforms.uBowl = su.uBowl;
     shader.uniforms.uHaze = su.uHaze;
     shader.uniforms.uRain = su.uRain;
     shader.uniforms.uMarket = su.uMarket;
@@ -28232,6 +28447,7 @@ function wakeFigure(fig) {
   su.uTime.value = now;
   su.uClock.value = stepSky.clock;
   su.uDark.value = darkness;
+  su.uBowl.value = nightBowlOf(stepSky.clock);
   visualSunDir(stepSky.clock, su.uSunDir.value);
   camera.updateMatrixWorld();
   su.uView.value.set(renderer.domElement.width, renderer.domElement.height);
