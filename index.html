@@ -1448,6 +1448,8 @@ scene.add(sun);
 const fill = new THREE.DirectionalLight(0x8aa4b8, 0.28);
 fill.position.set(120, 40, -80);
 scene.add(fill);
+const flashLamp = new THREE.AmbientLight(0xdfe7ff, 0);
+scene.add(flashLamp);
 
 const sectionPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), SITE_D + 8);
 const floorPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), ROOF_H + 4);
@@ -23168,10 +23170,16 @@ function stepKeeper(fig, now) {
     ride.pedal(0);
   });
 })();
-// The street opens at seven in the evening, in the rain. The clock and the weather still move on their own.
-// 19/24 multiplies back a hair under 19, which the hour crossfade would read as six.
+// The street opens on the clock of the device that loaded it. A hair is added
+// so the fraction does not fall back across the hour label. The day and the
+// sky still move on their own after that.
 const TOD_HOLD = { day: 0.54, sunset: 0.735, night: 0.90 };
-const OPEN_CLOCK = (19 + 1e-4) / 24;
+function deviceClock() {
+  const now = new Date();
+  const hour = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
+  return ((hour + 1e-4) % 24) / 24;
+}
+const OPEN_CLOCK = deviceClock();
 let weather = "rain";
 // Weights ease from one sky to the next. A shower takes about half a minute
 // on its own, and a chosen sky a little less, so the street does not jump.
@@ -23281,6 +23289,9 @@ const sky = new THREE.Mesh(
       uRain: { value: 1 },
       uMarket: { value: 0 },
       uTime: { value: 0 },
+      uFlash: { value: 0 },
+      uBoltAz: { value: 0 },
+      uBoltSeed: { value: 1 },
       uSunDir: { value: new THREE.Vector3(0.2, 0.55, 0.8).normalize() },
       uFog: { value: new THREE.Color(0x8b9094) },
       // Clip-to-world, so the sun and moon are discs instead of one sky facet.
@@ -23303,6 +23314,9 @@ const sky = new THREE.Mesh(
       "uniform float uRain;",
       "uniform float uMarket;",
       "uniform float uTime;",
+      "uniform float uFlash;",
+      "uniform float uBoltAz;",
+      "uniform float uBoltSeed;",
       "uniform vec3 uSunDir;",
       "uniform vec3 uFog;",
       "uniform mat4 uInvVP;",
@@ -23384,6 +23398,19 @@ const sky = new THREE.Mesh(
       "    float moonVis = smoothstep(0.1, -0.05, sunDir.y) * (1.0 - uMarket) * (1.0 - uHaze * 0.55) * nightSky;",
       "    col = mix(col, vec3(0.78, 0.82, 0.88), smoothstep(0.9984, 0.9995, dot(dir, moonDir)) * moonVis);",
       "  }",
+      "  float az = atan(dir.x, dir.z);",
+      "  float daz = abs(az - uBoltAz);",
+      "  daz = min(daz, 6.2831853 - daz);",
+      "  float band = floor(up * 26.0);",
+      "  float jag = (hash(vec2(band, uBoltSeed)) - 0.5) * 0.15;",
+      "  jag = mix(jag, (hash(vec2(band + 1.0, uBoltSeed)) - 0.5) * 0.15, fract(up * 26.0));",
+      "  float fork = step(0.42, up) * step(up, 0.78) * (hash(vec2(uBoltSeed, 3.0)) - 0.35) * 0.22;",
+      "  float line = min(abs(daz - jag), abs(daz - jag - fork));",
+      "  float span = smoothstep(0.06, 0.2, up) * smoothstep(0.97, 0.58, up);",
+      "  float bolt = (smoothstep(0.018, 0.0, line) + smoothstep(0.08, 0.0, line) * 0.4) * span;",
+      "  float sheet = exp(-daz * daz * 8.0) * smoothstep(0.0, 0.22, up);",
+      "  col = mix(col, vec3(0.80, 0.86, 0.98), clamp(uFlash * (0.28 + sheet * 0.7), 0.0, 0.88));",
+      "  col += vec3(0.86, 0.92, 1.0) * uFlash * bolt;",
       "  float hem = smoothstep(0.0, mix(0.02, 0.08, max(uHaze, uRain)), up);",
       "  col = mix(uFog, col, hem);",
       "  gl_FragColor = vec4(col, 1.0);",
@@ -23770,6 +23797,15 @@ function setTod(name) {
   paintSky.stamp = "";
   paintSky();
 }
+// Half the showers carry a storm. A dry spell, and the next rain, roll again.
+const storm = { on: false, rolled: false, armed: false, next: 0, t0: -20, far: true, az: 0, seed: 1, k: 0, exp: null, lit: false };
+function rollStorm(now) {
+  storm.on = Math.random() < 0.5;
+  storm.rolled = true;
+  storm.armed = false;
+  storm.t0 = -20;
+  storm.next = now + 4 + Math.random() * 8;
+}
 function setWeather(name, user) {
   if (name === "auto") {
     wxLock = false;
@@ -23783,6 +23819,7 @@ function setWeather(name, user) {
   }
   const now = performance.now() * 0.001;
   if (name === weather && wxGoal[name] === 1 && wxFrom[name] > 0.999 && paintSky.stamp) return;
+  const prevSky = weather;
   wxAdvance(now);
   wxLeft = wxLead();
   for (let i = 0; i < WX_NAMES.length; i++) {
@@ -23791,6 +23828,7 @@ function setWeather(name, user) {
     wxGoal[n] = n === name ? 1 : 0;
   }
   weather = name;
+  if (name === "rain" && (prevSky !== "rain" || !storm.rolled)) rollStorm(now);
   wxT0 = now;
   const remain = 1 - wxFrom[name];
   const full = user ? WX_FADE_USER : WX_FADE;
@@ -23812,7 +23850,21 @@ function bindAirControls() {
   });
 }
 paintClock.ready = true;
-setWeather("rain");
+function openOnDevice() {
+  const name = rollWeather(darkness);
+  weather = name;
+  for (let i = 0; i < WX_NAMES.length; i++) {
+    const n = WX_NAMES[i];
+    const v = n === name ? 1 : 0;
+    wxNow[n] = v;
+    wxFrom[n] = v;
+    wxGoal[n] = v;
+  }
+  wxLeft = name;
+  wxBlend = 1;
+  setWeather(name);
+}
+openOnDevice();
 bindAirControls();
 // Rain is a loop of noise, not a recording. The wash is the open shower.
 // Under the cages the wash drops back and the drips on zinc come forward.
@@ -23873,6 +23925,8 @@ function ensureRainSound() {
   bodyLp.connect(bodyGain);
   bodyGain.connect(master);
   master.connect(mix);
+  rainSound.mix = mix;
+  rainSound.linked = true;
   const citySrc = ctx.createBufferSource();
   citySrc.buffer = bed;
   citySrc.loop = true;
@@ -24149,9 +24203,33 @@ function stepCityBed(now, alive, wet, low) {
     rainSound.nextPass = now + passGap(nightAmt);
   }
 }
+function writeRainGain(value) {
+  const g = rainSound.master.gain;
+  g.cancelScheduledValues(rainSound.ctx.currentTime);
+  g.value = value;
+}
+// The shower bus is the wash, the body and the drips. Once the streaks are
+// gone it is pulled off the output, so the loop cannot keep playing. The
+// street bed is a different bus and stays up.
+function parkRain(now) {
+  rainSound.level = 0;
+  rainSound.envT = now;
+  writeRainGain(0);
+  if (rainSound.linked) {
+    try { rainSound.master.disconnect(); } catch (err) {}
+    rainSound.linked = false;
+  }
+}
+function unparkRain() {
+  if (!rainSound.linked && rainSound.mix) {
+    rainSound.master.connect(rainSound.mix);
+    rainSound.linked = true;
+  }
+}
 function stepRainSound(now) {
   if (!rainSound.ctx || !rainSound.master) return;
   const alive = rainSound.on && !document.hidden;
+  if (rainSound.thunderGain) rainSound.thunderGain.gain.value = alive ? 1 : 0;
   const wet = alive ? Math.max(0, Math.min(1, wxNow.rain)) : 0;
   const low = camera.position.y < 10;
   if (rainSound.low !== low) {
@@ -24160,17 +24238,24 @@ function stepRainSound(now) {
     rainSound.washGain.gain.setTargetAtTime(low ? 0.28 : 0.5, t, 0.45);
     rainSound.bodyGain.gain.setTargetAtTime(low ? 0.86 : 0.52, t, 0.45);
   }
+  // Same cutoff as the streaks. Below that the shower is over.
+  if (wet <= 0.02) {
+    parkRain(now);
+    rainSound.nextDrop = now + 0.4;
+    stepCityBed(now, alive, 0, low);
+    return;
+  }
+  unparkRain();
   // Half the first mix. Horns, voices and traffic keep the other gain.
   const want = wet * (low ? 0.17 : 0.21);
-  const audioNow = rainSound.ctx.currentTime;
-  let dt = audioNow - (rainSound.audioT == null ? audioNow : rainSound.audioT);
-  rainSound.audioT = audioNow;
-  dt = Math.min(1.2, Math.max(0, dt));
+  let dt = now - (rainSound.envT == null ? now : rainSound.envT);
+  rainSound.envT = now;
+  dt = Math.min(0.05, Math.max(0, dt));
   const k = 1 - Math.exp(-dt / (want > rainSound.level ? 0.4 : 0.18));
   rainSound.level += (want - rainSound.level) * k;
   if (rainSound.level < 0.0005) rainSound.level = 0;
-  rainSound.master.gain.value = rainSound.level;
-  if (wet < 0.04 || rainSound.ctx.state !== "running") rainSound.nextDrop = now + 0.15;
+  writeRainGain(rainSound.level);
+  if (rainSound.ctx.state !== "running") rainSound.nextDrop = now + 0.15;
   else {
     const gap = (low ? 0.09 : 0.15) / Math.max(0.25, wet);
     let burst = 0;
@@ -24183,6 +24268,140 @@ function stepRainSound(now) {
   }
   stepCityBed(now, alive, wet, low);
 }
+function flashAmount(age) {
+  if (age < 0 || age > 0.4) return 0;
+  const main = Math.exp(-age * 14);
+  const flick = age > 0.05 ? Math.exp(-(age - 0.07) * 22) * 0.7 : 0;
+  return Math.min(1, Math.max(main, flick));
+}
+function playThunder(far) {
+  if (!rainSound.on || document.hidden) return;
+  const ctx = rainSound.ctx;
+  if (!ctx || ctx.state !== "running" || !rainSound.mix) return;
+  if (!rainSound.thunderGain) {
+    const bus = ctx.createGain();
+    bus.gain.value = 1;
+    bus.connect(rainSound.mix);
+    rainSound.thunderGain = bus;
+  }
+  const t = ctx.currentTime;
+  const delay = far ? 0.85 + Math.random() * 2.3 : 0.16 + Math.random() * 0.32;
+  const dur = far ? 2.4 + Math.random() * 1.1 : 1.05 + Math.random() * 0.4;
+  const n = Math.max(8, Math.floor(ctx.sampleRate * dur));
+  const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  let brown = 0;
+  for (let i = 0; i < n; i++) {
+    const white = Math.random() * 2 - 1;
+    brown = brown * 0.98 + white * 0.02;
+    const u = i / n;
+    const env = Math.pow(1 - u, far ? 1.1 : 1.6) * Math.sin(Math.min(0.999, u * (far ? 5 : 9)) * Math.PI);
+    const sample = white * (far ? 0.2 : 0.55) + brown * 3.4;
+    data[i] = Math.max(-1, Math.min(1, sample)) * env;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = far ? 32 : 48;
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  const start = t + delay;
+  lp.frequency.setValueAtTime(far ? 220 : 1200, start);
+  lp.frequency.exponentialRampToValueAtTime(far ? 55 : 160, start + dur * 0.8);
+  const g = ctx.createGain();
+  const peak = far ? 0.34 : 0.5;
+  g.gain.setValueAtTime(0.0001, start);
+  g.gain.exponentialRampToValueAtTime(peak, start + (far ? 0.08 : 0.012));
+  g.gain.exponentialRampToValueAtTime(peak * (far ? 0.4 : 0.22), start + dur * 0.3);
+  g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+  src.connect(hp);
+  hp.connect(lp);
+  lp.connect(g);
+  g.connect(rainSound.thunderGain);
+  src.start(start);
+  src.stop(start + dur + 0.05);
+  src.onended = function () {
+    try { src.disconnect(); hp.disconnect(); lp.disconnect(); g.disconnect(); } catch (err) {}
+  };
+  if (far) return;
+  const cn = Math.max(8, Math.floor(ctx.sampleRate * 0.16));
+  const crack = ctx.createBuffer(1, cn, ctx.sampleRate);
+  const cd = crack.getChannelData(0);
+  for (let i = 0; i < cn; i++) {
+    const u = i / cn;
+    cd[i] = (Math.random() * 2 - 1) * Math.pow(1 - u, 2.4);
+  }
+  const cs = ctx.createBufferSource();
+  cs.buffer = crack;
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.value = 700 + Math.random() * 900;
+  bp.Q.value = 0.6;
+  const cg = ctx.createGain();
+  cg.gain.setValueAtTime(0.0001, start);
+  cg.gain.exponentialRampToValueAtTime(0.32, start + 0.006);
+  cg.gain.exponentialRampToValueAtTime(0.0001, start + 0.14);
+  cs.connect(bp);
+  bp.connect(cg);
+  cg.connect(rainSound.thunderGain);
+  cs.start(start);
+  cs.stop(start + 0.18);
+  cs.onended = function () {
+    try { cs.disconnect(); bp.disconnect(); cg.disconnect(); } catch (err) {}
+  };
+}
+function stepLightning(now) {
+  const wet = wxNow.rain;
+  const su = sky.material.uniforms;
+  if (wet > 0.45 && storm.on) {
+    if (!storm.armed) {
+      storm.armed = true;
+      storm.next = now + 4 + Math.random() * 8;
+    }
+    if (now >= storm.next) {
+      storm.t0 = now;
+      storm.far = Math.random() < 0.5;
+      storm.az = Math.random() * Math.PI * 2 - Math.PI;
+      storm.seed = 1 + Math.floor(Math.random() * 80);
+      storm.next = now + 8 + Math.random() * 14;
+      playThunder(storm.far);
+    }
+  } else if (wet <= 0.2) storm.armed = false;
+  const reach = storm.far ? 0.62 : 1;
+  const k = wet > 0.02 ? flashAmount(now - storm.t0) * reach : 0;
+  storm.k = k;
+  su.uFlash.value = k;
+  su.uBoltAz.value = storm.az;
+  su.uBoltSeed.value = storm.seed;
+  flashLamp.intensity = k * (0.35 + darkness * 1.5);
+  if (k > 0.004) {
+    if (!storm.lit) {
+      storm.exp = renderer.toneMappingExposure;
+      storm.rainCol = rainUniforms.uColor.value.clone();
+      storm.rainOp = rainUniforms.uOpacity.value;
+      storm.lit = true;
+    }
+    renderer.toneMappingExposure = storm.exp * (1 + k * 0.42);
+    scene.background.copy(skyCol).lerp(stepLightning.white, k * 0.55);
+    scene.fog.color.copy(fogCol).lerp(stepLightning.white, k * 0.34);
+    su.uFog.value.copy(fogCol).lerp(stepLightning.white, k * 0.4);
+    rainUniforms.uColor.value.copy(storm.rainCol).lerp(stepLightning.white, Math.min(1, k * 0.9));
+    rainUniforms.uOpacity.value = Math.min(1, storm.rainOp + k * 0.22);
+  } else if (storm.lit) {
+    if (storm.exp != null) renderer.toneMappingExposure = storm.exp;
+    storm.exp = null;
+    scene.background.copy(skyCol);
+    scene.fog.color.copy(fogCol);
+    su.uFog.value.copy(fogCol);
+    if (storm.rainCol) {
+      rainUniforms.uColor.value.copy(storm.rainCol);
+      rainUniforms.uOpacity.value = storm.rainOp;
+    }
+    storm.lit = false;
+  }
+}
+stepLightning.white = new THREE.Color(0xd7e4f6);
 function armRainSound() {
   if (!rainSound.on) return;
   ensureRainSound();
@@ -28649,6 +28868,7 @@ function flushFigure(fig) {
   requestAnimationFrame(tick);
   const now = performance.now() * 0.001;
   stepSky(now);
+  stepLightning(now);
   const smokeName = wxLead();
   const smokeLook = darkness.toFixed(2) + smokeName;
   const tintSmoke = smokeLook !== tick.smoke;
