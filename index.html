@@ -20585,6 +20585,88 @@ function beginAct(ud, now, act, seconds) {
   ud.bias = actBias(ud);
   ud.nextAct = now + seconds + 6.5 + Math.abs(ud.offset * 3) % 4.5;
 }
+// One rank throws while the other shells up. A phrase is a jab, then a
+// cross (or a teep), then the ranks trade. The fist starts at the cheek
+// and the elbow snaps open, so it reads as a punch rather than a wave.
+const GANG_PHRASE = 1.4;
+function poseGangFight(rig, ud, now, w) {
+  const stagger = (ud.offset || 0) * 0.05;
+  const span = GANG_PHRASE * 2;
+  const u = (((gang.t + stagger) % span) + span) % span;
+  const local = u % GANG_PHRASE;
+  const attacking = (u < GANG_PHRASE ? 0 : 1) === (ud.rank || 0);
+  const attackName = gangHit(local);
+  const attackExt = (attackName === "jab" || attackName === "cross") ? gangSnap(gangHitK(local)) : 0;
+  const hit = attacking ? attackName : "guard";
+  const extend = attacking ? attackExt : 0;
+  const incoming = !attacking && attackExt > 0.4;
+  const slip = incoming ? ((ud.rank || 0) === 0 ? -1 : 1) : 0;
+  gangPlant(rig, ud, hit, extend, slip, incoming ? attackExt : 0, w);
+}
+function gangHit(local) {
+  if (local < 0.20) return "guard";
+  if (local < 0.52) return "jab";
+  if (local < 0.70) return "guard";
+  if (local < 0.84) return "load";
+  if (local < 1.20) return "cross";
+  return "guard";
+}
+function gangHitK(local) {
+  if (local < 0.20) return 0;
+  if (local < 0.52) return (local - 0.20) / 0.32;
+  if (local < 0.70) return 0;
+  if (local < 0.84) return (local - 0.70) / 0.14;
+  if (local < 1.20) return (local - 0.84) / 0.36;
+  return 0;
+}
+function gangSnap(k) {
+  if (k < 0.2) return (k / 0.2) * 0.18;
+  if (k < 0.46) return 0.18 + ((k - 0.2) / 0.26) * 0.82;
+  if (k < 0.62) return 1;
+  return Math.max(0, 1 - (k - 0.62) / 0.38);
+}
+function gangBlend(cur, goal, w) {
+  return cur + (goal - cur) * w;
+}
+function gangPlant(rig, ud, hit, extend, slip, tuck, w) {
+  const kick = hit === "cross" && ud.kick && extend > 0.05;
+  const lead = kick ? 0 : (hit === "jab" ? extend : hit === "load" ? 0.12 : 0);
+  const cross = kick ? 0 : (hit === "cross" ? extend : hit === "load" ? extend * 0.35 : 0);
+  const knee = 0.38 + tuck * 0.28;
+  const thighL = kick ? 0.12 : 0.06 + lead * 0.08;
+  const thighR = kick ? -1.05 * extend : 0.16 - cross * 0.1;
+  const kneeL = knee;
+  const kneeR = kick ? 1.25 - extend * 1.0 : knee + 0.08;
+  rig.legL.pivot.rotation.x = gangBlend(rig.legL.pivot.rotation.x, thighL, w);
+  rig.legR.pivot.rotation.x = gangBlend(rig.legR.pivot.rotation.x, thighR, w);
+  rig.legL.knee.rotation.x = gangBlend(rig.legL.knee.rotation.x, kneeL, w);
+  rig.legR.knee.rotation.x = gangBlend(rig.legR.knee.rotation.x, kneeR, w);
+  rig.legL.ankle.rotation.x = -(rig.legL.pivot.rotation.x + rig.legL.knee.rotation.x);
+  rig.legR.ankle.rotation.x = -(rig.legR.pivot.rotation.x + rig.legR.knee.rotation.x);
+  function drop(hipAng, kneeAng) {
+    return THIGH_L * Math.cos(hipAng) + SHIN_L * Math.cos(hipAng + kneeAng);
+  }
+  const hipY = Math.max(drop(rig.legL.pivot.rotation.x, rig.legL.knee.rotation.x), drop(rig.legR.pivot.rotation.x, rig.legR.knee.rotation.x)) + 0.04;
+  rig.hip.position.y = gangBlend(rig.hip.position.y, hipY, w);
+  rig.hip.position.x = gangBlend(rig.hip.position.x, lead * 0.03 - cross * 0.02 + slip * 0.02, w);
+  rig.hip.rotation.x = gangBlend(rig.hip.rotation.x, 0.04 + tuck * 0.06, w);
+  rig.hip.rotation.y = gangBlend(rig.hip.rotation.y, -0.16 - lead * 0.22 + cross * 0.48, w);
+  rig.hip.rotation.z = gangBlend(rig.hip.rotation.z, slip * -0.04, w);
+  rig.torso.rotation.x = gangBlend(rig.torso.rotation.x, 0.1 + tuck * 0.16 + (kick ? -0.12 * extend : lead * 0.06), w);
+  rig.torso.rotation.y = gangBlend(rig.torso.rotation.y, 0.22 - lead * 0.55 - cross * 0.95 + slip * 0.42, w);
+  rig.torso.rotation.z = gangBlend(rig.torso.rotation.z, slip * 0.06, w);
+  rig.head.rotation.x = gangBlend(rig.head.rotation.x, 0.1 + tuck * 0.18 - lead * 0.04, w);
+  rig.head.rotation.y = gangBlend(rig.head.rotation.y, slip * -0.28 + lead * 0.06, w);
+  rig.head.rotation.z = gangBlend(rig.head.rotation.z, slip * 0.1, w);
+  // Lead fist leaves the cheek and straightens. The rear fist stays on the chin
+  // until the cross takes over, so the free hand is never waving at the air.
+  const jabSh = -1.22 - lead * 0.5;
+  const jabEl = -1.62 + lead * 1.38;
+  const crossSh = -1.02 - cross * 0.62;
+  const crossEl = -1.78 + cross * 1.5;
+  poseToward(rig.armL, kick ? -1.2 : jabSh, kick ? -0.28 : -0.16 - lead * 0.06, kick ? -1.6 : jabEl, 0.16, w);
+  poseToward(rig.armR, kick ? -1.08 : crossSh, kick ? 0.36 : 0.34 - cross * 0.2, kick ? -1.68 : crossEl, -0.18, w);
+}
 function poseToward(arm, swing, spreadZ, elbowX, elbowZ, w) {
   if (w <= 0) return;
   arm.spread.rotation.z += (spreadZ - arm.spread.rotation.z) * w;
@@ -20594,6 +20676,10 @@ function poseToward(arm, swing, spreadZ, elbowX, elbowZ, w) {
 }
 function poseIdle(rig, ud, now, w, rainUp) {
   if (w <= 0.02) return;
+  if (ud.gang) {
+    poseGangFight(rig, ud, now, w);
+    return;
+  }
   const act = ud.act;
   const side = (ud.bias || 0) >= 0 ? 1 : -1;
   if (!act) {
@@ -20797,12 +20883,6 @@ function poseIdle(rig, ud, now, w, rainUp) {
     rig.head.rotation.y += Math.sin(n * 2.05) * 0.07 * w;
     rig.head.rotation.x += Math.sin(n * 0.83) * 0.04 * w;
   }
-  if (ud.gang && w > 0.02) {
-    const n = now + (ud.offset || 0);
-    rig.hip.position.x += Math.sin(n * 2.1) * 0.018 * w;
-    rig.torso.rotation.z += Math.sin(n * 1.7) * 0.04 * w;
-    rig.head.rotation.y += Math.sin(n * 2.4) * 0.06 * w;
-  }
 }
 function stepWalker(fig, now) {
   advanceWalker(fig.userData, now, fig);
@@ -20893,7 +20973,9 @@ function advanceWalker(ud, now, fig) {
   const span = Math.max(0.5, path.b - path.a);
   if (ud.along == null) ud.along = ud.offset % span;
   if (!ud.dir) ud.dir = 1;
-  const prev = ud.then == null ? now : ud.then;
+  // The first step used to take no time, so the body that reached the
+  // screen was still the bind pose. Start a short stride on the load frame.
+  const prev = ud.then == null ? now - 0.05 : ud.then;
   ud.then = now;
   const dt = Math.min(0.05, Math.max(0, now - prev));
   // Pauses and the stride share this step. A long frame used to expire the
@@ -21141,6 +21223,7 @@ function advanceWalker(ud, now, fig) {
     standBrolly(rig);
     tuckBrolly(fig);
   }
+  flushFigure(fig);
 }
 const brollyAim = {
   inv: new THREE.Matrix4(),
@@ -21646,6 +21729,13 @@ function figureViewGap(x, y, z, radius) {
 function figureInView(x, y, z, radius) {
   return figureViewGap(x, y, z, radius) >= 0;
 }
+// The spawn sphere sits on the chest. A head or a hand still crosses the
+// frame while that sphere is outside, and dozing then leaves the bind pose
+// on screen until the chest itself leaves and comes back.
+const FIGURE_LIMB = 1.9;
+function figurePlaying(x, y, z) {
+  return figureViewGap(x, y, z, FIGURE_LIMB) >= 0;
+}
 function figureNearCam(x, y, z, reach) {
   const dx = x - camera.position.x;
   const dy = y - camera.position.y;
@@ -21717,7 +21807,7 @@ function syncKeepers(now) {
     if (post.fig) {
       const near = figureNearCam(post.x, py, post.z, KEEPER_REACH_OUT);
       if (!seen && (!want || !near)) dropKeeper(post);
-      else if (seen) wakeFigure(post.fig);
+      else if (figurePlaying(post.x, py, post.z)) wakeFigure(post.fig);
       else dozeFigure(post.fig);
       continue;
     }
@@ -21771,7 +21861,7 @@ function syncCityFolk(now) {
     if (ud.fig) {
       const near = figureNearCam(ud.x, py, ud.z, KEEPER_REACH_OUT);
       if (!seen && (!want || !near)) dropFolk(ud);
-      else if (seen) wakeFigure(ud.fig);
+      else if (figurePlaying(ud.x, py, ud.z)) wakeFigure(ud.fig);
       else dozeFigure(ud.fig);
       continue;
     }
@@ -21802,12 +21892,12 @@ function syncPavement(now) {
     const gap = figureViewGap(px, py, pz, 0.95);
     if (home) {
       // Still in the picture: keep walking. Hide only once the body is out.
-      if (gap >= 0 && fig.visible) {
+      if (figurePlaying(px, py, pz) && fig.visible) {
         wakeFigure(fig);
         stepWalker(fig, now);
         continue;
       }
-      if (gap < 0 && fig.visible) fig.visible = false;
+      if (!figurePlaying(px, py, pz) && fig.visible) fig.visible = false;
       dozeFigure(fig);
       continue;
     }
@@ -22309,36 +22399,20 @@ function stepAlleyHeat(now, dt) {
 // three, or once the street is left, a body that is still in the picture
 // keeps going until the lens has left it.
 const GANG_WEAR = [
-  { top: 0xe8e2d4, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 0, shoes: 0x1a1816, towel: true, habit: "smoke", gait: "walk" },
+  { top: 0xe8e2d4, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 0, shoes: 0x1a1816, towel: true, gait: "walk" },
   { top: 0x8a949a, sleeve: "short", pants: 0x1c1a18, hair: "short", skin: 2, shoes: 0x1a1816, gait: "walk" },
   { top: 0x2a3344, sleeve: "short", pants: 0x243044, hair: "short", skin: 4, shoes: 0x2a241c, gait: "walk" },
   { top: 0x6a1820, sleeve: "skin", pants: 0x1a1816, hair: "short", skin: 1, shoes: 0x1a1816, shorts: true, towel: true, gait: "walk" },
-  { top: 0x1a1c20, sleeve: "short", pants: 0x2a241c, hair: "short", skin: 3, shoes: 0x1a1816, habit: "smoke", gait: "walk" },
+  { top: 0x1a1c20, sleeve: "short", pants: 0x2a241c, hair: "short", skin: 3, shoes: 0x1a1816, gait: "walk" },
   { top: 0xd5d0c4, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 0, shoes: 0x1a1816, shorts: true, gait: "walk" },
   { top: 0x3c2a24, sleeve: "short", pants: 0x241c18, hair: "short", skin: 2, shoes: 0x1a1816, gait: "walk" },
   { top: 0x8a3030, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 4, shoes: 0x7a3030, shorts: true, towel: true, gait: "walk" }
 ];
-const GANG_BEAT = [
-  { t: 0, act: "swing" },
-  { t: 0.55, act: "point" },
-  { t: 1.15, act: "talk" },
-  { t: 1.7, act: "swing" },
-  { t: 2.35, act: "stoop" },
-  { t: 2.9, act: "swing" }
-];
-const GANG_LOOP = 3.4;
-// Pairs on 天后廟街, south of the gate. The posts are at about x 125.46
-// and 127.30, z 26.47, so these seats sit past the posts and out of the door.
-const GANG_SEATS = [
-  { x: 124.78, z: 26.72, dir: 1 },
-  { x: 125.22, z: 26.92, dir: -1 },
-  { x: 125.88, z: 26.70, dir: 1 },
-  { x: 126.42, z: 26.92, dir: -1 },
-  { x: 126.92, z: 26.70, dir: 1 },
-  { x: 127.58, z: 26.92, dir: -1 },
-  { x: 128.12, z: 26.70, dir: 1 },
-  { x: 128.68, z: 26.92, dir: -1 }
-];
+// The hall door is at z 25.42 and the iron gate at z 26.47. The open court
+// in front of 天后廟 runs south of that gate to about z 29.9, clear of the
+// censer and the posts. Two ranks stand there, a little over a metre apart.
+const GANG_NORTH_Z = 27.88;
+const GANG_SOUTH_Z = 29.08;
 const gangFight = [];
 const gang = { nights: 0, prev: null, rolled: false, count: 0, leaving: false, t: 0 };
 function gangHour() {
@@ -22351,11 +22425,29 @@ function gangSeatPath(seat) {
     keep: 0, thick: 1.2, world: true, y: GROUND_Y
   };
 }
-function gangActAt(rec, t) {
-  const local = ((t + (rec.offset || 0) * 0.37) % GANG_LOOP + GANG_LOOP) % GANG_LOOP;
-  let act = GANG_BEAT[0].act;
-  for (let i = 0; i < GANG_BEAT.length; i++) if (local >= GANG_BEAT[i].t) act = GANG_BEAT[i].act;
-  return act;
+function gangSpots(count) {
+  const xs = [124.95, 126.12, 127.28, 128.22];
+  const bouts = count >= 8 ? 4 : count >= 6 ? 3 : 2;
+  const start = count >= 8 ? 0 : count >= 6 ? 0 : 1;
+  const spots = [];
+  for (let i = 0; i < bouts; i++) {
+    const x = xs[start + i];
+    const a = spots.length;
+    spots.push({ x: x, z: GANG_NORTH_Z, rank: 0, foe: a + 1, kick: i === 1 });
+    spots.push({ x: x, z: GANG_SOUTH_Z, rank: 1, foe: a, kick: false });
+  }
+  if (count % 2 === 1) {
+    const host = spots[0];
+    spots.push({ x: host.x - 0.92, z: GANG_NORTH_Z, rank: 0, foe: host.foe, kick: false });
+  }
+  return spots;
+}
+function aimGang(rec) {
+  const foe = rec.foe;
+  let yaw = (rec.rank || 0) === 1 ? Math.PI : 0;
+  if (foe && (foe.x !== rec.x || foe.z !== rec.z)) yaw = Math.atan2(foe.x - rec.x, foe.z - rec.z);
+  rec.yaw = yaw;
+  if (rec.fig) rec.fig.rotation.y = yaw;
 }
 function dropGangOne(rec) {
   const at = gangFight.indexOf(rec);
@@ -22387,15 +22479,17 @@ function beginGang() {
   gangFight.length = 0;
   gang.count = 5 + Math.floor(heatUnit(gang.nights * 5 + 11) * 4);
   gang.t = 0;
-  for (let i = 0; i < gang.count; i++) {
-    const seat = GANG_SEATS[i];
+  const spots = gangSpots(gang.count);
+  for (let i = 0; i < spots.length; i++) {
+    const seat = spots[i];
     gangFight.push({
       gang: 1, live: true, wear: GANG_WEAR[i], path: gangSeatPath(seat),
-      along: 0.2, dir: seat.dir, speed: 0, wait: 1.6, act: "swing", bias: 0,
-      offset: i * 1.7 + 0.4, scale: 1, x: seat.x, y: GROUND_Y, z: seat.z,
-      yaw: seat.dir > 0 ? Math.PI / 2 : -Math.PI / 2
+      along: 0.2, dir: 1, speed: 0, wait: 2.2, act: "guard", bias: 0,
+      offset: i * 0.17, rank: seat.rank, kick: !!seat.kick, foe: seat.foe,
+      scale: 1, x: seat.x, y: GROUND_Y, z: seat.z, yaw: seat.rank ? Math.PI : 0
     });
   }
+  for (let i = 0; i < gangFight.length; i++) gangFight[i].foe = gangFight[gangFight[i].foe];
 }
 function stepGangFight(now, dt) {
   const clock = stepSky.clock == null ? OPEN_CLOCK : stepSky.clock;
@@ -22427,12 +22521,14 @@ function stepGangFight(now, dt) {
         dropGangOne(rec);
         continue;
       }
-      if (seen) {
+      if (figurePlaying(rec.x, py, rec.z)) {
         wakeFigure(rec.fig);
-        rec.wait = 1.6;
-        rec.act = gangActAt(rec, gang.t);
+        rec.wait = 2.2;
+        rec.act = "guard";
         rec.speed = 0;
         advanceWalker(rec, now, rec.fig);
+        aimGang(rec);
+        flushFigure(rec.fig);
       } else dozeFigure(rec.fig);
       continue;
     }
@@ -22723,6 +22819,7 @@ function poseSleep(fig, rec, now) {
   poseToward(rig.armR, -0.7, 0.22, -1.45, -0.16, 1);
   rig.head.rotation.set(-0.28 + breath, 0.1 * rec.wall, 0.06 * rec.wall);
   rig.torso.rotation.set(0.05 + breath, 0, 0);
+  flushFigure(fig);
 }
 function seatSleep(fig, rec) {
   poseSleep(fig, rec, rec.phase);
@@ -22846,7 +22943,7 @@ function stepKeeper(fig, now) {
   const ud = fig.userData;
   const post = ud.post;
   const rig = ud.rig;
-  const prev = ud.then == null ? now : ud.then;
+  const prev = ud.then == null ? now - 0.05 : ud.then;
   ud.then = now;
   const dt = Math.min(0.05, Math.max(0, now - prev));
   const w = Math.min(1, dt * 6);
@@ -22954,6 +23051,7 @@ function stepKeeper(fig, now) {
   rig.legR.ankle.rotation.x = -(rig.legR.pivot.rotation.x + rig.legR.knee.rotation.x);
   poseToward(rig.armL, L[0], L[1], L[2], L[3], w);
   poseToward(rig.armR, R[0], R[1], R[2], R[3], w);
+  flushFigure(fig);
 }
 (function dressRiderHeads() {
   const cache = new Map();
@@ -27685,6 +27783,7 @@ function stepRoofKids(now) {
     const dy = Math.atan2(Math.sin(yaw - fig.rotation.y), Math.cos(yaw - fig.rotation.y));
     fig.rotation.y += dy * Math.min(1, dt * 7);
     poseRoofBody(rig, ud, now, moving, lookX, lookY);
+    flushFigure(fig);
   }
 }
 raiseRoofChildren();
@@ -28716,10 +28815,17 @@ function dozeFigure(fig) {
   fig.userData.doze = 1;
   fig.updateMatrixWorld = stillMatrixWorld;
 }
+// Waking is not an edge on the doze flag. The first time a body is in
+// view that flag is still clear, and the old early return left the bind
+// matrices up until the camera left and came back.
 function wakeFigure(fig) {
-  if (!fig || !fig.userData.doze) return;
+  if (!fig) return;
   fig.userData.doze = 0;
   fig.updateMatrixWorld = THREE.Object3D.prototype.updateMatrixWorld;
+}
+function flushFigure(fig) {
+  if (!fig || fig.userData.doze) return;
+  THREE.Object3D.prototype.updateMatrixWorld.call(fig, true);
 }
 (function tick() {
   requestAnimationFrame(tick);
