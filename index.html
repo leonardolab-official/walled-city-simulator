@@ -2937,20 +2937,68 @@ function attachStreetSoot(mat) {
   mat.onBeforeCompile = function (shader) {
     if (prev) prev.call(this, shader);
     if (shader.vertexShader.indexOf("vWallY") < 0) {
-      shader.vertexShader = "varying float vWallY;\n" + shader.vertexShader.replace(
+      shader.vertexShader = "varying float vWallY;\nvarying vec3 vWallW;\nvarying vec3 vWallN;\n" + shader.vertexShader.replace(
         "#include <begin_vertex>",
-        "#include <begin_vertex>\nvWallY = position.y;"
+        "#include <begin_vertex>\nvWallY = position.y;\nvWallW = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvWallN = normalize(mat3(modelMatrix) * normal);"
       );
-      shader.fragmentShader = "varying float vWallY;\n" + shader.fragmentShader.replace(
+      shader.fragmentShader = [
+        "varying float vWallY;",
+        "varying vec3 vWallW;",
+        "varying vec3 vWallN;",
+        "float wallHash(vec2 p) {",
+        "  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);",
+        "}",
+        "float wallNoise(vec2 p) {",
+        "  vec2 i = floor(p);",
+        "  vec2 f = fract(p);",
+        "  f = f * f * (3.0 - 2.0 * f);",
+        "  float a = wallHash(i);",
+        "  float b = wallHash(i + vec2(1.0, 0.0));",
+        "  float c = wallHash(i + vec2(0.0, 1.0));",
+        "  float d = wallHash(i + vec2(1.0, 1.0));",
+        "  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);",
+        "}"
+      ].join("\n") + "\n" + shader.fragmentShader.replace(
         "#include <map_fragment>",
         [
           "#include <map_fragment>",
-          "float wallSoot = 1.0 - smoothstep(0.15, 1.7, vWallY);",
-          "float wallDamp = 1.0 - smoothstep(0.02, 0.45, vWallY);",
-          "diffuseColor.rgb *= mix(vec3(1.0), vec3(0.46, 0.4, 0.34), wallSoot * 0.62);",
-          "diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.68, 0.8, 0.64), wallDamp * 0.4);",
-          "float wallStreak = smoothstep(0.42, 0.5, abs(fract(vUv.x * 1.7) - 0.5));",
-          "diffuseColor.rgb *= mix(1.0, 0.78, wallStreak * wallSoot);"
+          "vec3 wN = normalize(vWallN);",
+          "float wallAlong = abs(wN.x) > abs(wN.z) ? vWallW.z : vWallW.x;",
+          "float wallHt = vWallW.y + vWallY * 0.0;",
+          "float wallFace = 1.0 - smoothstep(0.35, 0.82, abs(wN.y));",
+          "float wallLuma = dot(diffuseColor.rgb, vec3(0.30, 0.59, 0.11));",
+          "diffuseColor.rgb = mix(diffuseColor.rgb, vec3(wallLuma), 0.62);",
+          "float wallBroad = wallNoise(vec2(wallAlong, wallHt) * 0.42);",
+          "float wallMid = wallNoise(vec2(wallAlong, wallHt) * 1.7 + 4.0);",
+          "float wallSpec = wallHash(floor(vec2(wallAlong, wallHt) * 22.0));",
+          "diffuseColor.rgb *= mix(0.78, 1.08, wallBroad);",
+          "diffuseColor.rgb *= mix(0.88, 1.06, wallMid);",
+          "diffuseColor.rgb *= mix(0.86, 1.1, wallSpec);",
+          "float wallJoint = min(fract(wallHt / 2.5), 1.0 - fract(wallHt / 2.5));",
+          "diffuseColor.rgb *= mix(1.0, 0.48, smoothstep(0.045, 0.004, wallJoint) * wallFace);",
+          "float wallCol = floor(wallAlong * 2.4);",
+          "float wallCh = wallHash(vec2(wallCol, 3.0));",
+          "float wallU = fract(wallAlong * 2.4);",
+          "float wallBand = smoothstep(0.07, 0.012, abs(wallU - (0.2 + wallCh * 0.6)));",
+          "float wallRun = wallBand * step(0.55, wallCh) * wallFace;",
+          "float wallFade = 0.25 + 0.75 * (1.0 - smoothstep(0.2, 16.0, wallHt));",
+          "diffuseColor.rgb *= mix(vec3(1.0), vec3(0.42, 0.41, 0.39), wallRun * wallFade);",
+          "float wallPatch = smoothstep(0.72, 0.9, wallNoise(vec2(wallAlong, wallHt) * 0.28 + 11.0));",
+          "diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.16, 1.15, 1.12), wallPatch * 0.45 * wallFace);",
+          "float wallPit = step(0.986, wallHash(floor(vec2(wallAlong, wallHt) * 9.0)));",
+          "diffuseColor.rgb *= mix(1.0, 0.62, wallPit * wallFace);",
+          "float wallSoot = 1.0 - smoothstep(0.08, 2.4, wallHt);",
+          "float wallDamp = 1.0 - smoothstep(0.02, 0.55, wallHt);",
+          "diffuseColor.rgb *= mix(vec3(1.0), vec3(0.28, 0.27, 0.26), wallSoot * 0.82);",
+          "diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.58, 0.59, 0.56), wallDamp * 0.28);",
+          "float wallTide = smoothstep(0.05, 0.0, abs(wallHt - (0.32 + wallHash(vec2(floor(wallAlong * 0.35), 7.0)) * 0.7)));",
+          "diffuseColor.rgb *= mix(1.0, 0.55, wallTide * wallFace);"
+        ].join("\n")
+      ).replace(
+        "#include <roughnessmap_fragment>",
+        [
+          "#include <roughnessmap_fragment>",
+          "roughnessFactor = clamp(roughnessFactor + (wallNoise(vec2(wallAlong, wallHt) * 2.2) - 0.4) * 0.28, 0.62, 1.0);"
         ].join("\n")
       );
     }
@@ -3349,12 +3397,26 @@ function facadeTexture(seed, rgb) {
     grain(r() * S, r() * S, 16 + r() * 48, col, 0.05 + r() * 0.08);
   }
   for (let i = 0; i < 80; i++) {
-    const v = r() > 0.5 ? 24 : -16;
-    g.fillStyle = `rgba(${Math.max(0, Math.min(255, cr + v))},${Math.max(0, Math.min(255, cg + v))},${Math.max(0, Math.min(255, cb + v))},${0.04 + r() * 0.05})`;
+    const v = r() > 0.5 ? 18 : -22;
+    const n = Math.max(0, Math.min(255, ((cr + cg + cb) / 3) + v));
+    g.fillStyle = `rgba(${n},${n},${Math.max(0, n - 4)},${0.05 + r() * 0.07})`;
     const x = r() * S, y = r() * S, bw = 2 + r() * 5, bh = 2 + r() * 5;
     g.fillRect(x, y, bw, bh);
     if (x + bw > S) g.fillRect(x - S, y, bw, bh);
     if (y + bh > S) g.fillRect(x, y - S, bw, bh);
+  }
+  for (let i = 0; i < 16; i++) {
+    const soot = 22 + (r() * 28 | 0);
+    grain(r() * S, r() * S, 24 + r() * 50, [soot, soot, soot], 0.1 + r() * 0.12);
+  }
+  for (let i = 0; i < 520; i++) {
+    const dark = r() > 0.42;
+    const n = dark ? 14 + r() * 28 : 168 + r() * 36;
+    const x = r() * S, y = r() * S, s = dark ? 1 + r() * 2.4 : 1;
+    g.fillStyle = `rgba(${n | 0},${n | 0},${Math.max(0, n - 4) | 0},${dark ? 0.28 + r() * 0.35 : 0.12 + r() * 0.16})`;
+    g.fillRect(x, y, s, s);
+    if (x + s > S) g.fillRect(x - S, y, s, s);
+    if (y + s > S) g.fillRect(x, y - S, s, s);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.encoding = THREE.sRGBEncoding;
@@ -3363,27 +3425,16 @@ function facadeTexture(seed, rgb) {
   return tex;
 }
 const facades = [
-  [124, 122, 116], [112, 118, 124], [104, 106, 102], [156, 150, 138],
-  [96, 98, 100], [140, 142, 144], [100, 96, 92], [118, 112, 106],
-  [108, 116, 110], [132, 128, 124], [108, 102, 98], [116, 120, 124]
+  [112, 110, 106], [98, 97, 94], [122, 120, 116], [86, 85, 82],
+  [108, 109, 108], [118, 115, 110], [94, 93, 92], [126, 124, 120],
+  [102, 100, 97], [90, 91, 92], [114, 112, 109], [104, 103, 100]
 ].map((rgb, i) => facadeTexture(17 + i * 29, rgb));
 function wallColor() {
-  // One sample, so the rest of the city keeps its sequence. The coat is darker
-  // than the old whitewash, and that same sample picks a stain — yellowed,
-  // cool, damp or sooty — so the next block is not the same plaster.
+  // One sample, so the rest of the city keeps its sequence. The coat is
+  // the same gray, only more or less buried in soot.
   const u = rnd();
-  const drift = 0.68 + u * 0.32;
-  const stain = (u * 6.2831853) % 1;
-  let kr = 1, kg = 1, kb = 1;
-  if (stain < 0.2) { kr = 1.06; kg = 0.98; kb = 0.86; }
-  else if (stain < 0.4) { kr = 0.9; kg = 0.96; kb = 1.06; }
-  else if (stain < 0.62) { kr = 0.94; kg = 1.04; kb = 0.9; }
-  else if (stain < 0.82) { kr = 1.04; kg = 0.97; kb = 0.92; }
-  return new THREE.Color(
-    Math.min(1, drift * kr),
-    Math.min(1, drift * kg),
-    Math.min(1, drift * kb)
-  );
+  const k = 0.74 + u * 0.18;
+  return new THREE.Color(k, k, k);
 }
 function facadePick(x, z, base) {
   const n = facades.length;
@@ -8192,7 +8243,7 @@ function dressAlleys() {
   const stain = alleyConcrete();
   stain.repeat.set(1, 1);
   const wearMat = new THREE.MeshStandardMaterial({
-    map: stain, color: 0x9a948c, roughness: 0.98, metalness: 0, clippingPlanes: clips
+    map: stain, color: 0x6e6a64, roughness: 0.98, metalness: 0, clippingPlanes: clips
   });
   attachBoxTile(wearMat, 2.2, 0, 0);
   attachWetFloor(wearMat);
@@ -19000,15 +19051,25 @@ dressCages.openings.forEach(op => {
     });
   }
   const salt = b * 13 + f * 5 + hi * 3 + faceCode * 7;
-  const variant = (u01(salt, 91) * 6) | 0;
   const warm = u01(salt, 92);
-  const soil = 0.88 + u01(salt, 93) * 0.22;
+  const hole = u01(salt, 94);
+  // Most openings are a dark room behind filmed glass. A few keep a pale
+  // curtain or a sheet of paper, which is what reads from the street by day.
+  const curtained = hole < 0.16;
+  let variant = (u01(salt, 91) * 6) | 0;
+  if (curtained) variant = u01(salt, 96) < 0.5 ? 0 : 3;
+  else if (variant === 0 || variant === 3) {
+    const pick = (u01(salt, 97) * 4) | 0;
+    variant = pick < 2 ? pick + 1 : pick + 2;
+  }
+  const soil = curtained ? 1.08 + u01(salt, 95) * 0.22 : 0.52 + u01(salt, 95) * 0.26;
+  const cool = curtained ? 0.06 : 0.28 + (1 - warm) * 0.35;
   glassQ.push({
     x, y, z, sx: w, sy: h, yaw, az: op.az, variant,
     tint: [
-      soil * (0.96 + warm * 0.18),
-      soil * (0.9 + (1 - warm) * 0.08),
-      soil * (0.72 + (1 - warm) * 0.16)
+      Math.min(1.35, soil * (0.84 + warm * 0.1)),
+      Math.min(1.35, soil * (0.88 + cool * 0.04)),
+      Math.min(1.35, soil * (0.8 + cool * 0.14))
     ]
   });
   // Outside the night light, so a drop still sits on the pane when the room is lit.
@@ -19119,12 +19180,38 @@ function agedPaneMaps(seed) {
   const g = c.getContext("2d");
   const rng = mulberry32((0x51c3a7 + seed * 0x9e3779b1) >>> 0);
   const bases = [
-    [108, 98, 74], [92, 102, 84], [78, 68, 50],
-    [124, 112, 86], [64, 66, 52], [100, 86, 62]
+    [78, 84, 78], [62, 66, 60], [48, 50, 46],
+    [92, 86, 74], [44, 48, 46], [70, 66, 56]
   ];
   const base = bases[seed % 6];
   g.fillStyle = `rgb(${base[0]},${base[1]},${base[2]})`;
   g.fillRect(0, 0, W, H);
+  // The upper pane catches the sky and the wall opposite. Without it the
+  // opening is a hole, not glass.
+  const sky = g.createLinearGradient(0, 0, 0, H * 0.46);
+  sky.addColorStop(0, "rgba(176, 192, 198, 0.62)");
+  sky.addColorStop(0.42, "rgba(96, 110, 116, 0.22)");
+  sky.addColorStop(1, "rgba(40, 48, 52, 0)");
+  g.fillStyle = sky;
+  g.fillRect(0, 0, W, H * 0.46);
+  if (seed % 3 === 1) {
+    const cloth = 198 + (rng() * 28 | 0);
+    g.fillStyle = `rgba(${cloth},${cloth - 6},${cloth - 22},${0.72 + rng() * 0.2})`;
+    const cx = 18 + rng() * 28;
+    const cw = 70 + rng() * 46;
+    g.fillRect(cx, 28, cw, H * (0.55 + rng() * 0.22));
+    g.fillStyle = "rgba(36,28,18,0.55)";
+    g.fillRect(cx, 28, 4, H * 0.62);
+    g.fillRect(cx + cw - 4, 28, 4, H * 0.62);
+  } else if (seed % 5 === 2) {
+    g.fillStyle = "rgba(168, 160, 142, 0.55)";
+    g.fillRect(22, 40, W - 44, H * 0.48);
+    g.fillStyle = "rgba(40, 32, 22, 0.45)";
+    for (let col = 0; col < 5; col++) {
+      const x = 30 + col * 22;
+      for (let row = 0; row < 14; row++) g.fillRect(x, 52 + row * 8, 14, 2);
+    }
+  }
   for (let i = 0; i < 22; i++) {
     const k = 0.28 + rng() * 0.5;
     const x = rng() * W, y = rng() * H, rad = 18 + rng() * 56;
@@ -19151,7 +19238,7 @@ function agedPaneMaps(seed) {
   const silt = g.createLinearGradient(0, H * 0.36, 0, H);
   silt.addColorStop(0, "rgba(0,0,0,0)");
   silt.addColorStop(0.4, `rgba(${36 + (rng() * 18 | 0)},${30 + (rng() * 12 | 0)},16,0.5)`);
-  silt.addColorStop(1, "rgba(10,8,6,0.94)");
+  silt.addColorStop(1, "rgba(10,8,6,0.72)");
   g.fillStyle = silt;
   g.fillRect(0, H * 0.34, W, H * 0.66);
   g.fillStyle = `rgba(28,58,26,${0.35 + rng() * 0.4})`;
@@ -19326,6 +19413,7 @@ const windows = new THREE.Mesh(winGeo, new THREE.ShaderMaterial({
     "varying vec3 vColor;",
     "varying vec2 vUv;",
     "varying float vGlow;",
+    "varying float vPhase;",
     "uniform float uTime;",
     "uniform float uLevel;",
     "void main() {",
@@ -19333,11 +19421,12 @@ const windows = new THREE.Mesh(winGeo, new THREE.ShaderMaterial({
     "  gl_Position = projectionMatrix * mvPosition;",
     "  #include <clipping_planes_vertex>",
     "  #include <fog_vertex>",
-    "  float pulse = 0.94 + 0.06 * sin(uTime * 0.35 + phase);",
-    "  if (mood > 1.5) pulse = sin(uTime * 0.85 + phase) > 0.93 ? 0.22 : 0.98;",
-    "  else if (mood > 0.5) pulse = sin(uTime * 0.52 + phase) > -0.55 ? 1.0 : 0.06;",
+    "  float pulse = 0.98 + 0.02 * sin(uTime * 0.2 + phase);",
+    "  if (mood > 1.5) pulse = sin(uTime * 2.4 + phase) > 0.72 ? 0.45 : 1.0;",
+    "  else if (mood > 0.5) pulse = 0.94 + 0.06 * sin(uTime * 0.3 + phase);",
     "  vColor = color * pulse;",
     "  vUv = uv;",
+    "  vPhase = phase;",
     "  vGlow = clamp(uLevel, 0.0, 1.0);",
     "}"
   ].join("\n"),
@@ -19347,16 +19436,61 @@ const windows = new THREE.Mesh(winGeo, new THREE.ShaderMaterial({
     "varying vec3 vColor;",
     "varying vec2 vUv;",
     "varying float vGlow;",
+    "varying float vPhase;",
+    "float roomHash(float n) {",
+    "  return fract(sin(n * 127.1) * 43758.5453);",
+    "}",
     "void main() {",
     "  #include <clipping_planes_fragment>",
-    "  float glow = smoothstep(0.0, 0.42, vGlow);",
+    "  float glow = smoothstep(0.08, 0.72, vGlow);",
     "  if (glow < 0.004) discard;",
-    "  float silt = smoothstep(0.58, 0.02, vUv.y);",
-    "  float head = smoothstep(0.74, 1.0, vUv.y);",
-    "  float streak = smoothstep(0.46, 0.5, abs(fract(vUv.x * 6.5) - 0.5)) * (0.25 + 0.75 * vUv.y);",
-    "  float film = clamp(silt * 0.7 + head * 0.5 + streak * 0.38, 0.0, 0.78);",
-    "  vec3 col = vColor * (1.0 - film) + vec3(0.2, 0.14, 0.07) * film;",
-    "  gl_FragColor = vec4(col, glow * (1.0 - film * 0.22));",
+    "  if (roomHash(vPhase) < 0.6) discard;",
+    "  float edge = max(",
+    "    max(smoothstep(0.055, 0.012, vUv.x), smoothstep(0.055, 0.012, 1.0 - vUv.x)),",
+    "    max(smoothstep(0.07, 0.016, vUv.y), smoothstep(0.07, 0.016, 1.0 - vUv.y))",
+    "  );",
+    "  float kind = roomHash(vPhase + 1.7);",
+    "  float gain = 0.5 + roomHash(vPhase + 3.4) * 0.7;",
+    "  float along = smoothstep(0.07, 0.14, vUv.x) * smoothstep(0.93, 0.86, vUv.x);",
+    "  float tubeY = 0.62 + roomHash(vPhase + 2.2) * 0.14;",
+    "  float dy = vUv.y - tubeY;",
+    "  float core = along * smoothstep(0.02, 0.002, abs(dy));",
+    "  float halo = along * exp(-dy * dy * 220.0);",
+    "  float tube2y = tubeY - 0.16;",
+    "  float second = step(0.52, roomHash(vPhase + 4.0));",
+    "  float dy2 = vUv.y - tube2y;",
+    "  float core2 = along * smoothstep(0.014, 0.002, abs(dy2)) * second;",
+    "  float halo2 = along * exp(-dy2 * dy2 * 260.0) * second;",
+    "  vec3 room = vec3(0.0);",
+    "  float lamp = 0.0;",
+    "  if (kind < 0.64) {",
+    "    vec3 phosphor = vec3(1.15, 1.18, 1.02);",
+    "    vec3 spill = vec3(0.38, 0.52, 0.34);",
+    "    room = phosphor * (core + core2 * 0.8) + spill * (halo * 0.42 + halo2 * 0.28);",
+    "    float under = exp(-max(tubeY - vUv.y, 0.0) * 4.5) * along;",
+    "    room += spill * under * 0.12;",
+    "    lamp = max(max(core, core2), max(halo, halo2) * 0.55 + under * 0.15);",
+    "  } else if (kind < 0.9) {",
+    "    float bx = 0.3 + roomHash(vPhase + 5.1) * 0.4;",
+    "    float by = 0.58 + roomHash(vPhase + 5.7) * 0.2;",
+    "    vec2 q = vec2((vUv.x - bx) * 1.35, vUv.y - by);",
+    "    float r2 = dot(q, q);",
+    "    float bulb = smoothstep(0.008, 0.0, r2);",
+    "    float pool = exp(-r2 * 36.0);",
+    "    room = vec3(1.45, 1.02, 0.48) * mix(vec3(1.0), vColor, 0.22) * bulb + vec3(0.62, 0.26, 0.06) * pool * 0.5;",
+    "    lamp = max(bulb, pool * 0.45);",
+    "  } else {",
+    "    float x0 = 0.24 + roomHash(vPhase + 6.0) * 0.52;",
+    "    float slit = smoothstep(0.035, 0.0, abs(vUv.x - x0));",
+    "    slit *= smoothstep(0.12, 0.28, vUv.y) * smoothstep(0.82, 0.55, vUv.y);",
+    "    room = vec3(0.9, 0.48, 0.16) * slit;",
+    "    lamp = slit * 0.85;",
+    "  }",
+    "  room *= gain * mix(0.42, 1.0, smoothstep(0.02, 0.4, vUv.y));",
+    "  room *= mix(1.0, 0.04, edge);",
+    "  float a = glow * lamp * mix(1.0, 0.0, edge);",
+    "  if (a < 0.02) discard;",
+    "  gl_FragColor = vec4(room, clamp(a, 0.0, 0.86));",
     "  #include <tonemapping_fragment>",
     "  #include <encodings_fragment>",
     "  #include <fog_fragment>",
