@@ -1735,8 +1735,8 @@ const uStreetOn = { value: 0 };
 const uBeamGain = { value: 1.15 };
 const uWetRes = { value: new THREE.Vector2(1, 1) };
 const uWetReflOn = { value: 0 };
-// View mode keeps every wet surface, at half the thread and mirror cost.
-// Walk mode puts that cost back, and only for surfaces inside the frame.
+// View mode draws the city dry of specular and running water. Walk and cat
+// put the threads back, and only on the surfaces inside the frame.
 const uFxGrade = { value: 0.5 };
 const uFxWalk = { value: 0 };
 const uFxVP = { value: new THREE.Matrix4() };
@@ -1812,8 +1812,8 @@ function syncFxGrade() {
 }
 function fxGateGlsl(worldExpr) {
   return [
-    "float fxSeen = 1.0;",
-    "if (uFxWalk > 0.5) {",
+    "float fxSeen = step(0.5, uFxWalk);",
+    "if (fxSeen > 0.5) {",
     "  vec4 fxClip = uFxVP * vec4(" + worldExpr + ", 1.0);",
     "  float fxW = fxClip.w;",
     "  if (fxW <= 0.0 || abs(fxClip.x) > fxW || abs(fxClip.y) > fxW || abs(fxClip.z) > fxW) fxSeen = 0.0;",
@@ -1931,7 +1931,7 @@ function wetSurfaceChunk(xzVarying, scale) {
     "wetK *= lotKeep;",
     "wetMask *= lotKeep;",
     "if (wetK > 0.001) {",
-    "  if (wetMask > 0.001) {",
+    "  if (wetMask > 0.001 && fxSeen > 0.5) {",
     "    float pn = wetFbm(gw * " + puddle + " + vec2(3.1, 7.7));",
     "    wetPud = smoothstep(0.36, 0.58, pn + 0.1 * wetNoise(gw * " + grain + "));",
     "    diffuseColor.rgb *= mix(1.0, mix(0.46, 0.2, wetPud), wetMask);",
@@ -7997,6 +7997,11 @@ function fillInst(geo, mat, items, place) {
     mesh.userData.pipeAz = azs;
   }
   if (fillInst.detail) mesh.userData.lod = "detail";
+  if (fillInst.alley) {
+    mesh.userData.alley = 1;
+    mesh.userData.street = 1;
+  }
+  if (fillInst.cageProp) mesh.userData.cageProp = 1;
   if (tinted) {
     const col = new THREE.InstancedBufferAttribute(new Float32Array(items.length * 3), 3);
     for (let i = 0; i < items.length; i++) {
@@ -8918,6 +8923,7 @@ function dressAlleys() {
           net.position.set(g.x, 3.15, g.z);
           net.castShadow = false;
           net.userData.street = 1;
+          net.userData.alley = 1;
           net.userData.squareZ = g.az;
           city.add(net);
           }
@@ -9815,6 +9821,7 @@ function dressAlleys() {
     mesh.userData.street = 1;
     if (shadow) mesh.castShadow = true;
   }
+  fillInst.alley = true;
   [
     fillInst(unit, galv, pipes.galv, placeBox),
     fillInst(unit, pvc, pipes.pvc, placeBox),
@@ -9846,6 +9853,7 @@ function dressAlleys() {
     fillGoods(new THREE.CylinderGeometry(0.5, 0.48, 1, 8), drumMat, goods.drum)
   ].forEach(mesh => streetMesh(mesh, false));
   streetMesh(fillInst(unit, soffitMat, cross.soffit, placeBox), true);
+  fillInst.alley = false;
   // Printed handbills. One shared sheet per wording, many pastings. stay 0
   // puts them through the shop stream: drawn in walk mode, and only while the
   // sheet sits in the frame.
@@ -10753,6 +10761,7 @@ function placeSlitNets() {
     net.rotation.x = -Math.PI / 2;
     net.position.set(g.x, item.y, g.z);
     net.userData.street = 1;
+    net.userData.alley = 1;
     net.userData.squareZ = g.az;
     city.add(net);
   });
@@ -18696,10 +18705,12 @@ function dressCages() {
   }
   fillInst(flower.mesh, steelWire, buckets.flowerMesh, placeCage);
   fillInst.detail = true;
+  fillInst.cageProp = true;
   fillInst(flower.frame, steelBar, buckets.flowerFrame, placeCage);
   fillInst(flower.tray, steelTray, buckets.flowerTray, placeCage);
   fillInst(flower.pot, potMat, buckets.flowerPot, placeCage);
   fillInst(flower.leaf, leafSolid, buckets.flowerLeaf, placeCage);
+  fillInst.cageProp = false;
   fillInst.detail = false;
   fillInst(frontGeo, steelWire, buckets.frontSteel, placeCage);
   fillInst(sideGeo, steelWire, buckets.sideSteel, placeCage);
@@ -18802,8 +18813,10 @@ function dressCages() {
   fillInst(foldG, clothHang, buckets.fold, placeBox);
   fillInst(lineG, lineMat, buckets.line, placeBox);
   fillInst.detail = true;
+  fillInst.cageProp = true;
   fillInst(potGeo, potMat, buckets.pot, placePot);
   fillInst(leafGeo, leafMat, buckets.leaf, placePot);
+  fillInst.cageProp = false;
   fillInst.detail = false;
   dressCages.openings = openings;
   dressCages.count = made;
@@ -24647,6 +24660,19 @@ function syncStreetChrome() {
 function setWalk(on, fromPlace) {
   setStreet(on ? "walk" : "view", fromPlace);
 }
+function purgeStreetCast() {
+  for (let i = 0; i < cityFolk.length; i++) dropFolk(cityFolk[i]);
+  dropKeepers();
+  for (let i = alleyHeat.length - 1; i >= 0; i--) dropHeatOne(alleyHeat[i]);
+  heat.phase = "quiet";
+  heat.t = 0;
+  heat.spot = null;
+  heat.leaving = false;
+  for (let i = gangFight.length - 1; i >= 0; i--) dropGangOne(gangFight[i]);
+  gang.leaving = false;
+  dropSleepMeshes();
+  renderWetReflection.figs = null;
+}
 function setStreet(kind, fromPlace) {
   const on = kind !== "view";
   const nextCat = kind === "cat";
@@ -24679,6 +24705,8 @@ function setStreet(kind, fromPlace) {
   }
   walkMode = on;
   catMode = nextCat;
+  applyCityLod(on);
+  if (!on) purgeStreetCast();
   if (!on) {
     releaseStick();
     if (catFig) catFig.visible = false;
@@ -24749,6 +24777,11 @@ function setStreet(kind, fromPlace) {
   syncStreetChrome();
   syncPlaceLabels();
   fitDockText();
+  syncAlleyStreams();
+  if (!streetPropsLive()) {
+    for (let i = 0; i < shopStreams.length; i++) packShopStay(shopStreams[i]);
+    shopCam.walk = false;
+  }
 }
 function applyWalkGlide(g, s) {
   if (g.direct) {
@@ -25813,6 +25846,7 @@ function packMasses() {
     }
     const merged = new THREE.Mesh(geo, mat);
     merged.userData.packed = 1;
+    if (bucket.kind === 1) merged.userData.cityMass = 1;
     if (spans.length) {
       merged.userData.pickSpans = spans;
       pickables.push(merged);
@@ -25970,34 +26004,12 @@ function captureShopStreams() {
   for (let i = 0; i < shopStreams.length; i++) packShopStay(shopStreams[i]);
 }
 function packShopStay(mesh) {
+  // View mode keeps the building mass and draws no shop, gate, or handbill.
+  // Walk and cat put the front back, and only while it sits in the frame.
   const s = mesh.userData.shopStream;
-  const src = s.base;
-  const dst = mesh.instanceMatrix.array;
-  let n = 0;
-  for (let i = 0; i < s.n; i++) {
-    const flag = s.hours ? s.hours[i] : 0;
-    const trade = s.trade ? s.trade[i] : 0;
-    // The aerial view keeps the shell and leaves the rooms empty. A shut
-    // shop still draws its iron gate; an open one leaves the mouth clear.
-    s.shown[i] = 0;
-    const shutGate = flag === 2 && !shopHourOn(1, trade);
-    if (!shutGate && (flag || s.stay[i] !== 1)) continue;
-    const a = i * 16;
-    const b = n * 16;
-    for (let k = 0; k < 16; k++) dst[b + k] = src[a + k];
-    if (s.packedBay) s.packedBay[n] = s.bay[i];
-    s.shown[i] = 1;
-    n++;
-  }
-  if (n < 1) {
-    mesh.count = 0;
-    mesh.visible = false;
-  } else {
-    mesh.visible = true;
-    mesh.count = n;
-    mesh.instanceMatrix.needsUpdate = true;
-    if (s.packedBay) mesh.userData.bayData = s.packedBay;
-  }
+  for (let i = 0; i < s.n; i++) s.shown[i] = 0;
+  mesh.count = 0;
+  mesh.visible = false;
 }
 function packShopMesh(mesh) {
   const s = mesh.userData.shopStream;
@@ -26046,8 +26058,8 @@ function syncShopFronts() {
   if (!shopStreams.length) return;
   const flipped = shopsHourFlip;
   shopsHourFlip = false;
-  if (!walkMode) {
-    if (shopCam.walk || flipped) {
+  if (!streetPropsLive()) {
+    if (shopCam.walk || flipped || walkMode) {
       for (let i = 0; i < shopStreams.length; i++) packShopStay(shopStreams[i]);
       shopCam.walk = false;
     }
@@ -26073,7 +26085,7 @@ function packStatic() {
     while (p) {
       if (p.visible === false) return true;
       const u = p.userData || {};
-      if (u.live || u.path || u.rig || u.packed || p === cutHelper) return true;
+      if (u.live || u.path || u.rig || u.packed || u.alley || u.cageProp || p === cutHelper) return true;
       p = p.parent;
     }
     return false;
@@ -26170,6 +26182,207 @@ function packStatic() {
   if (made) scene.add(pack);
 }
 packStatic();
+// View mode keeps the big wall faces and drops the smaller half of the
+// shell triangles. Walk and cat put the full index back.
+const cityLods = [];
+function halfCityIndex(geo, spans) {
+  const idx = geo.index.array;
+  const pos = geo.attributes.position.array;
+  const nTri = (idx.length / 3) | 0;
+  if (nTri < 48) return null;
+  const areas = new Float32Array(nTri);
+  for (let t = 0; t < nTri; t++) {
+    const ia = idx[t * 3] * 3;
+    const ib = idx[t * 3 + 1] * 3;
+    const ic = idx[t * 3 + 2] * 3;
+    const abx = pos[ib] - pos[ia], aby = pos[ib + 1] - pos[ia + 1], abz = pos[ib + 2] - pos[ia + 2];
+    const acx = pos[ic] - pos[ia], acy = pos[ic + 1] - pos[ia + 1], acz = pos[ic + 2] - pos[ia + 2];
+    const cx = aby * acz - abz * acy, cy = abz * acx - abx * acz, cz = abx * acy - aby * acx;
+    areas[t] = cx * cx + cy * cy + cz * cz;
+  }
+  const order = new Uint32Array(nTri);
+  for (let t = 0; t < nTri; t++) order[t] = t;
+  order.sort(function (a, b) { return areas[b] - areas[a]; });
+  const keepN = nTri >> 1;
+  const kept = new Uint32Array(keepN);
+  for (let i = 0; i < keepN; i++) kept[i] = order[i];
+  kept.sort();
+  const next = new Uint32Array(keepN * 3);
+  for (let i = 0; i < keepN; i++) {
+    const t = kept[i] * 3;
+    const o = i * 3;
+    next[o] = idx[t];
+    next[o + 1] = idx[t + 1];
+    next[o + 2] = idx[t + 2];
+  }
+  const viewSpans = [];
+  if (spans && spans.length) {
+    let cursor = 0;
+    for (let s = 0; s < spans.length; s++) {
+      const span = spans[s];
+      const end = span.start + span.count;
+      while (cursor < keepN && kept[cursor] < span.start) cursor++;
+      const from = cursor;
+      while (cursor < keepN && kept[cursor] < end) cursor++;
+      const count = cursor - from;
+      if (count > 0) viewSpans.push({ start: from, count: count, data: span.data });
+    }
+  }
+  return { index: new THREE.Uint32BufferAttribute(next, 1), spans: viewSpans };
+}
+function applyCityLod(full) {
+  for (let i = 0; i < cityLods.length; i++) {
+    const rec = cityLods[i];
+    const geo = rec.geo;
+    geo.setIndex(full ? geo.userData.fullIndex : geo.userData.viewIndex);
+    if (geo.index) geo.index.needsUpdate = true;
+    if (rec.fullSpans) rec.mesh.userData.pickSpans = full ? rec.fullSpans : rec.viewSpans;
+  }
+}
+function buildCityViewLod() {
+  const seen = new Set();
+  scene.traverse(mesh => {
+    if (!mesh.isMesh || mesh.isInstancedMesh || !mesh.visible) return;
+    const geo = mesh.geometry;
+    if (!geo || !geo.index || seen.has(geo)) return;
+    if (!mesh.userData || !mesh.userData.cityMass) return;
+    seen.add(geo);
+    const half = halfCityIndex(geo, mesh.userData.pickSpans || null);
+    if (!half) return;
+    geo.userData.fullIndex = geo.index;
+    geo.userData.viewIndex = half.index;
+    cityLods.push({
+      geo: geo,
+      mesh: mesh,
+      fullSpans: mesh.userData.pickSpans || null,
+      viewSpans: half.spans
+    });
+  });
+  applyCityLod(false);
+}
+buildCityViewLod();
+const alleyStreams = [];
+const alleyNets = [];
+function captureAlleyStreams() {
+  const m = new THREE.Matrix4();
+  city.traverse(mesh => {
+    if (!mesh.userData) return;
+    if (!mesh.isInstancedMesh) {
+      if (mesh.userData.alley && mesh.isMesh) alleyNets.push(mesh);
+      return;
+    }
+    if (!mesh.userData.alley && !mesh.userData.cageProp) return;
+    if (mesh.count < 1 || !mesh.instanceMatrix) return;
+    const n = mesh.count;
+    const px = new Float32Array(n);
+    const py = new Float32Array(n);
+    const pz = new Float32Array(n);
+    const pr = new Float32Array(n);
+    const ub = shopPieceBounds(mesh.geometry);
+    for (let i = 0; i < n; i++) {
+      mesh.getMatrixAt(i, m);
+      const e = m.elements;
+      px[i] = e[12];
+      py[i] = e[13];
+      pz[i] = e[14];
+      const sx = Math.hypot(e[0], e[1], e[2]);
+      const sy = Math.hypot(e[4], e[5], e[6]);
+      const sz = Math.hypot(e[8], e[9], e[10]);
+      pr[i] = ub.r * Math.max(sx, sy, sz, 0.05) + 0.35;
+    }
+    const col = mesh.instanceColor ? mesh.instanceColor.array : null;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.userData.alleyStream = {
+      n: n,
+      px: px, py: py, pz: pz, pr: pr,
+      base: mesh.instanceMatrix.array.slice(0, n * 16),
+      color: col ? col.slice(0, n * 3) : null,
+      pipe: mesh.userData.pipeAz ? mesh.userData.pipeAz.slice(0) : null,
+      pipeLive: mesh.userData.pipeAz ? new Float32Array(n) : null
+    };
+    alleyStreams.push(mesh);
+  });
+}
+function streetPropsLive() {
+  return !!(walkMode && !walkGlide && camera.position.y < 48);
+}
+function syncAlleyStreams() {
+  const live = streetPropsLive();
+  if (!live) {
+    if (syncAlleyStreams.parked) return;
+    syncAlleyStreams.parked = true;
+    for (let i = 0; i < alleyStreams.length; i++) {
+      const mesh = alleyStreams[i];
+      mesh.count = 0;
+      mesh.visible = false;
+    }
+    for (let i = 0; i < alleyNets.length; i++) alleyNets[i].visible = false;
+    return;
+  }
+  if (!syncAlleyStreams.cam) {
+    syncAlleyStreams.cam = new THREE.Vector3();
+    syncAlleyStreams.quat = new THREE.Quaternion();
+  }
+  const moved = syncAlleyStreams.parked
+    || syncAlleyStreams.cam.distanceToSquared(camera.position) > 0.08
+    || Math.abs(syncAlleyStreams.quat.dot(camera.quaternion)) < 0.9996;
+  syncAlleyStreams.parked = false;
+  if (!moved) return;
+  syncAlleyStreams.cam.copy(camera.position);
+  syncAlleyStreams.quat.copy(camera.quaternion);
+  camera.updateMatrixWorld();
+  keeperView.mat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  keeperView.frustum.setFromProjectionMatrix(keeperView.mat);
+  const cam = camera.position;
+  const reach = 78 * 78;
+  for (let s = 0; s < alleyStreams.length; s++) {
+    const mesh = alleyStreams[s];
+    const rec = mesh.userData.alleyStream;
+    const src = rec.base;
+    const dst = mesh.instanceMatrix.array;
+    let n = 0;
+    for (let i = 0; i < rec.n; i++) {
+      const dx = rec.px[i] - cam.x;
+      const dy = rec.py[i] - cam.y;
+      const dz = rec.pz[i] - cam.z;
+      if (dx * dx + dy * dy + dz * dz > reach) continue;
+      keeperView.sphere.center.set(rec.px[i], rec.py[i], rec.pz[i]);
+      keeperView.sphere.radius = rec.pr[i];
+      if (!keeperView.frustum.intersectsSphere(keeperView.sphere)) continue;
+      const a = i * 16;
+      const b = n * 16;
+      for (let k = 0; k < 16; k++) dst[b + k] = src[a + k];
+      if (rec.color) {
+        const ca = i * 3;
+        const cb = n * 3;
+        const col = mesh.instanceColor.array;
+        col[cb] = rec.color[ca];
+        col[cb + 1] = rec.color[ca + 1];
+        col[cb + 2] = rec.color[ca + 2];
+      }
+      if (rec.pipe) rec.pipeLive[n] = rec.pipe[i];
+      n++;
+    }
+    mesh.count = n;
+    mesh.visible = n > 0;
+    if (!n) continue;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (rec.color && mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    if (rec.pipe) mesh.userData.pipeAz = rec.pipeLive;
+  }
+  for (let i = 0; i < alleyNets.length; i++) {
+    const net = alleyNets[i];
+    const p = net.position;
+    const dx = p.x - cam.x;
+    const dy = p.y - cam.y;
+    const dz = p.z - cam.z;
+    keeperView.sphere.center.set(p.x, p.y, p.z);
+    keeperView.sphere.radius = 2.4;
+    net.visible = dx * dx + dy * dy + dz * dz < reach && keeperView.frustum.intersectsSphere(keeperView.sphere);
+  }
+}
+captureAlleyStreams();
+syncAlleyStreams();
 function freezeStatic(obj) {
   if (!obj || (obj.userData && obj.userData.live)) return;
   if (obj.matrixAutoUpdate) {
@@ -27270,7 +27483,7 @@ function updateWetReflCamera(farLimit, planeY, clipDrop) {
   return true;
 }
 function renderWetReflection() {
-  if (uWet.value < 0.08) {
+  if (!walkMode || uWet.value < 0.08) {
     uWetReflOn.value = 0;
     return;
   }
@@ -28421,6 +28634,7 @@ function wakeFigure(fig) {
   stepAlleySleep(now);
   syncKeepers(now);
   syncShopFronts();
+  syncAlleyStreams();
   for (let ki = 0; ki < keepers.length; ki++) stepKeeper(keepers[ki], now);
   sky.position.copy(camera.position);
   stepRainSound(now);
