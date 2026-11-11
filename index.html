@@ -29376,9 +29376,12 @@ function streetGradeShader(shader, kind) {
 // distance from that height, and darkens in contact and on down faces so
 // the room is not a flat glow.
 function shopInteriorShader(shader) {
-  if (shader.fragmentShader.indexOf("shopFill") >= 0) return;
+  if (shader.fragmentShader.indexOf("shopDark") >= 0) return;
   if (shader.fragmentShader.indexOf("vBodyWorld") < 0) return;
   shader.uniforms.uDark = sky.material.uniforms.uDark;
+  if (shader.fragmentShader.indexOf("uniform float uDark") < 0) {
+    shader.fragmentShader = "uniform float uDark;\n" + shader.fragmentShader;
+  }
   const chunk = [
     "float shopDark = clamp(uDark, 0.0, 1.0);",
     "if (shopDark > 0.12) {",
