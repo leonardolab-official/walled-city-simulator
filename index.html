@@ -20939,71 +20939,47 @@ function beginAct(ud, now, act, seconds) {
   ud.bias = actBias(ud);
   ud.nextAct = now + seconds + 6.5 + Math.abs(ud.offset * 3) % 4.5;
 }
-// One fighter throws while the other shells up. A phrase is a jab, then a
-// cross (or a teep), then they trade. Each body carries its own beat, so
-// the court does not punch on one count. The fist starts at the cheek
-// and the elbow snaps open, so it reads as a punch rather than a wave.
-const GANG_PHRASE = 1.4;
+// Late-night brawl. Continuous motion with weight transfer.
+// Strikes are quick, recovery is slower. The free arm counters.
+const GANG_PHRASE = 1.35;
 function poseGangFight(rig, ud, now, w) {
-  const stagger = ud.beat || 0;
-  const span = GANG_PHRASE * 2;
-  const u = (((gang.t + stagger) % span) + span) % span;
-  const local = u % GANG_PHRASE;
-  const attacking = (u < GANG_PHRASE ? 0 : 1) === (ud.rank || 0);
-  const attackName = gangHit(local);
-  const attackExt = (attackName === "jab" || attackName === "cross") ? gangSnap(gangHitK(local)) : 0;
-  const hit = attacking ? attackName : "guard";
-  const extend = attacking ? attackExt : 0;
-  const incoming = !attacking && attackExt > 0.4;
-  const slip = incoming ? (ud.slip || 1) : 0;
-  gangPlant(rig, ud, hit, extend, slip, incoming ? attackExt : 0, w);
-}
-function gangHit(local) {
-  if (local < 0.20) return "guard";
-  if (local < 0.52) return "jab";
-  if (local < 0.70) return "guard";
-  if (local < 0.84) return "load";
-  if (local < 1.20) return "cross";
-  return "guard";
-}
-function gangHitK(local) {
-  if (local < 0.20) return 0;
-  if (local < 0.52) return (local - 0.20) / 0.32;
-  if (local < 0.70) return 0;
-  if (local < 0.84) return (local - 0.70) / 0.14;
-  if (local < 1.20) return (local - 0.84) / 0.36;
-  return 0;
-}
-function gangSnap(k) {
-  // Hold, then a short straight shot, then the hand comes home.
-  // A long ramp read as a wave at the air beside the other man.
-  if (k < 0.16) return 0;
-  if (k < 0.30) return (k - 0.16) / 0.14;
-  if (k < 0.46) return 1;
-  if (k < 0.70) return Math.max(0, 1 - (k - 0.46) / 0.24);
-  return 0;
+  const seed = (ud.beat || 0) * 6.1 + (ud.offset || 0) * 2.7;
+  const pulse = 0.82 + Math.sin(seed) * 0.18;
+  const t = gang.t * pulse + seed;
+  const cycle = 2.1;
+  const phase = (t % cycle + cycle) % cycle;
+  const side = (ud.slip || 1);
+  // Smooth envelopes: fast strike, slow return.
+  function env(start, peak, end) {
+    if (phase < start || phase > end) return 0;
+    const mid = (start + peak) * 0.5;
+    if (phase < peak) return Math.sin((phase - start) / (peak - start) * Math.PI * 0.5);
+    return Math.cos((phase - peak) / (end - peak) * Math.PI * 0.5);
+  }
+  const swing = env(0.15, 0.38, 0.85);
+  const shove = env(0.95, 1.18, 1.7);
+  const slip = env(0.4, 0.55, 0.9) * side * 0.6;
+  const tuck = env(0.0, 0.12, 0.3) + env(1.75, 1.9, 2.1);
+  const lunge = swing * 0.45 + shove * 0.55;
+  const stumble = env(1.55, 1.72, 2.05) * 0.7;
+  // Breathing and tension under the big moves.
+  const breath = Math.sin(t * 2.8 + seed) * 0.015;
+  const tension = 0.4 + Math.sin(seed + gang.t * 0.6) * 0.2;
+  gangPlant(rig, ud, swing, shove, slip, tuck, lunge, stumble, w);
+  if (rig.torso) rig.torso.rotation.x += breath * tension;
+  if (rig.head) rig.head.rotation.x += breath * 0.6;
 }
 function gangBlend(cur, goal, w) {
   return cur + (goal - cur) * w;
 }
-function gangPlant(rig, ud, hit, extend, slip, tuck, w) {
-  const kick = hit === "cross" && ud.kick && extend > 0.05;
-  const jab = kick ? 0 : (hit === "jab" ? extend : 0);
-  const cross = kick ? 0 : (hit === "cross" ? extend : 0);
-  const loading = hit === "load" ? 1 : 0;
-  // Lead foot forward, rear foot back, both knees soft.
-  let thighL = -0.24 - jab * 0.05;
-  let thighR = 0.4;
-  let kneeL = 0.4 + tuck * 0.16;
-  let kneeR = 0.56 + tuck * 0.1;
-  if (kick) {
-    const chamber = Math.min(1, extend * 2.4);
-    const shoot = Math.max(0, (extend - 0.38) / 0.62);
-    thighL = 0.18;
-    thighR = -0.55 * chamber - 0.55 * shoot;
-    kneeL = 0.48;
-    kneeR = 1.4 * chamber * (1 - shoot) + 0.12 * shoot;
-  }
+function gangPlant(rig, ud, swing, shove, slip, tuck, lunge, stumble, w) {
+  // Weight shifts onto the lead leg on a swing, rear on a shove.
+  const lead = swing * 0.7 + lunge * 0.3;
+  const rear = shove * 0.6;
+  let thighL = -0.15 - lead * 0.22 + stumble * 0.08;
+  let thighR = 0.18 + rear * 0.15 - stumble * 0.1;
+  let kneeL = 0.38 + tuck * 0.1 + lead * 0.08;
+  let kneeR = 0.46 + tuck * 0.06;
   rig.legL.pivot.rotation.x = gangBlend(rig.legL.pivot.rotation.x, thighL, w);
   rig.legR.pivot.rotation.x = gangBlend(rig.legR.pivot.rotation.x, thighR, w);
   rig.legL.knee.rotation.x = gangBlend(rig.legL.knee.rotation.x, kneeL, w);
@@ -21014,28 +20990,44 @@ function gangPlant(rig, ud, hit, extend, slip, tuck, w) {
     return THIGH_L * Math.cos(hipAng) + SHIN_L * Math.cos(hipAng + kneeAng);
   }
   const hipY = Math.max(drop(rig.legL.pivot.rotation.x, rig.legL.knee.rotation.x), drop(rig.legR.pivot.rotation.x, rig.legR.knee.rotation.x)) + 0.04;
-  const punch = Math.max(jab, cross);
-  rig.hip.position.y = gangBlend(rig.hip.position.y, hipY - 0.02 - punch * 0.015, w);
-  rig.hip.position.x = gangBlend(rig.hip.position.x, (jab - cross) * 0.02 + slip * 0.03, w);
-  rig.hip.position.z = gangBlend(rig.hip.position.z, 0.015 + punch * 0.02, w);
-  rig.hip.rotation.x = gangBlend(rig.hip.rotation.x, 0.08 + tuck * 0.06, w);
-  rig.hip.rotation.y = gangBlend(rig.hip.rotation.y, -0.04 + cross * 0.28 - jab * 0.06, w);
-  rig.hip.rotation.z = gangBlend(rig.hip.rotation.z, slip * -0.06, w);
-  rig.torso.rotation.x = gangBlend(rig.torso.rotation.x, 0.1 + tuck * 0.1 + punch * 0.04, w);
-  rig.torso.rotation.y = gangBlend(rig.torso.rotation.y, 0.06 - jab * 0.2 - cross * 0.38 + loading * 0.14 + slip * 0.22, w);
-  rig.torso.rotation.z = gangBlend(rig.torso.rotation.z, slip * 0.08, w);
-  rig.head.rotation.x = gangBlend(rig.head.rotation.x, 0.04 + tuck * 0.1, w);
-  rig.head.rotation.y = gangBlend(rig.head.rotation.y, slip * -0.4 + jab * 0.04, w);
-  rig.head.rotation.z = gangBlend(rig.head.rotation.z, slip * 0.14, w);
-  const jabSh = -1.08 - jab * 0.26;
-  const jabEl = -2.12 + jab * 2.0;
-  const jabSp = -0.4 + jab * 0.3;
-  const crossSh = -1.0 - cross * 0.28 + loading * 0.1;
-  const crossEl = -2.18 + cross * 2.05;
-  const crossSp = 0.46 - cross * 0.32;
-  const shell = tuck * 0.1;
-  poseToward(rig.armL, kick ? -1.05 : jabSh - shell, kick ? -0.38 : jabSp, kick ? -2.05 : jabEl, 0.06, w);
-  poseToward(rig.armR, kick ? -0.98 : crossSh - shell, kick ? 0.44 : crossSp, kick ? -2.12 : crossEl, -0.05, w);
+  rig.hip.position.y = gangBlend(rig.hip.position.y, hipY - 0.025 - stumble * 0.03, w);
+  rig.hip.position.x = gangBlend(rig.hip.position.x, slip * 0.045 + (lead - rear) * 0.03, w);
+  rig.hip.position.z = gangBlend(rig.hip.position.z, 0.015 + lunge * 0.06, w);
+  // Torso counters the arms. Shoulder leads the punch.
+  rig.hip.rotation.x = gangBlend(rig.hip.rotation.x, 0.05 + lunge * 0.08 + tuck * 0.05, w);
+  rig.hip.rotation.y = gangBlend(rig.hip.rotation.y, -swing * 0.28 + shove * 0.18, w);
+  rig.hip.rotation.z = gangBlend(rig.hip.rotation.z, slip * -0.08 + stumble * 0.06, w);
+  rig.torso.rotation.x = gangBlend(rig.torso.rotation.x, 0.07 + tuck * 0.1 + lunge * 0.12, w);
+  rig.torso.rotation.y = gangBlend(rig.torso.rotation.y, -swing * 0.38 + shove * 0.22 + slip * 0.18, w);
+  rig.torso.rotation.z = gangBlend(rig.torso.rotation.z, slip * 0.1 + stumble * 0.05, w);
+  // Head tracks the threat, snaps on contact, tucks when hit.
+  const impact = Math.max(tuck, stumble * 0.8);
+  rig.head.rotation.x = gangBlend(rig.head.rotation.x, 0.04 + impact * 0.18 + swing * 0.06, w);
+  rig.head.rotation.y = gangBlend(rig.head.rotation.y, slip * -0.42 + swing * 0.1 - shove * 0.06, w);
+  rig.head.rotation.z = gangBlend(rig.head.rotation.z, slip * 0.16 + stumble * 0.08, w);
+  // Shoulder rolls with the arm. The free side counters.
+  if (rig.armL && rig.armL.spread) {
+    rig.armL.spread.rotation.y = gangBlend(rig.armL.spread.rotation.y || 0, -swing * 0.15, w);
+  }
+  if (rig.armR && rig.armR.spread) {
+    rig.armR.spread.rotation.y = gangBlend(rig.armR.spread.rotation.y || 0, shove * 0.12, w);
+  }
+  // Arms: lead hand arcs across, rear hand drives forward. Free arm counters.
+  const leftAim = -1.15 - swing * 0.55 + shove * 0.15;
+  const leftEl = -2.05 + swing * 1.55;
+  const rightAim = -1.05 - shove * 0.4 + swing * 0.1;
+  const rightEl = -2.1 + shove * 1.35;
+  const shell = tuck * 0.12;
+  poseToward(rig.armL, leftAim - shell, -0.42 - swing * 0.25, leftEl, 0.08, w);
+  poseToward(rig.armR, rightAim - shell * 0.6, 0.38 + shove * 0.2, rightEl, -0.06, w);
+  // Face: shout on the strike, grimace on contact.
+  if (rig.mouth) {
+    const shout = Math.max(swing, shove) * 0.7;
+    const grimace = impact * 0.4;
+    const open = 1.0 + shout * 0.55 - grimace * 0.2;
+    rig.mouth.scale.y = gangBlend(rig.mouth.scale.y || 1, Math.max(0.7, open), w);
+    rig.mouth.position.z = gangBlend(rig.mouth.position.z || 0, shout * 0.004 - grimace * 0.002, w);
+  }
 }
 function poseToward(arm, swing, spreadZ, elbowX, elbowZ, w) {
   if (w <= 0) return;
@@ -22999,6 +22991,15 @@ function stepGangFight(now, dt) {
         rec.wait = 2.2;
         rec.act = "guard";
         rec.speed = 0;
+        // Small chaotic drift so pairs do not stay locked on rails.
+        const drift = Math.sin(gang.t * 1.4 + (rec.beat || 0) * 5) * 0.04;
+        const side = Math.cos(gang.t * 0.9 + (rec.offset || 0)) * 0.03;
+        rec.x += drift * (rec.slip || 1);
+        rec.z += side;
+        const clamped = gangClamp(rec.x, rec.z);
+        rec.x = clamped.x;
+        rec.z = clamped.z;
+        if (rec.fig) rec.fig.position.set(rec.x - SHEAR_K * rec.z, rec.y, rec.z);
         advanceWalker(rec, now, rec.fig);
         aimGang(rec);
         flushFigure(rec.fig);
