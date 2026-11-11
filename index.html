@@ -20460,10 +20460,18 @@ function makeCitizen(spec) {
     });
   }
   if (spec.apron) {
-    hip.add(figMesh(parts.apron, apronMat));
-    hip.add(figMesh(parts.apronHem, apronHemMat));
+    const aMat = spec.apronColor ? clothMat(spec.apronColor, 0.94, "cloth") : apronMat;
+    const hMat = spec.apronColor ? clothMat(spec.apronColor, 0.9, "cloth") : apronHemMat;
+    hip.add(figMesh(parts.apron, aMat));
+    hip.add(figMesh(parts.apronHem, hMat));
     const strapMat = clothMat(spec.straps || 0x3e5966, 1, "cloth");
     hip.add(figMesh(parts.apronStraps, strapMat));
+  }
+  if (spec.coat) {
+    const coat = figMesh(parts.torso, clothMat(spec.coat, 0.9, "cloth"));
+    coat.position.set(0, 0.33, 0.01);
+    coat.scale.set(1.1, 1.08, 1.16);
+    hip.add(coat);
   }
   const neck = figMesh(parts.neck, skin);
   neck.position.y = 0.535;
@@ -20474,6 +20482,12 @@ function makeCitizen(spec) {
   head.scale.setScalar(1.18);
   hip.add(head);
   dressHead(head, spec);
+  if (spec.cloth) {
+    const wrap = figMesh(collarGeo, clothMat(spec.cloth, 0.92, "cloth"));
+    wrap.position.set(0, 0.06, 0.01);
+    wrap.scale.set(1.35, 0.42, 1.25);
+    head.add(wrap);
+  }
   function leg(side) {
     const pivot = new THREE.Group();
     pivot.position.set(side * 0.09, -0.02, 0);
@@ -21662,28 +21676,28 @@ function gatherStreetPaths() {
   return out;
 }
 const streetPaths = gatherStreetPaths();
-// Clothes from the 1987 lane photographs and City of Darkness: singlets,
-// shorts, flip-flops, a towel on the shoulder, check shirts, the nylon
-// red-white-blue bag, paper fans, a cigarette. Not a later street fashion.
+// 1980s lane clothes. Singlets and shorts for the men, blouses and buns
+// for the women, a pole for the porter, a nylon bag, a paper fan, a towel
+// on the shoulder. Muted, worn, not a later street fashion.
 const outfits = [
-  { top: 0xe6e0d2, sleeve: "skin", pants: 0x22201e, hair: "short", skin: 0, prop: "bag", bag: 0, shoes: 0x1a1816, gait: "walk", brolly: 0x1a3058, towel: true },
-  { top: 0x8a949a, sleeve: "short", pants: 0x243044, hair: "bob", skin: 1, prop: "basket", shoes: 0x1a1816, gait: "walk", scale: 0.96, brolly: 0x1f4a38, fan: 0xe7dcc8 },
-  { top: 0x8d7b62, sleeve: "long", pants: 0x3a3632, hair: "grey", skin: 3, shoes: 0x2a241c, gait: "slow", scale: 0.94, brolly: 0x2c241c, habit: "smoke" },
-  { top: 0xc4b59a, sleeve: "short", pants: 0x2a2826, hair: "bun", skin: 4, shoes: 0x1a1816, gait: "walk", scale: 0.74, brolly: 0xd8d2c4 },
-  { top: 0xddd6c8, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 2, prop: "pole", shoes: 0x1a1816, gait: "load", cap: true, straps: 0x3a342c },
-  { top: "stripe", sleeve: "short", pants: 0x2c3344, hair: "bob", skin: 1, prop: "bag", bag: 1, shoes: 0x1a1816, gait: "walk", brolly: 0x3a4554 },
-  { top: 0xd9d3c6, sleeve: "skin", pants: 0x2a2826, hair: "short", skin: 0, apron: true, straps: 0x4a4038, shoes: 0x1a1816, gait: "walk", brolly: 0x4a3038, shorts: true },
-  { top: 0xe8e2d4, sleeve: "skin", pants: 0x4a4034, hair: "short", skin: 2, shoes: 0x1a1816, gait: "walk", brolly: 0x1a1c20, shorts: true, towel: true },
-  { top: 0xb89a72, sleeve: "short", pants: 0x2a2826, hair: "bun", skin: 4, prop: "basket", shoes: 0x7a3030, gait: "walk", brolly: 0x1a2744, fan: 0x8a3030 },
-  { top: 0xd5d0c4, sleeve: "short", pants: 0x243044, hair: "grey", skin: 3, prop: "bag", bag: 4, shoes: 0x1a1816, gait: "slow", scale: 0.92, brolly: 0x1e4632 },
-  { top: 0x6d7870, sleeve: "short", pants: 0x1e1c1a, hair: "bob", skin: 1, shoes: 0x1a1816, gait: "walk", brolly: 0x8a3038, scale: 0.97, fan: 0xf0e6d4 },
-  { top: 0xe4ddd0, sleeve: "skin", pants: 0x2a3340, hair: "short", skin: 0, prop: "pole", shoes: 0x1a1816, gait: "load" },
-  { top: "check", sleeve: "short", pants: 0x3a342c, hair: "short", skin: 2, shoes: 0x1a1816, gait: "walk", habit: "smoke", brolly: 0x2a241c },
-  { top: 0x9a5348, sleeve: "short", pants: 0x241c1c, hair: "bob", skin: 1, shoes: 0x7a3030, gait: "walk", scale: 0.95, fan: 0x8a3030, brolly: 0xd8d2c4 },
-  { top: 0x6a5344, sleeve: "long", pants: 0x2c2824, hair: "grey", skin: 3, shoes: 0x2a241c, gait: "slow", scale: 0.93, habit: "smoke", brolly: 0x1e4632 },
-  { top: 0xe7e2d6, sleeve: "skin", pants: 0x2a2622, hair: "short", skin: 0, shorts: true, towel: true, shoes: 0x1a1816, gait: "walk", fan: 0xe4d7c4, brolly: 0x1a3058 },
-  { top: 0x3c5160, sleeve: "short", pants: 0x1c1a18, hair: "short", skin: 4, prop: "bag", bag: 4, shoes: 0x1a1816, gait: "walk", brolly: 0x1a1c20 },
-  { top: 0xd7c2b0, sleeve: "short", pants: 0x3a3632, hair: "bun", skin: 1, shoes: 0x1a1816, gait: "walk", scale: 0.98, brolly: 0x4a3038 }
+  { top: 0xe6e0d2, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 0, prop: "pole", shoes: 0x1a1816, gait: "load", cap: true, shorts: true, towel: true },
+  { top: 0xc4b59a, sleeve: "short", pants: 0x2a2826, hair: "bun", skin: 4, prop: "basket", shoes: 0x1a1816, gait: "walk", scale: 0.96, fan: 0xe7dcc8, cloth: 0xd9d3c6 },
+  { top: 0x6a5344, sleeve: "long", pants: 0x2c2824, hair: "grey", skin: 3, shoes: 0x2a241c, gait: "slow", scale: 0.93, habit: "smoke" },
+  { top: 0xd7c2b0, sleeve: "short", pants: 0x3a3632, hair: "bob", skin: 1, shoes: 0x1a1816, gait: "walk", scale: 0.74, fan: 0xf0e6d4 },
+  { top: 0xddd6c8, sleeve: "skin", pants: 0x22201e, hair: "short", skin: 2, prop: "bag", bag: 0, shoes: 0x1a1816, gait: "walk", shorts: true, towel: true },
+  { top: "stripe", sleeve: "short", pants: 0x2c3344, hair: "bob", skin: 1, prop: "bag", bag: 1, shoes: 0x1a1816, gait: "walk", fan: 0xe7dcc8 },
+  { top: 0xd9d3c6, sleeve: "skin", pants: 0x2a2826, hair: "short", skin: 0, apron: true, apronColor: 0xe8dfd0, straps: 0x4a4038, shoes: 0x1a1816, gait: "walk", shorts: true },
+  { top: 0xe8e2d4, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 2, shoes: 0x1a1816, gait: "walk", shorts: true, towel: true, habit: "smoke" },
+  { top: 0xb89a72, sleeve: "short", pants: 0x2a2826, hair: "bun", skin: 4, prop: "basket", shoes: 0x7a3030, gait: "walk", fan: 0x8a3030, cloth: 0xc4b59a },
+  { top: 0xd5d0c4, sleeve: "short", pants: 0x243044, hair: "grey", skin: 3, prop: "bag", bag: 4, shoes: 0x1a1816, gait: "slow", scale: 0.92 },
+  { top: 0x6d7870, sleeve: "short", pants: 0x1e1c1a, hair: "bob", skin: 1, shoes: 0x1a1816, gait: "walk", scale: 0.97, fan: 0xf0e6d4 },
+  { top: 0xe4ddd0, sleeve: "skin", pants: 0x2a3340, hair: "short", skin: 0, prop: "pole", shoes: 0x1a1816, gait: "load", cap: true, shorts: true },
+  { top: "check", sleeve: "short", pants: 0x3a342c, hair: "short", skin: 2, shoes: 0x1a1816, gait: "walk", habit: "smoke" },
+  { top: 0x9a5348, sleeve: "short", pants: 0x241c1c, hair: "bun", skin: 1, shoes: 0x7a3030, gait: "walk", scale: 0.95, fan: 0x8a3030 },
+  { top: 0x8d7b62, sleeve: "long", pants: 0x2c2824, hair: "grey", skin: 3, shoes: 0x2a241c, gait: "slow", scale: 0.94, habit: "smoke" },
+  { top: 0xe7e2d6, sleeve: "skin", pants: 0x2a2622, hair: "short", skin: 0, shorts: true, towel: true, shoes: 0x1a1816, gait: "walk" },
+  { top: 0x3c5160, sleeve: "short", pants: 0x1c1a18, hair: "short", skin: 4, prop: "bag", bag: 4, shoes: 0x1a1816, gait: "walk" },
+  { top: 0xd7c2b0, sleeve: "short", pants: 0x3a3632, hair: "bun", skin: 1, shoes: 0x1a1816, gait: "walk", scale: 0.98, fan: 0xe7dcc8 }
 ];
 function folkStub(wear) {
   return {
@@ -21807,29 +21821,29 @@ roster.forEach((entry, i) => {
 // when nobody is at the door. A coat for the clinics, an apron for the
 // food and the dry goods, work clothes for the factories.
 const KEEPER_LOOK = {
-  dentist:    { top: 0xf7f4ee, sleeve: "long", pants: 0x2c3344, hair: "short", skin: 0, shoes: 0x1a1816 },
-  doctor:     { top: 0xe7eee8, sleeve: "long", pants: 0x243044, hair: "grey", skin: 1, shoes: 0x1a1816 },
-  pharmacy:   { top: 0xf3efe4, sleeve: "long", pants: 0x2a3140, hair: "bob", skin: 4, shoes: 0x1a1816 },
-  bonesetter: { top: 0xe6dcc4, sleeve: "short", pants: 0x3a342c, hair: "short", skin: 2, shoes: 0x1a1816 },
-  herbal:     { top: 0x3a4034, sleeve: "short", pants: 0x2a2824, hair: "bun", skin: 3, shoes: 0x1a1816, apron: true, straps: 0x1e3a32 },
-  grocery:    { top: 0xe6e0d2, sleeve: "skin", pants: 0x2a2826, hair: "short", skin: 0, shoes: 0x1a1816, apron: true, straps: 0x4a4038, shorts: true, mix: 1 },
-  rice:       { top: 0xd7c8a4, sleeve: "short", pants: 0x3a342c, hair: "short", skin: 2, shoes: 0x1a1816, apron: true, straps: 0x6a5438, mix: 1 },
-  cafe:       { top: 0xf4f1ea, sleeve: "short", pants: 0x1e4a3a, hair: "bob", skin: 1, shoes: 0x1a1816, apron: true, straps: 0x1a3a6b },
-  barber:     { top: 0xf7f4ee, sleeve: "short", pants: 0x1c2430, hair: "short", skin: 0, shoes: 0x1a1816 },
+  dentist:    { top: 0xf4f1ea, sleeve: "long", pants: 0x2c3344, hair: "short", skin: 0, shoes: 0x1a1816, coat: 0xf7f4ee },
+  doctor:     { top: 0xe7eee8, sleeve: "long", pants: 0x243044, hair: "grey", skin: 1, shoes: 0x1a1816, coat: 0xf3f6f2 },
+  pharmacy:   { top: 0xf3efe4, sleeve: "long", pants: 0x2a3140, hair: "bob", skin: 4, shoes: 0x1a1816, coat: 0xf7f4ee },
+  bonesetter: { top: 0xe6dcc4, sleeve: "short", pants: 0x3a342c, hair: "short", skin: 2, shoes: 0x1a1816, apron: true, apronColor: 0xe8dfd0, straps: 0x6a5438 },
+  herbal:     { top: 0x3a4034, sleeve: "short", pants: 0x2a2824, hair: "bun", skin: 3, shoes: 0x1a1816, apron: true, apronColor: 0xd9d4c6, straps: 0x1e3a32, cloth: 0xc4b59a },
+  grocery:    { top: 0xe6e0d2, sleeve: "skin", pants: 0x2a2826, hair: "short", skin: 0, shoes: 0x1a1816, apron: true, apronColor: 0xe8dfd0, straps: 0x4a4038, shorts: true, towel: true, mix: 1 },
+  rice:       { top: 0xd7c8a4, sleeve: "short", pants: 0x3a342c, hair: "short", skin: 2, shoes: 0x1a1816, apron: true, apronColor: 0xd2c4ae, straps: 0x6a5438, mix: 1 },
+  cafe:       { top: 0xf4f1ea, sleeve: "short", pants: 0x1e4a3a, hair: "bob", skin: 1, shoes: 0x1a1816, apron: true, apronColor: 0xf7f4ee, straps: 0x1a3a6b, towel: true },
+  barber:     { top: 0xf7f4ee, sleeve: "short", pants: 0x1c2430, hair: "short", skin: 0, shoes: 0x1a1816, apron: true, apronColor: 0xf3efe4, straps: 0x3a342c },
   electrical: { top: 0xd5e0ea, sleeve: "short", pants: 0x243044, hair: "short", skin: 2, shoes: 0x1a1816 },
-  hardware:   { top: 0x6a645c, sleeve: "long", pants: 0x2a2824, hair: "short", skin: 3, shoes: 0x1a1816, apron: true, straps: 0x3e4650 },
-  mahjong:    { top: 0x1a6b3c, sleeve: "short", pants: 0x1c1a18, hair: "short", skin: 2, shoes: 0x1a1816 },
-  paikau:     { top: 0x6a1820, sleeve: "short", pants: 0x1a1816, hair: "short", skin: 0, shoes: 0x1a1816 },
-  dogmeat:    { top: 0x8a3030, sleeve: "short", pants: 0x2a241c, hair: "short", skin: 1, shoes: 0x1a1816, apron: true, straps: 0x3a241c },
-  fishball:   { top: 0xe7e2d4, sleeve: "skin", pants: 0x1c3a44, hair: "short", skin: 2, shoes: 0x1a1816, apron: true, straps: 0x2a4038, shorts: true },
-  noodle:     { top: 0xf0eadc, sleeve: "skin", pants: 0x3a3428, hair: "short", skin: 0, shoes: 0x1a1816, apron: true, straps: 0xc4b49a, shorts: true },
-  bbq:        { top: 0x6a1a12, sleeve: "skin", pants: 0x2a1814, hair: "short", skin: 3, shoes: 0x1a1816, apron: true, straps: 0x3a241c, shorts: true },
-  tofu:       { top: 0xf4f1ea, sleeve: "skin", pants: 0x2a3a30, hair: "bun", skin: 4, shoes: 0x1a1816, apron: true, straps: 0xd9d4c6 },
-  candy:      { top: 0xf7e27a, sleeve: "short", pants: 0x6a1830, hair: "bob", skin: 1, shoes: 0x7a3030, apron: true, straps: 0xc44a58 },
-  plastic:    { top: 0x5a635c, sleeve: "long", pants: 0x2a3028, hair: "short", skin: 2, shoes: 0x1a1816, apron: true, straps: 0x3a4038 },
-  textile:    { top: 0x4a4038, sleeve: "long", pants: 0x2a241c, hair: "bun", skin: 3, shoes: 0x1a1816, apron: true, straps: 0x6a5438 },
+  hardware:   { top: 0x6a645c, sleeve: "long", pants: 0x2a2824, hair: "short", skin: 3, shoes: 0x1a1816, apron: true, apronColor: 0x8a847c, straps: 0x3e4650 },
+  mahjong:    { top: 0x1a6b3c, sleeve: "short", pants: 0x1c1a18, hair: "short", skin: 2, shoes: 0x1a1816, habit: "smoke" },
+  paikau:     { top: 0x6a1820, sleeve: "short", pants: 0x1a1816, hair: "short", skin: 0, shoes: 0x1a1816, habit: "smoke" },
+  dogmeat:    { top: 0x8a3030, sleeve: "short", pants: 0x2a241c, hair: "short", skin: 1, shoes: 0x1a1816, apron: true, apronColor: 0xc4b49a, straps: 0x3a241c, towel: true },
+  fishball:   { top: 0xe7e2d4, sleeve: "skin", pants: 0x1c3a44, hair: "short", skin: 2, shoes: 0x1a1816, apron: true, apronColor: 0xf0eadc, straps: 0x2a4038, shorts: true, towel: true },
+  noodle:     { top: 0xf0eadc, sleeve: "skin", pants: 0x3a3428, hair: "short", skin: 0, shoes: 0x1a1816, apron: true, apronColor: 0xe8dfd0, straps: 0xc4b49a, shorts: true, towel: true },
+  bbq:        { top: 0x6a1a12, sleeve: "skin", pants: 0x2a1814, hair: "short", skin: 3, shoes: 0x1a1816, apron: true, apronColor: 0x8a5a48, straps: 0x3a241c, shorts: true, towel: true },
+  tofu:       { top: 0xf4f1ea, sleeve: "skin", pants: 0x2a3a30, hair: "bun", skin: 4, shoes: 0x1a1816, apron: true, apronColor: 0xf7f4ee, straps: 0xd9d4c6, cloth: 0xe8e2d4 },
+  candy:      { top: 0xf7e27a, sleeve: "short", pants: 0x6a1830, hair: "bob", skin: 1, shoes: 0x7a3030, apron: true, apronColor: 0xf3efe4, straps: 0xc44a58 },
+  plastic:    { top: 0x5a635c, sleeve: "long", pants: 0x2a3028, hair: "short", skin: 2, shoes: 0x1a1816, apron: true, apronColor: 0x6a736c, straps: 0x3a4038 },
+  textile:    { top: 0x4a4038, sleeve: "long", pants: 0x2a241c, hair: "bun", skin: 3, shoes: 0x1a1816, apron: true, apronColor: 0x8a7b62, straps: 0x6a5438, cloth: 0xc4b59a },
   joss:       { top: 0x8a3030, sleeve: "short", pants: 0x2a1814, hair: "grey", skin: 3, shoes: 0x1a1816, mix: 1 },
-  water:      { top: 0xd5dde2, sleeve: "skin", pants: 0x1a3040, hair: "short", skin: 0, shoes: 0x1a1816, shorts: true }
+  water:      { top: 0xd5dde2, sleeve: "skin", pants: 0x1a3040, hair: "short", skin: 0, shoes: 0x1a1816, shorts: true, towel: true }
 };
 function keeperTrade(kind) {
   if (kind === "dentist" || kind === "doctor" || kind === "pharmacy" || kind === "bonesetter") return "clinic";
@@ -22175,9 +22189,9 @@ function syncPavement(now) {
 const alleyHeat = [];
 const heat = { phase: "quiet", nights: 0, prev: null, rolled: false, decided: false, want: false, t: 0, spot: null, leaving: false };
 const HEAT_WEAR = [
-  { role: "run", top: 0xe8e2d4, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 0, shoes: 0x1a1816, towel: true, habit: "smoke", gait: "walk" },
-  { role: "shove", top: 0x8a949a, sleeve: "short", pants: 0x1c1a18, hair: "short", skin: 2, shoes: 0x1a1816, gait: "walk" },
-  { role: "follow", top: 0x2a3344, sleeve: "short", pants: 0x243044, hair: "short", skin: 4, shoes: 0x2a241c, gait: "walk" }
+  { role: "run", top: 0xe8e2d4, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 0, shoes: 0x1a1816, shorts: true, towel: true, habit: "smoke", gait: "walk" },
+  { role: "shove", top: 0x6a1820, sleeve: "skin", pants: 0x1a1816, hair: "short", skin: 2, shoes: 0x1a1816, shorts: true, gait: "walk" },
+  { role: "follow", top: 0x2a3344, sleeve: "short", pants: 0x1c1a18, hair: "short", skin: 4, shoes: 0x2a241c, towel: true, gait: "walk" }
 ];
 function heatUnit(n) {
   let x = Math.imul(n | 0, 0x9e3779b1) ^ 0xA11E7;
@@ -22865,7 +22879,7 @@ function stepGangFight(now, dt) {
 const SLEEP_WEAR = [
   { top: 0xe8e2d4, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 0, shoes: 0x1a1816, shorts: true, towel: true, gait: "walk" },
   { top: 0xe6e0d2, sleeve: "skin", pants: 0x22201e, hair: "short", skin: 2, shoes: 0x1a1816, shorts: true, gait: "slow" },
-  { top: "check", sleeve: "short", pants: 0x2a241c, hair: "short", skin: 1, shoes: 0x1a1816, gait: "walk" },
+  { top: "check", sleeve: "short", pants: 0x2a241c, hair: "short", skin: 1, shoes: 0x1a1816, habit: "smoke", gait: "walk" },
   { top: 0x8d7b62, sleeve: "long", pants: 0x2c2824, hair: "grey", skin: 3, shoes: 0x2a241c, gait: "slow" },
   { top: 0x6d7870, sleeve: "short", pants: 0x1e1c1a, hair: "short", skin: 4, shoes: 0x1a1816, shorts: true, gait: "walk" },
   { top: 0xd9d3c6, sleeve: "skin", pants: 0x1c1a18, hair: "short", skin: 0, shoes: 0x1a1816, shorts: true, towel: true, gait: "slow" },
