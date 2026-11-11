@@ -24815,20 +24815,21 @@ function placeCatCamera() {
     camera.updateProjectionMatrix();
   }
 }
-// Flat cubes in the Crossy Road tabby: orange coat, three back stripes,
-// cream legs, white eyes with offset pupils, and an open mouth.
-const CAT_FRONT_U = 0.108, CAT_FRONT_L = 0.098;
-const CAT_HIND_U = 0.112, CAT_HIND_L = 0.098;
-const CAT_BODY_H = 0.16;
+// Block cat matched to the reference: a wide orange head, three back
+// stripes, cream muzzle and legs, white eyes, and an open mouth.
+const CAT_FRONT_U = 0.078, CAT_FRONT_L = 0.07;
+const CAT_HIND_U = 0.084, CAT_HIND_L = 0.072;
+const CAT_BODY_H = 0.124;
 function makeCat() {
   if (catFig) return;
-  const FUR = 0xe08a3a;
-  const STRIPE = 0xc46228;
-  const CREAM = 0xf3efe4;
-  const EAR = 0xf0b56a;
-  const PUPIL = 0x1c1614;
-  const MOUTH = 0x3a221c;
-  const TONGUE = 0xee8b96;
+  const FUR = 0xe3943a;
+  const STRIPE = 0xc56a28;
+  const CREAM = 0xf4e6cf;
+  const EAR = 0xf2b56a;
+  const EYE = 0xfff8f0;
+  const PUPIL = 0x1a1410;
+  const MOUTH = 0x2c1814;
+  const TONGUE = 0xf098a0;
   function coat(color) {
     const mat = new THREE.MeshStandardMaterial({
       color: color, roughness: 0.94, metalness: 0, flatShading: true, clippingPlanes: clips
@@ -24841,6 +24842,7 @@ function makeCat() {
   const stripe = coat(STRIPE);
   const cream = coat(CREAM);
   const earMat = coat(EAR);
+  const eyeMat = coat(EYE);
   const pupilMat = coat(PUPIL);
   const mouthMat = coat(MOUTH);
   const tongueMat = coat(TONGUE);
@@ -24857,41 +24859,43 @@ function makeCat() {
   const torso = new THREE.Group();
   g.add(torso);
   const hips = new THREE.Group();
-  hips.position.set(0, 0.16, 0.01);
+  hips.position.set(0, 0.162, 0);
   torso.add(hips);
-  const body = brick(hips, fur, 0, 0.07, 0.04, 0.24, CAT_BODY_H, 0.34);
-  brick(hips, cream, 0, 0.005, -0.06, 0.14, 0.04, 0.12);
-  [0.02, 0.075, 0.13].forEach(function (z) {
-    brick(hips, stripe, 0, 0.154, z, 0.22, 0.026, 0.032);
+  const body = brick(hips, fur, 0, 0.05, 0.01, 0.26, CAT_BODY_H, 0.3);
+  brick(hips, cream, 0, -0.008, -0.04, 0.16, 0.042, 0.13);
+  [-0.01, 0.05, 0.11].forEach(function (z) {
+    brick(hips, stripe, 0, 0.118, z, 0.24, 0.016, 0.032);
   });
   const chest = new THREE.Group();
-  chest.position.set(0, 0.03, -0.1);
+  chest.position.set(0, 0.01, -0.1);
   hips.add(chest);
   const head = new THREE.Group();
-  head.position.set(0, 0.08, -0.08);
+  head.position.set(0, 0.09, -0.08);
   chest.add(head);
-  brick(head, fur, 0, 0.02, 0, 0.22, 0.18, 0.18);
-  brick(head, cream, 0, -0.045, -0.078, 0.13, 0.07, 0.04);
-  const nose = brick(head, mouthMat, 0, -0.012, -0.108, 0.028, 0.016, 0.016);
-  brick(head, mouthMat, 0, -0.048, -0.112, 0.09, 0.038, 0.02);
-  brick(head, cream, -0.022, -0.034, -0.122, 0.022, 0.016, 0.012);
-  brick(head, cream, 0.022, -0.034, -0.122, 0.022, 0.016, 0.012);
-  brick(head, tongueMat, 0, -0.058, -0.12, 0.04, 0.016, 0.028);
+  brick(head, fur, 0, 0.01, 0.01, 0.24, 0.168, 0.16);
+  brick(head, cream, 0, -0.046, -0.078, 0.18, 0.07, 0.05);
+  const nose = brick(head, mouthMat, 0, -0.012, -0.098, 0.024, 0.014, 0.016);
+  brick(head, mouthMat, 0, -0.052, -0.1, 0.09, 0.028, 0.02);
+  brick(head, cream, -0.03, -0.042, -0.112, 0.022, 0.016, 0.012);
+  brick(head, cream, 0.03, -0.042, -0.112, 0.022, 0.016, 0.012);
+  brick(head, tongueMat, 0, -0.064, -0.108, 0.032, 0.012, 0.02);
   const ears = [];
   const eyes = [];
+  const pupils = [];
   [-1, 1].forEach(function (side) {
     const ear = new THREE.Group();
-    ear.position.set(side * 0.07, 0.108, 0.01);
+    ear.position.set(side * 0.078, 0.094, 0.016);
     head.add(ear);
-    brick(ear, fur, 0, 0.038, 0, 0.052, 0.07, 0.04);
-    brick(ear, earMat, 0, 0.034, -0.014, 0.028, 0.04, 0.012);
+    brick(ear, fur, 0, 0.022, 0, 0.048, 0.044, 0.036);
+    brick(ear, earMat, 0, 0.016, -0.012, 0.026, 0.024, 0.01);
     ears.push(ear);
     const socket = new THREE.Group();
-    socket.position.set(side * 0.05, 0.03, -0.092);
+    socket.position.set(side * 0.05, 0.034, -0.074);
     head.add(socket);
-    brick(socket, cream, 0, 0, 0, 0.052, 0.046, 0.02);
-    brick(socket, pupilMat, -0.008, 0.006, -0.012, 0.02, 0.022, 0.012);
+    brick(socket, eyeMat, 0, 0, 0, 0.074, 0.062, 0.02);
+    const pupil = brick(socket, pupilMat, -0.01, 0.006, -0.012, 0.016, 0.018, 0.012);
     eyes.push(socket);
+    pupils.push(pupil);
   });
   function catLeg(parent, x, y, z, hind) {
     const upper = hind ? CAT_HIND_U : CAT_FRONT_U;
@@ -24907,29 +24911,29 @@ function makeCat() {
     const paw = new THREE.Group();
     paw.position.y = -lower;
     knee.add(paw);
-    brick(paw, cream, 0, 0.012, -0.01, hind ? 0.078 : 0.07, 0.028, hind ? 0.084 : 0.076);
+    brick(paw, cream, 0, 0.01, -0.01, hind ? 0.08 : 0.072, 0.022, hind ? 0.078 : 0.07);
     return {
       hip: hip, knee: knee, paw: paw, hind: !!hind, side: x < 0 ? -1 : 1,
       upper: upper, lower: lower, hold: null
     };
   }
   const legs = [
-    catLeg(chest, -0.072, 0, -0.01, false),
-    catLeg(chest, 0.072, 0, -0.01, false),
-    catLeg(hips, -0.074, 0.01, 0.09, true),
-    catLeg(hips, 0.074, 0.01, 0.09, true)
+    catLeg(chest, -0.068, 0, -0.012, false),
+    catLeg(chest, 0.068, 0, -0.012, false),
+    catLeg(hips, -0.072, 0, 0.1, true),
+    catLeg(hips, 0.072, 0, 0.1, true)
   ];
   const tail = new THREE.Group();
-  tail.position.set(0, 0.13, 0.2);
+  tail.position.set(0, 0.1, 0.182);
   hips.add(tail);
   const tailSeg = [];
   let tailParent = tail;
-  const tailLen = [0.055, 0.05, 0.042];
+  const tailLen = [0.046, 0.042, 0.034];
   for (let i = 0; i < tailLen.length; i++) {
     const seg = new THREE.Group();
     if (i > 0) seg.position.z = tailLen[i - 1];
     tailParent.add(seg);
-    brick(seg, i === tailLen.length - 1 ? stripe : fur, 0, 0, tailLen[i] * 0.5, 0.055 - i * 0.008, 0.05 - i * 0.006, tailLen[i]);
+    brick(seg, i === tailLen.length - 1 ? stripe : fur, 0, 0, tailLen[i] * 0.5, 0.046 - i * 0.008, 0.042 - i * 0.006, tailLen[i]);
     tailSeg.push(seg);
     tailParent = seg;
   }
@@ -24937,7 +24941,7 @@ function makeCat() {
   city.add(g);
   catFig = g;
   catRig = {
-    torso: torso, hips: hips, chest: chest, head: head, ears: ears, eyes: eyes,
+    torso: torso, hips: hips, chest: chest, head: head, ears: ears, eyes: eyes, pupils: pupils,
     legs: legs, tail: tail, tailSeg: tailSeg, body: body, nose: nose,
     phase: 0, move: 0, gait: 0, lean: 0, lastYaw: 0, clock: 0,
     probe: new THREE.Vector3(), hipW: new THREE.Vector3(), inv: new THREE.Matrix4()
@@ -24960,9 +24964,9 @@ function catIk(upper, lower, ty, tz, hind) {
   return { hipX: hipX, kneeX: kneeX, pawX: -(hipX + kneeX), hipZ: 0 };
 }
 function catCycle(gait) {
-  const duty = 0.22 - gait * 0.05;
-  const sweep = 0.128 + gait * 0.036;
-  return { duty: duty, sweep: sweep, dist: sweep / Math.max(0.12, duty) };
+  const duty = 0.62 - gait * 0.26;
+  const dist = 0.28 + gait * 0.24;
+  return { duty: duty, sweep: dist * duty, dist: dist };
 }
 function catPhases(step, gait) {
   const opp = Math.PI * (1 - gait);
@@ -25014,28 +25018,36 @@ function settleCat(dt, moving, moved) {
   const cyc = catCycle(gait);
   if (moved > 0.00001 && sit < 0.8) rig.phase += (moved / cyc.dist) * Math.PI * 2;
   const step = rig.phase;
-  const breath = Math.sin(rig.clock * 1.7);
   const sitW = sit * sit * (3 - 2 * sit);
-  const hop = Math.sin(step * 2) * 0.008 * move * (1 - sitW);
-  rig.torso.position.y = hop - 0.016 * sitW;
-  if (rig.body) rig.body.scale.y = CAT_BODY_H * (1 + breath * 0.012 * (1 - move));
-  rig.torso.rotation.z = rig.lean * (0.22 + move * 0.3);
-  rig.hips.rotation.x = breath * 0.018 * (1 - move) * (1 - sitW) + 0.1 * sitW;
-  rig.hips.rotation.y = Math.sin(step) * 0.04 * move * (1 - sitW);
-  rig.hips.rotation.z = rig.lean * 0.12;
-  rig.chest.rotation.x = (-0.04 * gait * move + breath * 0.025 * (1 - move)) * (1 - sitW);
-  rig.chest.rotation.y = -rig.hips.rotation.y * 0.5;
-  rig.chest.rotation.z = -rig.hips.rotation.z;
-  rig.head.rotation.x = -rig.chest.rotation.x * 0.65 - 0.03 * sitW;
-  rig.head.rotation.y = Math.sin(rig.clock * 0.55) * 0.06 * (1 - move) * (1 - sitW);
-  rig.head.rotation.z = -rig.torso.rotation.z * 0.55;
+  const breath = Math.sin(rig.clock * 1.55);
+  const idle = (1 - move) * (1 - sitW);
+  const bob = Math.sin(step * 2);
+  rig.torso.position.x = idle * Math.sin(rig.clock * 0.42) * 0.006;
+  rig.torso.position.y = bob * (0.01 + gait * 0.016) * move * (1 - sitW) + breath * 0.004 * idle - 0.014 * sitW;
+  if (rig.body) rig.body.scale.y = CAT_BODY_H * (1 + breath * 0.018 * idle);
+  rig.torso.rotation.z = rig.lean * (0.28 + move * 0.35) + idle * Math.sin(rig.clock * 0.48) * 0.03;
+  rig.hips.rotation.x = breath * 0.022 * idle + (0.08 + gait * 0.06) * sitW + bob * 0.025 * move * (1 - sitW);
+  rig.hips.rotation.y = Math.sin(step) * (0.055 + gait * 0.03) * move * (1 - sitW);
+  rig.hips.rotation.z = rig.lean * 0.16 + Math.sin(step) * 0.04 * move * (1 - sitW);
+  rig.chest.rotation.x = (-0.08 * gait * move + breath * 0.03 * idle) * (1 - sitW);
+  rig.chest.rotation.y = -rig.hips.rotation.y * 0.7;
+  rig.chest.rotation.z = -rig.hips.rotation.z * 0.45;
+  rig.head.rotation.x = -rig.chest.rotation.x * 0.75 - bob * 0.05 * move * (1 - sitW) + breath * 0.02 * idle - 0.04 * sitW;
+  rig.head.rotation.y = idle * (Math.sin(rig.clock * 0.41) * 0.1 + Math.sin(rig.clock * 0.13) * 0.04) - rig.hips.rotation.y * 0.4;
+  rig.head.rotation.z = -rig.torso.rotation.z * 0.6;
   for (let i = 0; i < rig.ears.length; i++) {
     const side = i === 0 ? -1 : 1;
-    rig.ears[i].rotation.z = side * (0.22 + sitW * 0.05);
-    rig.ears[i].rotation.x = -0.05 + gait * 0.35 * move;
+    const flick = Math.pow(Math.max(0, Math.sin(rig.clock * 0.31 + i * 1.7)), 36) * idle;
+    rig.ears[i].rotation.z = side * (0.16 + sitW * 0.08);
+    rig.ears[i].rotation.x = -0.06 * idle + gait * 0.62 * move + flick * 0.4;
   }
-  const blink = Math.pow(Math.max(0, Math.sin(rig.clock * 0.5 + 0.6)), 46);
-  for (let i = 0; i < rig.eyes.length; i++) rig.eyes[i].scale.y = 1 - blink * 0.88;
+  const blinkWave = Math.sin(rig.clock * 0.37 + 0.6);
+  const blink = blinkWave > 0.965 ? (blinkWave - 0.965) / 0.035 : 0;
+  for (let i = 0; i < rig.eyes.length; i++) rig.eyes[i].scale.y = 1 - blink * 0.9;
+  if (rig.pupils) {
+    const glance = idle * Math.sin(rig.clock * 0.23) * 0.006;
+    for (let i = 0; i < rig.pupils.length; i++) rig.pupils[i].position.x = -0.01 + glance;
+  }
   const TAU = Math.PI * 2;
   const fwdX = -Math.sin(catYaw);
   const fwdZ = -Math.cos(catYaw);
@@ -25068,8 +25080,9 @@ function settleCat(dt, moving, moved) {
       leg.hold = null;
       const span = Math.max(0.001, TAU - stanceA);
       const u = Math.max(0, Math.min(1, (p - stanceA) / span));
-      const along = cyc.sweep * (u - 0.5);
-      const lift = Math.sin(u * Math.PI) * (0.038 + gait * 0.04);
+      const along = cyc.sweep * (u - 0.38);
+      const arc = Math.sin(u * Math.PI);
+      const lift = arc * arc * (0.028 + gait * 0.055);
       leg.hip.getWorldPosition(rig.hipW);
       pose = catReach(leg, rig.hipW.x + fwdX * along, GROUND_Y + lift, rig.hipW.z + fwdZ * along);
     }
@@ -25097,14 +25110,16 @@ function settleCat(dt, moving, moved) {
       catPut(leg, pose, sitPose[leg.hind ? 1 : 0], sitW);
     }
   }
-  const wag = Math.sin(rig.clock * (1.2 + move * 2) );
-  rig.tail.rotation.x = (-0.95 - gait * 0.2 * move) * (1 - sitW) + 0.2 * sitW;
-  rig.tail.rotation.y = wag * (0.16 + move * 0.1) * (1 - sitW) + 0.7 * sitW;
-  rig.tail.rotation.z = rig.lean * -0.18;
+  const wag = Math.sin(step * (1 - gait * 0.35) + rig.clock * (0.8 + move * 1.6));
+  const carried = gait * move * (1 - sitW);
+  rig.tail.rotation.x = -0.62 * (1 - gait) * (1 - sitW) - 0.18 * carried + 0.32 * sitW;
+  rig.tail.rotation.y = wag * (0.2 * (1 - carried) + 0.06) * (1 - sitW) + 0.62 * sitW;
+  rig.tail.rotation.z = rig.lean * -0.22;
   for (let i = 0; i < rig.tailSeg.length; i++) {
     const curl = (i + 1) / rig.tailSeg.length;
-    rig.tailSeg[i].rotation.x = curl * 0.07 * sitW;
-    rig.tailSeg[i].rotation.y = wag * curl * 0.32 * (1 - sitW) + curl * 0.22 * sitW;
+    const wave = Math.sin(rig.clock * (1.3 + move * 2.2) - i * 0.75 + step * move);
+    rig.tailSeg[i].rotation.x = curl * (0.16 * sitW + 0.04 * carried);
+    rig.tailSeg[i].rotation.y = wave * curl * (0.34 + move * 0.12) * (1 - sitW) + curl * 0.28 * sitW;
   }
   catFig.updateMatrixWorld(true);
   if (!walkGlide) placeCatCamera();
