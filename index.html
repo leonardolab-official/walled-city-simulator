@@ -1274,12 +1274,16 @@ function stepDrs(fdt) {
   const sample = Math.min(fdt, 0.05);
   drs.avg = drs.samples === 0 ? sample : drs.avg * 0.85 + sample * 0.15;
   drs.samples++;
-  if (drs.samples < 12) return;
+  // A handset notices it is over budget sooner. The ceiling stays the real
+  // screen, so a phone that is already holding the frame never softens.
+  const need = handset ? 6 : 12;
+  const hotNeed = handset ? 4 : 8;
+  if (drs.samples < need) return;
   if (drs.avg > 0.02) {
     drs.hot++;
     drs.cool = 0;
     if (drs.scale <= drs.floor + 0.001) { drs.hot = 0; return; }
-    if (drs.hot < 8) return;
+    if (drs.hot < hotNeed) return;
     drs.scale = Math.max(drs.floor, Math.round((drs.scale - 0.125) * 8) / 8);
   } else if (drs.avg < 0.014) {
     drs.cool++;
@@ -1296,7 +1300,7 @@ function stepDrs(fdt) {
   drs.cool = 0;
   drs.samples = 0;
   drs.avg = 0;
-  drs.hold = 12;
+  drs.hold = handset ? 8 : 12;
   fitBuffer();
 }
 // How often the wet mirrors redraw, and how large they are. A fast card
@@ -1819,6 +1823,9 @@ ground.rotation.x = -Math.PI / 2;
 ground.position.set(100, 0, 60);
 ground.material.transparent = true;
 ground.material.depthWrite = true;
+// The ground already carries its own wet film. Skip the body-light grade
+// so the same uniforms are not declared twice.
+ground.material.userData.wetFloor = 1;
 const uWet = { value: 0 };
 const uWetCol = { value: new THREE.Color(0xb7c2ca) };
 const uWetTime = { value: 0 };
@@ -2543,7 +2550,7 @@ function attachWetFilm(mat) {
     }
     if (shader.fragmentShader.indexOf("uniform float uWet") < 0) {
       shader.fragmentShader = "varying vec3 vWetN;\nvarying vec3 vWetV;\nvarying vec3 vWetWorld;\nuniform float uWet;\nuniform vec3 uWetCol;\nuniform float uWetNight;\n" + shader.fragmentShader
-        .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\nfloat wetK = clamp(uWet, 0.0, 1.0);\nif (wetK > 0.001) {\n  diffuseColor.rgb *= mix(1.0, 0.74, wetK);\n  roughnessFactor = mix(roughnessFactor, 0.16, wetK);\n  metalnessFactor = mix(metalnessFactor, max(metalnessFactor, 0.12), wetK);\n}\n")
+        .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\nfloat wetK = clamp(uWet, 0.0, 1.0);\nfloat wetNight = clamp(uWetNight, 0.0, 1.0);\nif (wetNight > 0.001) {\n  diffuseColor.rgb *= mix(1.0, 0.62, wetNight);\n  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.82, 0.86, 0.94), wetNight * 0.4);\n}\nif (wetK > 0.001) {\n  diffuseColor.rgb *= mix(1.0, 0.74, wetK);\n  roughnessFactor = mix(roughnessFactor, 0.16, wetK);\n  metalnessFactor = mix(metalnessFactor, max(metalnessFactor, 0.12), wetK);\n}\n")
         .replace("#include <fog_fragment>", "if (wetK > 0.02) {\n  vec3 fN = normalize(vWetN);\n  vec3 fV = normalize(vWetV);\n  float fres = pow(1.0 - clamp(dot(fN, fV), 0.0, 1.0), 2.1);\n  vec3 film = mix(vec3(0.7, 0.78, 0.84), pow(max(uWetCol, vec3(0.001)), vec3(0.5)), 0.4);\n  film = mix(film, film * vec3(0.58, 0.66, 0.74), clamp(uWetNight, 0.0, 1.0));\n  gl_FragColor.rgb = mix(gl_FragColor.rgb, film, fres * wetK * 0.4);\n}\n#include <fog_fragment>");
     }
   };
@@ -16732,6 +16739,7 @@ function mountFitting(x, y, z) {
   city.add(bulb);
   lampBulbs.push(bulb);
 });
+fittingWalls.length = 0;
 // Tung Tau Tsuen Road only. A slim galvanised pole on the north pavement, a
 // short arm, and a white head just past the kerb. On at night and in the rain.
 // Not a surveyed lamp map, and not repeated along the south edge.
@@ -19487,13 +19495,68 @@ for (let i = 0; i < winPos.length; i += 3) {
   const az = winAz[i / 3];
   if (az != null) winPos[i] += SHEAR_K * (az - winPos[i + 2]);
 }
-const winGeo = new THREE.BufferGeometry();
-winGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(winPos), 3));
-winGeo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(winUv), 2));
-winGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(winRGB), 3));
-winGeo.setAttribute("phase", new THREE.BufferAttribute(new Float32Array(winPhase), 1));
-winGeo.setAttribute("mood", new THREE.BufferAttribute(new Float32Array(winMood), 1));
-const windows = new THREE.Mesh(winGeo, new THREE.ShaderMaterial({
+// One mesh of every pane shaded the whole city, including rooms behind the
+// camera. Blocks of about thirty-six metres cull on their own. The panes,
+// the colours and the shader are the ones the street already had.
+const WIN_CELL = 36;
+const winChunkMap = new Map();
+const winPaneCount = (winPos.length / 18) | 0;
+for (let p = 0; p < winPaneCount; p++) {
+  const b = p * 18;
+  let cx = 0, cz = 0;
+  for (let v = 0; v < 6; v++) {
+    cx += winPos[b + v * 3];
+    cz += winPos[b + v * 3 + 2];
+  }
+  const key = ((cx / (6 * WIN_CELL)) | 0) + ":" + ((cz / (6 * WIN_CELL)) | 0);
+  let list = winChunkMap.get(key);
+  if (!list) winChunkMap.set(key, list = []);
+  list.push(p);
+}
+const winChunks = [];
+winChunkMap.forEach(function (list) {
+  const n = list.length;
+  const pos = new Float32Array(n * 18);
+  const uv = new Float32Array(n * 12);
+  const col = new Float32Array(n * 18);
+  const phase = new Float32Array(n * 6);
+  const mood = new Float32Array(n * 6);
+  for (let i = 0; i < n; i++) {
+    const p = list[i];
+    const b = p * 18;
+    const ub = p * 12;
+    const pb = p * 6;
+    const o = i * 18;
+    const ou = i * 12;
+    const op = i * 6;
+    for (let k = 0; k < 18; k++) {
+      pos[o + k] = winPos[b + k];
+      col[o + k] = winRGB[b + k];
+    }
+    for (let k = 0; k < 12; k++) uv[ou + k] = winUv[ub + k];
+    for (let k = 0; k < 6; k++) {
+      phase[op + k] = winPhase[pb + k];
+      mood[op + k] = winMood[pb + k];
+    }
+  }
+  winChunks.push({ pos: pos, uv: uv, col: col, phase: phase, mood: mood });
+});
+winChunkMap.clear();
+winPos.length = 0;
+winUv.length = 0;
+winRGB.length = 0;
+winPhase.length = 0;
+winMood.length = 0;
+winAz.length = 0;
+glassQ.length = 0;
+rainQ.length = 0;
+frameQ.length = 0;
+acQ.length = 0;
+for (let qi = 0; qi < grilleQ.length; qi++) grilleQ[qi].length = 0;
+for (let qi = 0; qi < paneBins.length; qi++) paneBins[qi].length = 0;
+dressCages.openings = null;
+dressCages.sockets = null;
+const winMat = new THREE.ShaderMaterial({
   uniforms: {
     uTime: { value: 0 },
     uLevel: { value: 1 },
@@ -19614,10 +19677,26 @@ const windows = new THREE.Mesh(winGeo, new THREE.ShaderMaterial({
   polygonOffsetUnits: -2,
   clipping: true,
   clippingPlanes: clips
-}));
-windows.renderOrder = 2;
-windows.userData.panes = winPos.length / 18;
+});
+const windows = new THREE.Group();
+windows.userData.panes = winPaneCount;
+windows.userData.winMat = winMat;
 windows.visible = false;
+for (let ci = 0; ci < winChunks.length; ci++) {
+  const src = winChunks[ci];
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(src.pos, 3));
+  geo.setAttribute("uv", new THREE.BufferAttribute(src.uv, 2));
+  geo.setAttribute("color", new THREE.BufferAttribute(src.col, 3));
+  geo.setAttribute("phase", new THREE.BufferAttribute(src.phase, 1));
+  geo.setAttribute("mood", new THREE.BufferAttribute(src.mood, 1));
+  geo.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geo, winMat);
+  mesh.frustumCulled = true;
+  windows.add(mesh);
+  winChunks[ci] = null;
+}
+winChunks.length = 0;
 vfx.add(windows);
 function cityLit() {
   return lightAmount() > 0.16;
@@ -19720,10 +19799,16 @@ const figCloth = {};
 function clothMat(color, rough, kind) {
   const key = color + ":" + rough + ":" + (kind || "");
   if (!figCloth[key]) {
+    let roughV = rough == null ? 0.86 : rough;
+    if (kind === "skin") roughV = 0.62;
+    else if (kind === "skinAged") roughV = 0.74;
+    else if (kind === "hair") roughV = 0.88;
+    else if (kind === "cloth") roughV = Math.min(roughV, 0.9);
     const mat = new THREE.MeshStandardMaterial({
-      color, roughness: rough == null ? 0.86 : rough, metalness: 0, clippingPlanes: clips
+      color, roughness: roughV, metalness: 0, clippingPlanes: clips
     });
     mat.userData.streetGrade = "figure";
+    quietBodyLight(mat);
     figCloth[key] = mat;
   }
   return figCloth[key];
@@ -23607,13 +23692,17 @@ function nightBowlOf(clock) {
   if (hour >= 12) return THREE.MathUtils.smoothstep(hour, 19.5, 20);
   return 1 - THREE.MathUtils.smoothstep(hour, 4, 4.5);
 }
-function skyPhase(clock) {
+function skyPhase(clock, out) {
   const elev = Math.cos((clock - 0.5) * Math.PI * 2);
   let day = THREE.MathUtils.smoothstep(elev, -0.02, 0.55);
   let night = THREE.MathUtils.smoothstep(-elev, -0.05, 0.5);
   let set = Math.max(0, 1 - day - night);
   const sum = day + set + night || 1;
-  return { day: day / sum, sunset: set / sum, night: night / sum };
+  if (!out) out = skyPhase.box || (skyPhase.box = { day: 1, sunset: 0, night: 0 });
+  out.day = day / sum;
+  out.sunset = set / sum;
+  out.night = night / sum;
+  return out;
 }
 function lightAmount() {
   let lit = darkness;
@@ -23863,12 +23952,21 @@ function phaseMixCol(weights, key, out) {
 function paintSky() {
   const dark = darkness;
   const wet = wxNow.rain;
-  const ph = skyPhase(stepSky.clock);
-  paintSky.phase = ph;
-  const stamp = dark.toFixed(3) + ":" + wet.toFixed(3) + ":" + wxNow.haze.toFixed(3) + ":" + wxNow.market.toFixed(3) + ":" + wxNow.clear.toFixed(3)
-    + ":" + ph.day.toFixed(3) + ":" + ph.sunset.toFixed(3) + ":" + ph.night.toFixed(3);
-  if (stamp === paintSky.stamp) return;
-  paintSky.stamp = stamp;
+  if (!paintSky.phase) paintSky.phase = { day: 1, sunset: 0, night: 0 };
+  const ph = skyPhase(stepSky.clock, paintSky.phase);
+  const q = paintSky.q || (paintSky.q = new Int16Array(8));
+  const n0 = (dark * 1000 + 0.5) | 0;
+  const n1 = (wet * 1000 + 0.5) | 0;
+  const n2 = (wxNow.haze * 1000 + 0.5) | 0;
+  const n3 = (wxNow.market * 1000 + 0.5) | 0;
+  const n4 = (wxNow.clear * 1000 + 0.5) | 0;
+  const n5 = (ph.day * 1000 + 0.5) | 0;
+  const n6 = (ph.sunset * 1000 + 0.5) | 0;
+  const n7 = (ph.night * 1000 + 0.5) | 0;
+  if (paintSky.ready && q[0] === n0 && q[1] === n1 && q[2] === n2 && q[3] === n3 && q[4] === n4 && q[5] === n5 && q[6] === n6 && q[7] === n7) return;
+  q[0] = n0; q[1] = n1; q[2] = n2; q[3] = n3; q[4] = n4; q[5] = n5; q[6] = n6; q[7] = n7;
+  paintSky.ready = 1;
+  paintSky.stamp = 1;
   phaseMixCol(ph, "sky", skyCol);
   scene.background.copy(skyCol);
   // Night fog stays with the sky. A market night borrows a little stall light.
@@ -24022,11 +24120,14 @@ function wxKey(name) {
   return { haze: "wxHaze", rain: "wxRain", clear: "wxClear" }[name] || "wxHaze";
 }
 function paintClock(force) {
-  const todA = document.getElementById("wx-tod-a");
-  const hourA = document.getElementById("wx-hour-a");
-  const hourB = document.getElementById("wx-hour-b");
-  const skyA = document.getElementById("wx-sky-a");
-  const skyB = document.getElementById("wx-sky-b");
+  const els = paintClock.els || (paintClock.els = {
+    todA: document.getElementById("wx-tod-a"),
+    hourA: document.getElementById("wx-hour-a"),
+    hourB: document.getElementById("wx-hour-b"),
+    skyA: document.getElementById("wx-sky-a"),
+    skyB: document.getElementById("wx-sky-b")
+  });
+  const todA = els.todA, hourA = els.hourA, hourB = els.hourB, skyA = els.skyA, skyB = els.skyB;
   if (!todA || !hourA || !paintClock.ready) return;
   const mix = todMix(stepSky.clock);
   const hour = mix.hour;
@@ -24041,9 +24142,13 @@ function paintClock(force) {
   }
   const hs = kf * kf * (3 - 2 * kf);
   const fading = wxLeft !== weather;
-  const stamp = lang + ":" + h0 + ":" + h1 + ":" + wxLeft + ":" + weather;
-  if (force || stamp !== paintClock.stamp) {
-    paintClock.stamp = stamp;
+  const key = paintClock.key || (paintClock.key = { lang: "", h0: -1, h1: -1, left: "", weather: "" });
+  if (force || key.lang !== lang || key.h0 !== h0 || key.h1 !== h1 || key.left !== wxLeft || key.weather !== weather) {
+    key.lang = lang;
+    key.h0 = h0;
+    key.h1 = h1;
+    key.left = wxLeft;
+    key.weather = weather;
     hourA.textContent = whenLabel(h0, lang);
     hourB.textContent = whenLabel(h1, lang);
     skyA.textContent = t(wxKey(wxLeft));
@@ -24059,8 +24164,14 @@ function paintClock(force) {
 // bloom stays on the tube after the words have moved on.
 function setGlowFade(el, amount) {
   if (!el) return;
-  const shown = amount > 0.004;
-  const next = shown ? (amount > 0.996 ? "1" : amount.toFixed(3)) : "0";
+  let q;
+  if (!(amount > 0.004)) q = 0;
+  else if (amount > 0.996) q = 1001;
+  else q = (amount * 1000 + 0.5) | 0;
+  if (el._glowQ === q) return;
+  el._glowQ = q;
+  const shown = q !== 0;
+  const next = q === 0 ? "0" : q === 1001 ? "1" : (q / 1000).toFixed(3);
   if (el.style.opacity !== next) el.style.opacity = next;
   const vis = shown ? "" : "hidden";
   if (el.style.visibility !== vis) {
@@ -24176,7 +24287,7 @@ function setTod(name) {
     }
     shadowWarm = Math.max(shadowWarm, 2);
   } else return;
-  paintSky.stamp = "";
+  paintSky.ready = 0;
   paintSky();
 }
 // Half the showers carry a storm. A dry spell, and the next rain, roll again.
@@ -24200,7 +24311,7 @@ function setWeather(name, user) {
     markAir("wx-seg", name);
   }
   const now = performance.now() * 0.001;
-  if (name === weather && wxGoal[name] === 1 && wxFrom[name] > 0.999 && paintSky.stamp) return;
+  if (name === weather && wxGoal[name] === 1 && wxFrom[name] > 0.999 && paintSky.ready) return;
   const prevSky = weather;
   wxAdvance(now);
   wxLeft = wxLead();
@@ -24216,7 +24327,7 @@ function setWeather(name, user) {
   const full = user ? WX_FADE_USER : WX_FADE;
   wxT1 = now + (remain < 0.015 ? 0 : full * Math.max(0.4, remain));
   wxAdvance(now);
-  paintSky.stamp = "";
+  paintSky.ready = 0;
   applyShopGlow.at = null;
   paintSky();
   paintClock(true);
@@ -25100,22 +25211,23 @@ function makeCat() {
   const PUPIL = 0x1a1410;
   const MOUTH = 0x2c1814;
   const TONGUE = 0xf098a0;
-  function coat(color) {
+  function coat(color, rough) {
     const mat = new THREE.MeshStandardMaterial({
-      color: color, roughness: 0.94, metalness: 0, flatShading: true, clippingPlanes: clips
+      color: color, roughness: rough == null ? 0.8 : rough, metalness: 0, clippingPlanes: clips
     });
     mat.color.convertSRGBToLinear();
     mat.userData.streetGrade = "figure";
+    quietBodyLight(mat);
     return mat;
   }
-  const fur = coat(FUR);
-  const stripe = coat(STRIPE);
-  const cream = coat(CREAM);
-  const earMat = coat(EAR);
-  const eyeMat = coat(EYE);
-  const pupilMat = coat(PUPIL);
-  const mouthMat = coat(MOUTH);
-  const tongueMat = coat(TONGUE);
+  const fur = coat(FUR, 0.82);
+  const stripe = coat(STRIPE, 0.84);
+  const cream = coat(CREAM, 0.76);
+  const earMat = coat(EAR, 0.7);
+  const eyeMat = coat(EYE, 0.38);
+  const pupilMat = coat(PUPIL, 0.32);
+  const mouthMat = coat(MOUTH, 0.7);
+  const tongueMat = coat(TONGUE, 0.48);
   const unit = new THREE.BoxGeometry(1, 1, 1);
   function brick(parent, mat, x, y, z, sx, sy, sz) {
     const mesh = figMesh(unit, mat);
@@ -28957,15 +29069,17 @@ function bodyLightChunk(wrapK, wrapB, fill) {
 // the lamp is brighter than the side facing away.
 const BODY_LIGHT_SOFT = bodyLightChunk(0.4, 0.6, 0);
 const BODY_LIGHT_FORM = bodyLightChunk(0.88, 0.14, 0.1);
+const BODY_LIGHT_FIGURE = bodyLightChunk(0.72, 0.26, 0.08);
 const QUIET_LIGHTS = "GeometricContext geometry;\n\ngeometry.position = - vViewPosition;\ngeometry.normal = normal;\ngeometry.viewDir = ( isOrthographic ) ? vec3( 0, 0, 1 ) : normalize( vViewPosition );\n\n#ifdef CLEARCOAT\n\n\tgeometry.clearcoatNormal = clearcoatNormal;\n\n#endif\n\nIncidentLight directLight;\n\n\n#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )\n\n\tDirectionalLight directionalLight;\n\t#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0\n\tDirectionalLightShadow directionalLightShadow;\n\t#endif\n\n\t#pragma unroll_loop_start\n\tfor ( int i = 0; i < NUM_DIR_LIGHTS; i ++ ) {\n\n\t\tdirectionalLight = directionalLights[ i ];\n\n\t\tgetDirectionalDirectLightIrradiance( directionalLight, geometry, directLight );\n\n\t\t#if defined( USE_SHADOWMAP ) && ( UNROLLED_LOOP_INDEX < NUM_DIR_LIGHT_SHADOWS )\n\t\tdirectionalLightShadow = directionalLightShadows[ i ];\n\t\tdirectLight.color *= all( bvec2( directLight.visible, receiveShadow ) ) ? getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] ) : 1.0;\n\t\t#endif\n\n\t\tRE_Direct( directLight, geometry, material, reflectedLight );\n\n\t}\n\t#pragma unroll_loop_end\n\n#endif\n\n#if ( NUM_RECT_AREA_LIGHTS > 0 ) && defined( RE_Direct_RectArea )\n\n\tRectAreaLight rectAreaLight;\n\n\t#pragma unroll_loop_start\n\tfor ( int i = 0; i < NUM_RECT_AREA_LIGHTS; i ++ ) {\n\n\t\trectAreaLight = rectAreaLights[ i ];\n\t\tRE_Direct_RectArea( rectAreaLight, geometry, material, reflectedLight );\n\n\t}\n\t#pragma unroll_loop_end\n\n#endif\n\n#if defined( RE_IndirectDiffuse )\n\n\tvec3 iblIrradiance = vec3( 0.0 );\n\n\tvec3 irradiance = getAmbientLightIrradiance( ambientLightColor );\n\n\tirradiance += getLightProbeIrradiance( lightProbe, geometry );\n\n\t#if ( NUM_HEMI_LIGHTS > 0 )\n\n\t\t#pragma unroll_loop_start\n\t\tfor ( int i = 0; i < NUM_HEMI_LIGHTS; i ++ ) {\n\n\t\t\tirradiance += getHemisphereLightIrradiance( hemisphereLights[ i ], geometry );\n\n\t\t}\n\t\t#pragma unroll_loop_end\n\n\t#endif\n\n#endif\n\n#if defined( RE_IndirectSpecular )\n\n\tvec3 radiance = vec3( 0.0 );\n\tvec3 clearcoatRadiance = vec3( 0.0 );\n\n#endif";
 function quietLightShader(shader, shaped) {
   shader.uniforms.uBodyPos = bodyLight.posU;
   shader.uniforms.uBodyCol = bodyLight.colU;
   shader.uniforms.uBodyReach = bodyLight.reachU;
+  const chunk = (shaped === "figure" || shaped === "prop") ? BODY_LIGHT_FIGURE : shaped ? BODY_LIGHT_FORM : BODY_LIGHT_SOFT;
   if (shader.fragmentShader.indexOf("uBodyPos") < 0) {
     const next = shader.fragmentShader.replace(
       "#include <lights_fragment_begin>",
-      QUIET_LIGHTS + "\n" + (shaped ? BODY_LIGHT_FORM : BODY_LIGHT_SOFT)
+      QUIET_LIGHTS + "\n" + chunk
     );
     if (next === shader.fragmentShader) return;
     shader.fragmentShader = BODY_LIGHT_DECL + "\n" + next;
@@ -29081,18 +29195,30 @@ function bodyFlowSheen() {
 function streetGradeParts(kind) {
   const ride = kind === "ride";
   const glass = kind === "glass";
-  const sunLo = ride ? 0.62 : glass ? 0.78 : 0.76;
-  const sunHi = ride ? 1.42 : glass ? 1.06 : 1.16;
-  const nightK = ride ? 0.3 : glass ? 0.26 : 0.36;
-  const wetK = ride ? 0.62 : glass ? 0.7 : 0.74;
+  const prop = kind === "prop";
+  const sunLo = ride ? 0.62 : glass ? 0.78 : prop ? 0.84 : 0.64;
+  const sunHi = ride ? 1.42 : glass ? 1.06 : prop ? 1.08 : 1.2;
+  const nightK = ride ? 0.3 : glass ? 0.26 : prop ? 0.58 : 0.52;
+  const wetK = ride ? 0.62 : glass ? 0.7 : prop ? 0.86 : 0.84;
   // Wet paint stays satin. 0.16 was a mirror on the bonnet; glass only
   // eases a little because the pane is already smooth.
-  const wetRough = ride ? 0.42 : glass ? 0.18 : 0.46;
-  const sheenF = ride ? 0.18 : glass ? 0.28 : 0.22;
-  const sheenUp = ride ? 0.08 : glass ? 0.06 : 0.16;
-  const glint = ride ? 0.1 : glass ? 0.04 : 0.05;
-  const specPow = ride ? "10.0" : "18.0";
+  const wetRough = ride ? 0.42 : glass ? 0.18 : prop ? 0.58 : 0.62;
+  const sheenF = ride ? 0.18 : glass ? 0.28 : prop ? 0.06 : 0.07;
+  const sheenUp = ride ? 0.08 : glass ? 0.06 : prop ? 0.03 : 0.04;
+  const glint = ride ? 0.1 : glass ? 0.04 : prop ? 0.02 : 0.03;
+  const specPow = ride ? "10.0" : glass ? "18.0" : prop ? "28.0" : "32.0";
+  const nightBlue = (ride || glass) ? "0.75" : prop ? "0.28" : "0.32";
   const flow = (ride || glass) ? bodyFlowChunk() : "";
+  const form = (ride || glass) ? "" : prop ? [
+    "float sgDown = clamp(-sgN.y, 0.0, 1.0);",
+    "diffuseColor.rgb *= mix(vec3(1.0), vec3(0.8, 0.76, 0.7), sgDown * 0.45);"
+  ].join("\n") : [
+    "float sgDown = clamp(-sgN.y, 0.0, 1.0);",
+    "diffuseColor.rgb *= mix(vec3(1.0), vec3(0.74, 0.68, 0.6), sgDown * 0.65);",
+    "float sgSole = smoothstep(0.62, 0.28, vBodyWorld.y);",
+    "diffuseColor.rgb *= mix(1.0, 0.8, sgSole * smoothstep(0.15, -0.35, sgN.y));",
+    "diffuseColor.rgb *= mix(1.0, 1.05, sgUp * sgDay);"
+  ].join("\n");
   const albedo = [
     "{",
     "float sgDark = clamp(uDark, 0.0, 1.0);",
@@ -29111,7 +29237,7 @@ function streetGradeParts(kind) {
     "float sgGain = mix(" + sunLo.toFixed(2) + ", " + sunHi.toFixed(2) + ", sgWrap);",
     "diffuseColor.rgb *= mix(vec3(1.0), sgTint * sgGain, clamp(sgDay * sgVis + sgHaze * 0.2, 0.0, 1.0));",
     "diffuseColor.rgb *= mix(1.0, " + nightK.toFixed(2) + ", sgDark * (1.0 - uMarket * 0.45));",
-    "diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.7, 0.78, 0.98), sgDark * 0.75);",
+    "diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.7, 0.78, 0.98), sgDark * " + nightBlue + ");",
     "diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.14, 0.76, 0.46), uMarket * 0.4);",
     "float sgUp = clamp(sgN.y, 0.0, 1.0);",
     "diffuseColor.rgb *= mix(1.0, " + wetK.toFixed(2) + ", sgRain * (0.6 + 0.4 * sgUp));",
@@ -29120,6 +29246,7 @@ function streetGradeParts(kind) {
     (ride || glass) ? "float sgDry = roughnessFactor;" : "",
     "roughnessFactor = mix(roughnessFactor, min(roughnessFactor, " + wetRough.toFixed(2) + "), sgRain * (0.4 + 0.6 * sgUp) * (1.0 - clamp(metalnessFactor, 0.0, 1.0) * 0.5));",
     flow,
+    form,
     "}"
   ].join("\n");
   const sheen = [
@@ -29201,9 +29328,29 @@ function streetGradeShader(shader, kind) {
     shader.uniforms.uWetReflOn = uWetReflOn;
     shader.uniforms.uWetTime = uWetTime;
   }
-  const decl = STREET_UNIFORMS + (mirror
-    ? "\nuniform sampler2D uWetRefl;\nuniform mat4 uWetMatrix;\nuniform float uWetReflOn;\nuniform float uWetTime;\n" + VEHICLE_FLOW_DECL
-    : "");
+  // Only declare uniforms that are not already present. Wet film and roof
+  // hooks inject the same names; a second declaration fails the program.
+  const need = [];
+  const have = shader.fragmentShader;
+  const add = function (name, line) {
+    if (have.indexOf(name) < 0) need.push(line);
+  };
+  add("uDark", "uniform float uDark;");
+  add("uHaze", "uniform float uHaze;");
+  add("uRain", "uniform float uRain;");
+  add("uMarket", "uniform float uMarket;");
+  add("uSunDir", "uniform vec3 uSunDir;");
+  add("uClock", "uniform float uClock;");
+  add("uWet", "uniform float uWet;");
+  add("uWetCol", "uniform vec3 uWetCol;");
+  add("uWetNight", "uniform float uWetNight;");
+  if (mirror) {
+    add("uWetRefl", "uniform sampler2D uWetRefl;");
+    add("uWetMatrix", "uniform mat4 uWetMatrix;");
+    add("uWetReflOn", "uniform float uWetReflOn;");
+    add("uWetTime", "uniform float uWetTime;");
+  }
+  const decl = need.join("\n") + (mirror && have.indexOf("wetHash") < 0 ? "\n" + VEHICLE_FLOW_DECL : "");
   let frag = decl + "\n" + shader.fragmentShader
     .replace("#include <metalnessmap_fragment>", "#include <metalnessmap_fragment>\n" + parts.albedo)
     .replace("#include <fog_fragment>", parts.sheen + "\n#include <fog_fragment>");
@@ -29217,6 +29364,12 @@ function streetGradeShader(shader, kind) {
 }
 function quietBodyLight(mat) {
   if (!mat || !mat.isMeshStandardMaterial || mat.userData.quietBody) return;
+  const ud = mat.userData;
+  const em = mat.emissive;
+  const glowing = em && (em.r + em.g + em.b) > 0.05;
+  if (!ud.streetGrade && !ud.wetWall && !ud.wetFloor && !ud.wetRoof && !ud.wetFilm && !ud.paneRain && !glowing) {
+    ud.streetGrade = "prop";
+  }
   mat.userData.quietBody = 1;
   const prev = mat.onBeforeCompile;
   const prevKey = mat.customProgramCacheKey;
@@ -29226,7 +29379,7 @@ function quietBodyLight(mat) {
   };
   mat.onBeforeCompile = function (shader) {
     if (prev) prev.call(this, shader);
-    quietLightShader(shader);
+    quietLightShader(shader, grade === "figure" || grade === "prop" ? grade : (grade === "ride" || grade === "glass"));
     if (grade) streetGradeShader(shader, grade);
   };
 }
@@ -29479,9 +29632,10 @@ function flushFigure(fig) {
   stepSky(now);
   stepLightning(now);
   const smokeName = wxLead();
-  const smokeLook = darkness.toFixed(2) + smokeName;
-  const tintSmoke = smokeLook !== tick.smoke;
-  if (tintSmoke) tick.smoke = smokeLook;
+  const smokeCode = smokeName === "rain" ? 1 : smokeName === "haze" ? 2 : smokeName === "market" ? 3 : 4;
+  const smokeQ = smokeCode + ((((darkness * 100) + 0.5) | 0) << 3);
+  const tintSmoke = smokeQ !== tick.smoke;
+  if (tintSmoke) tick.smoke = smokeQ;
   const rainK = wxNow.rain;
   smokes.forEach((s, i) => {
     const span = 9 - rainK * 3.5;
@@ -29547,10 +29701,16 @@ function flushFigure(fig) {
   }
   stepSky.lamp = lamps[0] ? lamps[0].intensity : 0;
   if (windows) {
-    windows.visible = lit > 0.02;
-    windows.material.uniforms.uTime.value = now;
-    windows.material.uniforms.uLevel.value = lit;
-    stepSky.win = windows.visible;
+    // The pane shader discards every fragment until the glow clears about
+    // 0.12, so the mesh stays out of the frame until a room can actually show.
+    const show = lit > 0.12;
+    if (windows.visible !== show) windows.visible = show;
+    if (show) {
+      const uni = windows.userData.winMat.uniforms;
+      uni.uTime.value = now;
+      uni.uLevel.value = lit;
+    }
+    stepSky.win = show;
   }
   const gust = 0.16 + wxNow.rain * (0.58 - 0.16) + wxNow.clear * (0.07 - 0.16);
   const flap = 1.3 + wxNow.rain * (3.2 - 1.3);
