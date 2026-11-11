@@ -20868,23 +20868,35 @@ function gangHitK(local) {
   return 0;
 }
 function gangSnap(k) {
-  if (k < 0.2) return (k / 0.2) * 0.18;
-  if (k < 0.46) return 0.18 + ((k - 0.2) / 0.26) * 0.82;
-  if (k < 0.62) return 1;
-  return Math.max(0, 1 - (k - 0.62) / 0.38);
+  // Hold, then a short straight shot, then the hand comes home.
+  // A long ramp read as a wave at the air beside the other man.
+  if (k < 0.16) return 0;
+  if (k < 0.30) return (k - 0.16) / 0.14;
+  if (k < 0.46) return 1;
+  if (k < 0.70) return Math.max(0, 1 - (k - 0.46) / 0.24);
+  return 0;
 }
 function gangBlend(cur, goal, w) {
   return cur + (goal - cur) * w;
 }
 function gangPlant(rig, ud, hit, extend, slip, tuck, w) {
   const kick = hit === "cross" && ud.kick && extend > 0.05;
-  const lead = kick ? 0 : (hit === "jab" ? extend : hit === "load" ? 0.12 : 0);
-  const cross = kick ? 0 : (hit === "cross" ? extend : hit === "load" ? extend * 0.35 : 0);
-  const knee = 0.38 + tuck * 0.28;
-  const thighL = kick ? 0.12 : 0.06 + lead * 0.08;
-  const thighR = kick ? -1.05 * extend : 0.16 - cross * 0.1;
-  const kneeL = knee;
-  const kneeR = kick ? 1.25 - extend * 1.0 : knee + 0.08;
+  const jab = kick ? 0 : (hit === "jab" ? extend : 0);
+  const cross = kick ? 0 : (hit === "cross" ? extend : 0);
+  const loading = hit === "load" ? 1 : 0;
+  // Lead foot forward, rear foot back, both knees soft.
+  let thighL = -0.24 - jab * 0.05;
+  let thighR = 0.4;
+  let kneeL = 0.4 + tuck * 0.16;
+  let kneeR = 0.56 + tuck * 0.1;
+  if (kick) {
+    const chamber = Math.min(1, extend * 2.4);
+    const shoot = Math.max(0, (extend - 0.38) / 0.62);
+    thighL = 0.18;
+    thighR = -0.55 * chamber - 0.55 * shoot;
+    kneeL = 0.48;
+    kneeR = 1.4 * chamber * (1 - shoot) + 0.12 * shoot;
+  }
   rig.legL.pivot.rotation.x = gangBlend(rig.legL.pivot.rotation.x, thighL, w);
   rig.legR.pivot.rotation.x = gangBlend(rig.legR.pivot.rotation.x, thighR, w);
   rig.legL.knee.rotation.x = gangBlend(rig.legL.knee.rotation.x, kneeL, w);
@@ -20895,27 +20907,28 @@ function gangPlant(rig, ud, hit, extend, slip, tuck, w) {
     return THIGH_L * Math.cos(hipAng) + SHIN_L * Math.cos(hipAng + kneeAng);
   }
   const hipY = Math.max(drop(rig.legL.pivot.rotation.x, rig.legL.knee.rotation.x), drop(rig.legR.pivot.rotation.x, rig.legR.knee.rotation.x)) + 0.04;
-  const punch = Math.max(lead, cross);
-  const recover = punch > 0.7 ? (punch - 0.7) / 0.3 : 0;
-  rig.hip.position.y = gangBlend(rig.hip.position.y, hipY - punch * 0.012 - recover * 0.008, w);
-  rig.hip.position.x = gangBlend(rig.hip.position.x, lead * 0.04 - cross * 0.03 + slip * 0.035, w);
-  rig.hip.rotation.x = gangBlend(rig.hip.rotation.x, 0.04 + tuck * 0.08 + punch * 0.04, w);
-  rig.hip.rotation.y = gangBlend(rig.hip.rotation.y, -0.14 - lead * 0.28 + cross * 0.55, w);
-  rig.hip.rotation.z = gangBlend(rig.hip.rotation.z, slip * -0.07 + punch * 0.03, w);
-  rig.torso.rotation.x = gangBlend(rig.torso.rotation.x, 0.08 + tuck * 0.2 + (kick ? -0.14 * extend : lead * 0.08 + cross * 0.06), w);
-  rig.torso.rotation.y = gangBlend(rig.torso.rotation.y, 0.18 - lead * 0.62 - cross * 1.05 + slip * 0.5, w);
-  rig.torso.rotation.z = gangBlend(rig.torso.rotation.z, slip * 0.1 - punch * 0.04, w);
-  rig.head.rotation.x = gangBlend(rig.head.rotation.x, 0.08 + tuck * 0.22 - lead * 0.06 + recover * 0.08, w);
-  rig.head.rotation.y = gangBlend(rig.head.rotation.y, slip * -0.36 + lead * 0.08, w);
+  const punch = Math.max(jab, cross);
+  rig.hip.position.y = gangBlend(rig.hip.position.y, hipY - 0.02 - punch * 0.015, w);
+  rig.hip.position.x = gangBlend(rig.hip.position.x, (jab - cross) * 0.02 + slip * 0.03, w);
+  rig.hip.position.z = gangBlend(rig.hip.position.z, 0.015 + punch * 0.02, w);
+  rig.hip.rotation.x = gangBlend(rig.hip.rotation.x, 0.08 + tuck * 0.06, w);
+  rig.hip.rotation.y = gangBlend(rig.hip.rotation.y, -0.04 + cross * 0.28 - jab * 0.06, w);
+  rig.hip.rotation.z = gangBlend(rig.hip.rotation.z, slip * -0.06, w);
+  rig.torso.rotation.x = gangBlend(rig.torso.rotation.x, 0.1 + tuck * 0.1 + punch * 0.04, w);
+  rig.torso.rotation.y = gangBlend(rig.torso.rotation.y, 0.06 - jab * 0.2 - cross * 0.38 + loading * 0.14 + slip * 0.22, w);
+  rig.torso.rotation.z = gangBlend(rig.torso.rotation.z, slip * 0.08, w);
+  rig.head.rotation.x = gangBlend(rig.head.rotation.x, 0.04 + tuck * 0.1, w);
+  rig.head.rotation.y = gangBlend(rig.head.rotation.y, slip * -0.4 + jab * 0.04, w);
   rig.head.rotation.z = gangBlend(rig.head.rotation.z, slip * 0.14, w);
-  // Lead fist leaves the cheek and straightens. The rear fist stays on the chin
-  // until the cross takes over, so the free hand is never waving at the air.
-  const jabSh = -1.22 - lead * 0.5;
-  const jabEl = -1.62 + lead * 1.38;
-  const crossSh = -1.02 - cross * 0.62;
-  const crossEl = -1.78 + cross * 1.5;
-  poseToward(rig.armL, kick ? -1.2 : jabSh, kick ? -0.28 : -0.16 - lead * 0.06, kick ? -1.6 : jabEl, 0.16, w);
-  poseToward(rig.armR, kick ? -1.08 : crossSh, kick ? 0.36 : 0.34 - cross * 0.2, kick ? -1.68 : crossEl, -0.18, w);
+  const jabSh = -1.08 - jab * 0.26;
+  const jabEl = -2.12 + jab * 2.0;
+  const jabSp = -0.4 + jab * 0.3;
+  const crossSh = -1.0 - cross * 0.28 + loading * 0.1;
+  const crossEl = -2.18 + cross * 2.05;
+  const crossSp = 0.46 - cross * 0.32;
+  const shell = tuck * 0.1;
+  poseToward(rig.armL, kick ? -1.05 : jabSh - shell, kick ? -0.38 : jabSp, kick ? -2.05 : jabEl, 0.06, w);
+  poseToward(rig.armR, kick ? -0.98 : crossSh - shell, kick ? 0.44 : crossSp, kick ? -2.12 : crossEl, -0.05, w);
 }
 function poseToward(arm, swing, spreadZ, elbowX, elbowZ, w) {
   if (w <= 0) return;
@@ -21242,6 +21255,15 @@ function advanceWalker(ud, now, fig) {
   // pause on the wall clock and then snap the legs to a new phase.
   ud.clock = (ud.clock == null ? now : ud.clock) + dt;
   now = ud.clock;
+  // A bout stays on its marks. The walk cycle was turning them down the
+  // lane and waving the arms after the first pause ran out.
+  if (ud.gang) {
+    ud.wait = 2;
+    ud.speed = 0;
+    ud.ease = 0;
+    if (fig && ud.rig) poseGangFight(ud.rig, ud, now, 1);
+    return;
+  }
   if (ud.nextAct == null) ud.nextAct = now + 1.2 + Math.abs(ud.offset * 5) % 4;
   const offLane = !!(ud.heat && ud.corner);
   if (offLane) {
@@ -22737,7 +22759,8 @@ function gangSpots(count) {
     const reach = 0.72 + heatUnit(gang.nights * 29 + 4) * 0.22;
     const extra = gangClamp(host.x + side * ox / len * reach, host.z + side * oz / len * reach);
     const beat = host.beat + span / bouts * 0.5;
-    spots.push({ x: extra.x, z: extra.z, rank: 0, foe: host.foe, beat: beat, slip: side });
+    // Same opponent as the man beside him, so he is not squared up to an empty patch of court.
+    spots.push({ x: extra.x, z: extra.z, rank: 0, foe: host.foe, beat: beat, slip: side, wing: 1 });
   }
   const pairGap = 0.88;
   const crowdGap = 0.74;
@@ -22765,11 +22788,30 @@ function gangSpots(count) {
   return spots;
 }
 function aimGang(rec) {
-  const foe = rec.foe;
-  let yaw = (rec.rank || 0) === 1 ? Math.PI : 0;
-  if (foe && (foe.x !== rec.x || foe.z !== rec.z)) yaw = Math.atan2(foe.x - rec.x, foe.z - rec.z);
-  rec.yaw = yaw;
-  if (rec.fig) rec.fig.rotation.y = yaw;
+  // Face whoever is actually across from you. A man with two opponents
+  // looks at the middle of them, not past one into the court.
+  let tx = 0, tz = 0, n = 0;
+  for (let i = 0; i < gangFight.length; i++) {
+    const other = gangFight[i];
+    if (other !== rec && other.foe === rec) {
+      tx += other.x;
+      tz += other.z;
+      n++;
+    }
+  }
+  if (!n && rec.foe) {
+    tx = rec.foe.x;
+    tz = rec.foe.z;
+    n = 1;
+  }
+  if (!n) return;
+  tx /= n;
+  tz /= n;
+  const dx = tx - rec.x;
+  const dz = tz - rec.z;
+  if (dx * dx + dz * dz < 1e-4) return;
+  rec.yaw = Math.atan2(dx, dz);
+  if (rec.fig) rec.fig.rotation.y = rec.yaw;
 }
 function dropGangOne(rec) {
   const at = gangFight.indexOf(rec);
