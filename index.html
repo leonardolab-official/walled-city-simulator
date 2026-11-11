@@ -1230,13 +1230,14 @@ function glProfile() {
 const glInfo = glProfile();
 let tier = glInfo.tier;
 // The drawing buffer tracks the screen, then gives way when the frames do.
-// drs.scale is a fraction of the device pixel ratio. 1 is the real screen,
-// and the picture never climbs past that or drops below half of it.
+// drs.scale is a fraction of the device pixel ratio. Capped at 0.75
+// (75% of native) for performance. Floor is 0.35.
 function screenRatio() {
   const native = window.devicePixelRatio || 1;
   const base = native > 0 ? native : 1;
   const scale = drs.scale > 0 ? drs.scale : 1;
-  return Math.max(0.5, base * Math.min(1, scale));
+  // Cap at 75% of native device resolution.
+  return Math.max(0.35, Math.min(0.75, base * Math.min(0.75, scale)));
 }
 function fitBuffer(cssW, cssH) {
   if (cssW != null && cssH != null) {
@@ -1256,8 +1257,8 @@ function fitBuffer(cssW, cssH) {
   if (renderer.domElement.width !== prevW || renderer.domElement.height !== prevH) drs.hold = Math.max(drs.hold, 12);
 }
 function drsSyncTier() {
-  drs.floor = 0.5;
-  drs.ceiling = pace.tier === 0 ? 0.625 : 1;
+  drs.floor = 0.35;
+  drs.ceiling = 0.75;
   if (drs.scale > drs.ceiling) {
     drs.scale = drs.ceiling;
     fitBuffer();
@@ -1319,9 +1320,9 @@ const pace = {
   roofMove: tier === 0 ? 3 : tier === 1 ? 2 : 1
 };
 const drs = {
-  scale: tier === 0 ? 0.5 : tier === 1 ? 0.75 : 1,
-  ceiling: tier === 0 ? 0.625 : 1,
-  floor: 0.5,
+  scale: 0.75,
+  ceiling: 0.75,
+  floor: 0.35,
   cssW: Math.max(1, innerWidth | 0),
   cssH: Math.max(1, innerHeight | 0),
   avg: 0,
@@ -19607,6 +19608,7 @@ const winMat = new THREE.ShaderMaterial({
     "varying vec2 vUv;",
     "varying float vGlow;",
     "varying float vPhase;",
+    "uniform float uTime;",
     "float roomHash(float n) {",
     "  return fract(sin(n * 127.1) * 43758.5453);",
     "}",
@@ -19614,7 +19616,11 @@ const winMat = new THREE.ShaderMaterial({
     "  #include <clipping_planes_fragment>",
     "  float glow = smoothstep(0.08, 0.72, vGlow);",
     "  if (glow < 0.004) discard;",
-    "  if (roomHash(vPhase) < 0.6) discard;",
+    "  float on = roomHash(vPhase);",
+    "  if (on < 0.32) discard;",
+    "  float flicker = roomHash(vPhase + 9.1);",
+    "  float shut = sin(uTime * (0.08 + flicker * 0.12) + vPhase * 3.7);",
+    "  if (flicker > 0.7 && shut > 0.55) discard;",
     "  float edge = max(",
     "    max(smoothstep(0.055, 0.012, vUv.x), smoothstep(0.055, 0.012, 1.0 - vUv.x)),",
     "    max(smoothstep(0.07, 0.016, vUv.y), smoothstep(0.07, 0.016, 1.0 - vUv.y))",
@@ -19845,7 +19851,7 @@ const apronMat = clothMat(0xefe8dc, 0.94, "cloth");
 const apronHemMat = clothMat(0xd2c4ae, 0.96, "cloth");
 const bambooMat = clothMat(0x3a2c20, 0.96);
 const ropeMat = clothMat(0x6a5844, 0.92);
-const capMat = clothMat(0x2a3136, 0.78);
+const capMat = clothMat(0x32383c, 0.72);
 const vegGreen = clothMat(0x3f6a38, 0.86);
 const vegOrange = clothMat(0xc46a30, 0.8);
 const soleMat = clothMat(0x141210, 0.9);
@@ -19947,10 +19953,10 @@ figCloth.check = wearTex(function (g) {
 const cigPaper = new THREE.MeshStandardMaterial({ color: 0xe8e2d6, roughness: 0.72, metalness: 0, clippingPlanes: clips });
 cigPaper.userData.streetGrade = "figure";
 const hairMats = {
-  short: clothMat(0x14110e, 1, "hair"),
-  bob: clothMat(0x1c1410, 1, "hair"),
-  bun: clothMat(0x2a1814, 1, "hair"),
-  grey: clothMat(0x6a6560, 1, "hair")
+  short: clothMat(0x1a1512, 0.92, "hair"),
+  bob: clothMat(0x221816, 0.9, "hair"),
+  bun: clothMat(0x2e1c18, 0.88, "hair"),
+  grey: clothMat(0x726c66, 0.85, "hair")
 };
 const skinMats = [0xc9956c, 0xb07d56, 0x8f6244, 0xd4a882, 0xa36e4c].map((c, i) => clothMat(c, 1, i === 3 ? "skinAged" : "skin"));
 // A head is a fine stack of blocks, not one cube with features glued on.
@@ -20081,44 +20087,55 @@ function skullRecipe(box) {
 // forehead were bare skin and a child read as an old man. The hairline now
 // sits just above the brow, and the sides meet the fringe.
 function hairShort(box) {
-  box(-12, 9, -9, 12, 14, 8);
-  box(-11, 4, 7, 11, 9, 11);
-  box(-13, 2, -2, -11, 9, 8);
-  box(11, 2, -2, 13, 9, 8);
-  box(-13, 1, -11, -11, 9, -2);
-  box(11, 1, -11, 13, 9, -2);
-  box(-12, -1, -12, 12, 9, -8);
+  // Softer crown, fringe that meets the brow, sides that taper.
+  box(-11, 10, -8, 11, 14, 7);
+  box(-10, 5, 6, 10, 10, 10);
+  box(-12, 3, -1, -10, 9, 7);
+  box(10, 3, -1, 12, 9, 7);
+  box(-12, 2, -10, -10, 9, -1);
+  box(10, 2, -10, 12, 9, -1);
+  box(-11, 0, -11, 11, 9, -7);
+  box(-9, 8, -6, 9, 13, 4);
 }
 function hairBob(box) {
-  box(-13, 9, -10, 13, 15, 8);
-  box(-12, 4, 7, 12, 9, 12);
-  box(-14, -7, -8, -11, 9, 8);
-  box(11, -7, -8, 14, 9, 8);
-  box(-13, -9, -13, 13, 9, -8);
+  // Fuller crown, sides that fall past the jaw, rounded back.
+  box(-12, 10, -9, 12, 15, 7);
+  box(-11, 5, 6, 11, 10, 11);
+  box(-13, -6, -7, -10, 9, 7);
+  box(10, -6, -7, 13, 9, 7);
+  box(-12, -8, -12, 12, 9, -7);
+  box(-10, 7, -5, 10, 13, 5);
 }
 function hairBun(box) {
-  box(-12, 9, -9, 12, 14, 8);
-  box(-11, 5, 7, 11, 9, 10);
-  box(-13, 2, -2, -11, 9, 8);
-  box(11, 2, -2, 13, 9, 8);
-  box(-13, -2, -12, 13, 9, -8);
-  box(-5, 1, -17, 5, 10, -11);
+  // Crown with a gathered bun at the back.
+  box(-11, 10, -8, 11, 14, 7);
+  box(-10, 6, 6, 10, 10, 9);
+  box(-12, 3, -1, -10, 9, 7);
+  box(10, 3, -1, 12, 9, 7);
+  box(-12, -1, -11, 12, 9, -7);
+  box(-4, 2, -16, 4, 11, -10);
+  box(-3, 4, -15, 3, 9, -12);
 }
 function hairGrey(box) {
-  // The front of the crown stays skin. Sides rise to meet the back, so it
-  // reads as one older cut instead of a loose scrap of hair.
-  box(-11, 9, -9, 11, 12, 0);
-  box(-12, 0, -12, 12, 9, -7);
-  box(-13, -1, -9, -11, 9, 5);
-  box(11, -1, -9, 13, 9, 5);
+  // Thinner crown, receding front, sides that meet the back.
+  box(-10, 10, -8, 10, 13, 1);
+  box(-11, 1, -11, 11, 9, -6);
+  box(-12, 0, -8, -10, 9, 4);
+  box(10, 0, -8, 12, 9, 4);
+  box(-9, 6, -4, 9, 11, 2);
 }
 function capRecipe(box) {
-  box(-12, 7, -9, 12, 12, 7);
-  box(-9, 6, 6, 9, 8, 12);
+  // Crown with a soft brim. Sides taper, front brim extends.
+  box(-11, 8, -8, 11, 13, 6);
+  box(-10, 6, -6, 10, 9, 4);
+  box(-8, 5, 5, 8, 7, 11);
+  box(-12, 7, -4, -9, 10, 3);
+  box(9, 7, -4, 12, 10, 3);
 }
 function burnRecipe(box) {
-  box(-13, -1, 1, -11, 7, 7);
-  box(11, -1, 1, 13, 7, 7);
+  // Sideburns that meet the cap edge.
+  box(-12, 0, 2, -10, 6, 6);
+  box(10, 0, 2, 12, 6, 6);
 }
 function lipRecipe(box) {
   box(-3, -4, 6, 4, -2, 8);
@@ -20670,10 +20687,12 @@ function makeCitizen(spec) {
   if (spec.prop === "bag") {
     bag = figMesh(figGeo.sack, bagMats[spec.bag || 0]);
     // The neck of the sack sits in the palm. The body hangs past the fingers.
-    bag.position.set(0.005, -0.115, 0.002);
-    bag.scale.set(1.15, 1.2, 1);
-    bag.rotation.x = 0.12;
-    bag.rotation.z = 0.06;
+    bag.position.set(0.006, -0.08, 0.02);
+    bag.scale.set(1.05, 1.1, 0.9);
+    bag.rotation.x = 0.05;
+    bag.rotation.z = 0.02;
+    armL.hand.rotation.x = 0.3;
+    armL.hand.rotation.z = -0.15;
     armL.hand.add(bag);
     const handle = figMesh(figGeo.handle, clothMat(0x22201e, 0.7));
     handle.position.set(0, 0.07, 0);
@@ -20686,9 +20705,11 @@ function makeCitizen(spec) {
   if (spec.prop === "basket") {
     basket = new THREE.Group();
     // Handle through the left palm. The bowl hangs in front of the hip.
-    basket.position.set(0.013, -0.099, 0.012);
-    basket.rotation.x = 0.12;
-    basket.rotation.z = 0.04;
+    basket.position.set(0.008, -0.07, 0.025);
+    basket.rotation.x = 0.04;
+    basket.rotation.z = 0.01;
+    armL.hand.rotation.x = 0.25;
+    armL.hand.rotation.z = -0.1;
     armL.hand.add(basket);
     basket.add(figMesh(figGeo.basket, bambooMat));
     const rim = figMesh(figGeo.rim, bambooMat);
@@ -20712,8 +20733,10 @@ function makeCitizen(spec) {
   if (spec.prop === "pole") {
     pole = new THREE.Group();
     // On one shoulder, along the walk. One bucket ahead, one behind.
-    pole.position.set(0.16, 0.53, 0);
+    pole.position.set(0.12, 0.48, 0.03);
     hip.add(pole);
+    armR.hand.rotation.x = -0.2;
+    armR.hand.rotation.z = 0.3;
     const bar = figMesh(figGeo.pole, bambooMat);
     pole.add(bar);
     [-1, 1].forEach(end => {
@@ -20768,9 +20791,9 @@ function makeCitizen(spec) {
     fanHand = spec.brolly && !leftBusy ? "L" : "R";
     const hand = fanHand === "L" ? armL.hand : armR.hand;
     // The lower edge of the leaf sits in the palm. The leaf opens forward.
-    fan.position.set(fanHand === "L" ? -0.01 : 0.01, 0.02, 0.055);
-    fan.rotation.x = -0.65;
-    fan.rotation.z = fanHand === "L" ? 0.2 : -0.2;
+    fan.position.set(fanHand === "L" ? -0.008 : 0.008, 0.015, 0.045);
+    fan.rotation.x = -0.5;
+    fan.rotation.z = fanHand === "L" ? 0.15 : -0.15;
     hand.add(fan);
   }
   if (spec.habit === "smoke") {
@@ -20779,9 +20802,9 @@ function makeCitizen(spec) {
     const hand = cigHand === "L" ? armL.hand : armR.hand;
     cig.scale.set(1, 1, 1.7);
     // Clear of the fist, so the paper reads at the lip instead of inside the hand.
-    cig.position.set(cigHand === "L" ? -0.022 : 0.022, -0.015, 0.09);
-    cig.rotation.x = 0.35;
-    cig.rotation.z = cigHand === "L" ? 0.35 : -0.35;
+    cig.position.set(cigHand === "L" ? -0.018 : 0.018, -0.008, 0.075);
+    cig.rotation.x = 0.25;
+    cig.rotation.z = cigHand === "L" ? 0.25 : -0.25;
     hand.add(cig);
   }
   if (spec.brolly) {
@@ -20949,6 +20972,20 @@ function poseGangFight(rig, ud, now, w) {
   const cycle = 2.1;
   const phase = (t % cycle + cycle) % cycle;
   const side = (ud.slip || 1);
+  // Only throw when the opponent is in reach. React when they land.
+  let inRange = false, hit = 0;
+  if (ud.foe && ud.foe.x != null) {
+    const dx = ud.foe.x - ud.x, dz = ud.foe.z - ud.z;
+    const dist = Math.hypot(dx, dz);
+    inRange = dist < 1.2;
+    // Foe is attacking and close: take a hit.
+    if (dist < 0.95 && ud.foe.attacking) hit = 0.6 + Math.sin(seed) * 0.3;
+  }
+  ud.hit = hit;
+  if (hit > 0.5 && Math.random() < 0.6) {
+    if (Math.random() < 0.7) fightPunch();
+    else fightGrunt();
+  }
   // Smooth envelopes: fast strike, slow return.
   function env(start, peak, end) {
     if (phase < start || phase > end) return 0;
@@ -20956,15 +20993,18 @@ function poseGangFight(rig, ud, now, w) {
     if (phase < peak) return Math.sin((phase - start) / (peak - start) * Math.PI * 0.5);
     return Math.cos((phase - peak) / (end - peak) * Math.PI * 0.5);
   }
-  const swing = env(0.15, 0.38, 0.85);
-  const shove = env(0.95, 1.18, 1.7);
-  const slip = env(0.4, 0.55, 0.9) * side * 0.6;
-  const tuck = env(0.0, 0.12, 0.3) + env(1.75, 1.9, 2.1);
-  const lunge = swing * 0.45 + shove * 0.55;
-  const stumble = env(1.55, 1.72, 2.05) * 0.7;
+  const rawSwing = env(0.15, 0.38, 0.85);
+  const rawShove = env(0.95, 1.18, 1.7);
+  const swing = inRange ? rawSwing : 0;
+  const shove = inRange ? rawShove : 0;
+  ud.attacking = (swing > 0.4 || shove > 0.4);
+  const slip = env(0.4, 0.55, 0.9) * side * 0.6 + hit * 0.4;
+  const tuck = env(0.0, 0.12, 0.3) + env(1.75, 1.9, 2.1) + hit * 0.5;
+  const lunge = swing * 0.5 + shove * 0.6;
+  const stumble = (inRange ? env(1.55, 1.72, 2.05) * 0.7 : 0) + hit * 0.8;
   // Breathing and tension under the big moves.
   const breath = Math.sin(t * 2.8 + seed) * 0.015;
-  const tension = 0.4 + Math.sin(seed + gang.t * 0.6) * 0.2;
+  const tension = 0.5 + Math.sin(seed + gang.t * 0.6) * 0.25;
   gangPlant(rig, ud, swing, shove, slip, tuck, lunge, stumble, w);
   if (rig.torso) rig.torso.rotation.x += breath * tension;
   if (rig.head) rig.head.rotation.x += breath * 0.6;
@@ -20973,33 +21013,63 @@ function gangBlend(cur, goal, w) {
   return cur + (goal - cur) * w;
 }
 function gangPlant(rig, ud, swing, shove, slip, tuck, lunge, stumble, w) {
-  // Weight shifts onto the lead leg on a swing, rear on a shove.
-  const lead = swing * 0.7 + lunge * 0.3;
-  const rear = shove * 0.6;
-  let thighL = -0.15 - lead * 0.22 + stumble * 0.08;
-  let thighR = 0.18 + rear * 0.15 - stumble * 0.1;
-  let kneeL = 0.38 + tuck * 0.1 + lead * 0.08;
-  let kneeR = 0.46 + tuck * 0.06;
+  // Weight shifts through knee bend. The foot that is translating lifts.
+  const lead = swing * 0.55 + lunge * 0.25;
+  const rear = shove * 0.45;
+  const lift = ud.stepLift || 0;
+  const stepSide = ud.stepSide || 1;
+  // Project movement onto the body facing so the correct foot steps.
+  const mx = ud.moveX || 0, mz = ud.moveZ || 0;
+  const facing = ud.yaw || 0;
+  const forward = mx * Math.sin(facing) + mz * Math.cos(facing);
+  const lateral = mx * Math.cos(facing) - mz * Math.sin(facing);
+  // Base stance. Bias loads the lead knee on a swing, unloads it on recovery.
+  const biasLoad = swing * 0.15 - shove * 0.08;
+  let thighL = -0.16 - lead * 0.1 - biasLoad * 0.3;
+  let thighR = 0.2 + rear * 0.06 + biasLoad * 0.15;
+  let kneeL = 0.4 + tuck * 0.06 + lead * 0.08 + biasLoad * 0.2;
+  let kneeR = 0.46 + tuck * 0.04 - biasLoad * 0.08;
+  // Lift the foot that is moving. Forward steps lift the lead, back steps the rear.
+  // The lift is softer and the free leg softens so it does not look locked.
+  const burst = ud.stepBurst || 0.5;
+  const soft = 0.7 + burst * 0.5;
+  if (forward >= 0) { 
+    thighL -= lift * 0.45 * soft; 
+    kneeL += lift * 0.5 * soft; 
+    kneeR += (1 - lift) * 0.08;
+  } else { 
+    thighR -= lift * 0.38 * soft; 
+    kneeR += lift * 0.42 * soft; 
+    kneeL += (1 - lift) * 0.06;
+  }
+  // Small ankle roll on the stepping foot.
+  if (stumble > 0.3) { thighL += 0.06; thighR -= 0.05; kneeL += 0.06; }
   rig.legL.pivot.rotation.x = gangBlend(rig.legL.pivot.rotation.x, thighL, w);
   rig.legR.pivot.rotation.x = gangBlend(rig.legR.pivot.rotation.x, thighR, w);
   rig.legL.knee.rotation.x = gangBlend(rig.legL.knee.rotation.x, kneeL, w);
   rig.legR.knee.rotation.x = gangBlend(rig.legR.knee.rotation.x, kneeR, w);
-  rig.legL.ankle.rotation.x = -(rig.legL.pivot.rotation.x + rig.legL.knee.rotation.x);
-  rig.legR.ankle.rotation.x = -(rig.legR.pivot.rotation.x + rig.legR.knee.rotation.x);
+  // Ankle follows the shin, with a small roll on the stepping foot.
+  const ankleRoll = lift * (forward >= 0 ? 0.15 : -0.1);
+  rig.legL.ankle.rotation.x = -(rig.legL.pivot.rotation.x + rig.legL.knee.rotation.x) + (forward >= 0 ? ankleRoll : 0);
+  rig.legR.ankle.rotation.x = -(rig.legR.pivot.rotation.x + rig.legR.knee.rotation.x) + (forward < 0 ? ankleRoll : 0);
   function drop(hipAng, kneeAng) {
     return THIGH_L * Math.cos(hipAng) + SHIN_L * Math.cos(hipAng + kneeAng);
   }
   const hipY = Math.max(drop(rig.legL.pivot.rotation.x, rig.legL.knee.rotation.x), drop(rig.legR.pivot.rotation.x, rig.legR.knee.rotation.x)) + 0.04;
-  rig.hip.position.y = gangBlend(rig.hip.position.y, hipY - 0.025 - stumble * 0.03, w);
-  rig.hip.position.x = gangBlend(rig.hip.position.x, slip * 0.045 + (lead - rear) * 0.03, w);
-  rig.hip.position.z = gangBlend(rig.hip.position.z, 0.015 + lunge * 0.06, w);
-  // Torso counters the arms. Shoulder leads the punch.
-  rig.hip.rotation.x = gangBlend(rig.hip.rotation.x, 0.05 + lunge * 0.08 + tuck * 0.05, w);
-  rig.hip.rotation.y = gangBlend(rig.hip.rotation.y, -swing * 0.28 + shove * 0.18, w);
-  rig.hip.rotation.z = gangBlend(rig.hip.rotation.z, slip * -0.08 + stumble * 0.06, w);
-  rig.torso.rotation.x = gangBlend(rig.torso.rotation.x, 0.07 + tuck * 0.1 + lunge * 0.12, w);
-  rig.torso.rotation.y = gangBlend(rig.torso.rotation.y, -swing * 0.38 + shove * 0.22 + slip * 0.18, w);
-  rig.torso.rotation.z = gangBlend(rig.torso.rotation.z, slip * 0.1 + stumble * 0.05, w);
+  // Weight bias. Shifts hard onto the lead on a swing, recovers back on a shove or stumble.
+  const bias = swing * 0.7 - shove * 0.4 - stumble * 0.5 + (forward >= 0 ? lift * 0.3 : -lift * 0.2);
+  const crouch = tuck * 0.04 + stumble * 0.03 + Math.abs(bias) * 0.02;
+  // Root follows the planted foot. Lateral drift and bias lean the hips.
+  rig.hip.position.y = gangBlend(rig.hip.position.y, hipY - 0.015 - crouch, w);
+  rig.hip.position.x = gangBlend(rig.hip.position.x, lateral * 2.2 + bias * 0.04, w);
+  rig.hip.position.z = gangBlend(rig.hip.position.z, (forward || 0) * 1.1 + bias * 0.03, w);
+  // Torso counters the arms and follows the weight.
+  rig.hip.rotation.x = gangBlend(rig.hip.rotation.x, 0.04 + lunge * 0.1 + bias * 0.08 + tuck * 0.04, w);
+  rig.hip.rotation.y = gangBlend(rig.hip.rotation.y, -swing * 0.32 + shove * 0.2 + bias * 0.15, w);
+  rig.hip.rotation.z = gangBlend(rig.hip.rotation.z, slip * -0.1 + lateral * 0.4 + stumble * 0.08, w);
+  rig.torso.rotation.x = gangBlend(rig.torso.rotation.x, 0.06 + tuck * 0.12 + lunge * 0.14 + bias * 0.06, w);
+  rig.torso.rotation.y = gangBlend(rig.torso.rotation.y, -swing * 0.42 + shove * 0.25 + slip * 0.2 + bias * 0.1, w);
+  rig.torso.rotation.z = gangBlend(rig.torso.rotation.z, slip * 0.12 + lateral * 0.3 + stumble * 0.06, w);
   // Head tracks the threat, snaps on contact, tucks when hit.
   const impact = Math.max(tuck, stumble * 0.8);
   rig.head.rotation.x = gangBlend(rig.head.rotation.x, 0.04 + impact * 0.18 + swing * 0.06, w);
@@ -21048,12 +21118,17 @@ function poseIdle(rig, ud, now, w, rainUp) {
     const n = now + (ud.offset || 0);
     const sway = Math.sin(n * 0.55);
     const breath = Math.sin(n * 1.25);
-    rig.hip.position.x += sway * 0.028 * w;
-    rig.hip.rotation.z += sway * 0.03 * w;
-    rig.head.rotation.y += (sway * 0.16 + Math.sin(n * 0.21) * 0.08) * w;
-    rig.head.rotation.x += breath * 0.025 * w;
-    rig.torso.rotation.x += (0.02 + breath * 0.02) * w;
-    rig.torso.rotation.z += -sway * 0.02 * w;
+    const shift = Math.sin(n * 0.3);
+    rig.hip.position.x += sway * 0.035 * w;
+    rig.hip.rotation.z += sway * 0.04 * w;
+    rig.hip.rotation.y += shift * 0.06 * w;
+    rig.head.rotation.y += (sway * 0.2 + Math.sin(n * 0.21) * 0.1) * w;
+    rig.head.rotation.x += breath * 0.03 * w;
+    rig.torso.rotation.x += (0.02 + breath * 0.025) * w;
+    rig.torso.rotation.z += -sway * 0.025 * w;
+    // Soft knee so a pause does not look locked.
+    rig.legL.knee.rotation.x += Math.abs(sway) * 0.06 * w;
+    rig.legR.knee.rotation.x += Math.abs(sway) * 0.04 * w;
     return;
   }
   if (act === "greet") {
@@ -21118,8 +21193,8 @@ function poseIdle(rig, ud, now, w, rainUp) {
   } else if (act === "hitch") {
     if (rig.prop === "pole") {
       // Free hand comes across onto the bar. The carrying arm stays on the pole.
-      poseToward(rig.armL, -2.1, -1.0, -1.6, 0.6, w);
-      rig.head.rotation.x += (0.14 - rig.head.rotation.x) * w;
+      poseToward(rig.armL, -1.8, -0.8, -1.5, 0.5, w);
+      rig.head.rotation.x += (0.12 - rig.head.rotation.x) * w;
       if (rig.pole) {
         rig.pole.rotation.z += (0.12 - rig.pole.rotation.z) * w;
         rig.pole.rotation.x += Math.sin(now * 1.7) * 0.06 * w;
@@ -21133,7 +21208,7 @@ function poseIdle(rig, ud, now, w, rainUp) {
       if (!rainUp) poseToward(rig.armR, 0.1, -0.7, -1.9, -0.4, w);
     } else if (rig.prop === "bag") {
       // Sack up in front of the chest, and the face turns down into it.
-      poseToward(rig.armL, -0.6, -0.7, -2.15, 0.4, w);
+      poseToward(rig.armL, -0.5, -0.55, -1.9, 0.3, w);
       rig.head.rotation.x += (0.38 - rig.head.rotation.x) * w;
       rig.head.rotation.y += (-0.45 - rig.head.rotation.y) * w;
       if (rig.bag) rig.bag.rotation.z += Math.sin(now * 1.5 + ud.offset) * 0.06 * w;
@@ -21393,10 +21468,16 @@ function advanceWalker(ud, now, fig) {
       if (other === ud || other.heat || other.path !== path || other.along == null || walkerHome(other)) continue;
       if (other.day && !dayCrowdNow() && !other.fig) continue;
       const ahead = (other.along - ud.along) * ud.dir;
-      if (other.wait > 0 && ahead > 0.04 && ahead < 0.8) {
-        speed = 0;
+      if (other.wait > 0 && ahead > 0.04 && ahead < 0.55) {
+        speed *= 0.15;
         ud.held = true;
-      } else if (ahead > 0.08 && ahead < 1.15) speed *= Math.max(0.2, (ahead - 0.08) / 1.05);
+        ud.heldT = (ud.heldT || 0) + dt;
+        // Stuck too long: try to step past.
+        if (ud.heldT > 2.5) { ud.held = false; speed = ud.speed * 0.6; ud.heldT = 0; }
+      } else {
+        ud.heldT = 0;
+        if (ahead > 0.08 && ahead < 1.15) speed *= Math.max(0.35, (ahead - 0.08) / 1.05);
+      }
     }
     if (ud.wait <= 0 && !ud.heat && (tryGreet(ud, now) || tryLook(ud, now))) {
       // A greeting or a shop window just stopped them.
@@ -21456,7 +21537,7 @@ function advanceWalker(ud, now, fig) {
   const turning = Math.min(1, Math.abs(dy) / 1.15);
   // Heat does not shorten its step at the kerb. That read as a group arriving
   // and locking. A flee has already left this rail by then.
-  const stride = ud.wait > 0 || ud.held ? 0 : (ud.heat ? (1 - turning * 0.35) : Math.min(1, endProx / 0.55) * (1 - turning));
+  const stride = ud.wait > 0 ? 0 : ud.held ? 0.25 : (ud.heat ? (1 - turning * 0.35) : Math.min(1, endProx / 0.55) * (1 - turning));
   if (ud.ease == null) ud.ease = ud.act ? 0 : 1;
   ud.ease += (stride - ud.ease) * Math.min(1, dt * (ud.heat ? 4.2 : 5));
   const rig = ud.rig;
@@ -21569,7 +21650,7 @@ function advanceWalker(ud, now, fig) {
   if (rig.prop === "pole") {
     // Elbow out, hand on the bar just ahead of the shoulder. The free arm still walks.
     const give = Math.sin(phase) * 0.03 * moving;
-    hang(rig.armR, -0.8 + give, 1.05, -2.0, 0.1);
+    hang(rig.armR, -0.55 + give, 0.7, -1.7, 0.2);
     stepArm(rig.armL, -armS * armAmp * 0.7);
     rig.pole.position.y = 0.53 + Math.abs(c) * 0.008 * moving;
     rig.pole.rotation.z = 0.05;
@@ -21585,7 +21666,7 @@ function advanceWalker(ud, now, fig) {
   } else if (rig.prop === "basket") {
     // One arm cradles the basket on the hip. The free hand walks, or takes the umbrella.
     const bob = Math.sin(phase * 2) * 0.006 * moving;
-    hang(rig.armL, 0.4 + bob * 2, -0.5, -2.0, 0.2);
+    hang(rig.armL, 0.15 + bob, -0.25, -1.6, 0.1);
     if (rainUp) raiseBrolly();
     else stepArm(rig.armR, armS * armAmp);
     if (rig.basket) {
@@ -21601,9 +21682,9 @@ function advanceWalker(ud, now, fig) {
     stepArm(rig.armR, armS * armAmp);
     if (rig.bag) {
       // Loose elbow, sack pendulum behind the hand instead of a locked twist.
-      rig.armL.elbow.rotation.x = -0.48;
-      rig.armL.elbow.rotation.z = -0.08;
-      rig.armL.spread.rotation.z = rig.armL.restZ - 0.06;
+      rig.armL.elbow.rotation.x = -0.65;
+      rig.armL.elbow.rotation.z = -0.18;
+      rig.armL.spread.rotation.z = rig.armL.restZ - 0.15;
       const lag = Math.sin(phase - 0.7);
       rig.bag.rotation.x = 0.12 + lag * 0.1 * (0.3 + moving);
       rig.bag.rotation.z = 0.06;
@@ -22459,7 +22540,7 @@ function heatBuildGraph() {
     return { x: frame.worldX, z: frame.worldZ };
   }
   function open(x0, z0, x1, z1) {
-    const n = 5;
+    const n = 3;
     for (let i = 1; i < n; i++) {
       const t = i / n;
       if (walkBlocked(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t, { pad: 0.08, bodies: false })) return false;
@@ -22499,7 +22580,44 @@ function heatBuildGraph() {
   heatBuildGraph.map = map;
   return map;
 }
+// Find a route of corners from the current path toward a goal path.
+// Returns an array of links, or null if no route.
+function heatFindRoute(fromPath, fromDir, goalPath, maxSteps) {
+  if (!fromPath || !goalPath || fromPath === goalPath) return null;
+  const map = heatBuildGraph();
+  const seen = new Set();
+  const queue = [{ path: fromPath, dir: fromDir, route: [] }];
+  seen.add(fromPath);
+  const limit = maxSteps || 4;
+  while (queue.length) {
+    const cur = queue.shift();
+    if (cur.route.length >= limit) continue;
+    const ends = map.get(cur.path);
+    if (!ends) continue;
+    const end = cur.dir > 0 ? 1 : 0;
+    const options = ends[end] || [];
+    for (let i = 0; i < options.length; i++) {
+      const opt = options[i];
+      if (seen.has(opt.path)) continue;
+      const next = cur.route.concat([opt]);
+      if (opt.path === goalPath) return next;
+      seen.add(opt.path);
+      queue.push({ path: opt.path, dir: opt.dir, route: next });
+    }
+  }
+  return null;
+}
 function heatChooseLink(rec) {
+  // Follow the planned route if we have one.
+  if (heat.route && rec.role === "run") {
+    for (let i = 0; i < heat.route.length; i++) {
+      const step = heat.route[i];
+      if (step.path !== rec.path) continue;
+      if (i + 1 < heat.route.length) return heat.route[i + 1];
+    }
+  }
+  const key = rec.path && (rec.dir > 0 ? 1 : 0);
+  if (rec._linkKey === key && rec._link) return rec._link;
   const map = heatBuildGraph();
   const ends = map.get(rec.path);
   if (!ends) return null;
@@ -22509,7 +22627,11 @@ function heatChooseLink(rec) {
   if (rec.role !== "run") {
     if (!heat.trail) return null;
     for (let i = heat.trail.length - 1; i >= 0; i--) {
-      if (heat.trail[i].from === rec.path) return heat.trail[i].link;
+      if (heat.trail[i].from === rec.path) {
+        rec._link = heat.trail[i].link;
+        rec._linkKey = key;
+        return rec._link;
+      }
     }
     return null;
   }
@@ -22517,16 +22639,23 @@ function heatChooseLink(rec) {
   for (let i = 0; i < options.length; i++) {
     const opt = options[i];
     if (opt.path === rec.path) continue;
-    const turn = opt.path.axis !== rec.path.axis ? 2 : 0;
-    const score = turn + Math.min(opt.run, 24) / 24;
+    const turn = opt.path.axis !== rec.path.axis ? 3 : 0;
+    const score = turn + Math.min(opt.run, 18) / 18;
     if (score > bestScore) { bestScore = score; best = opt; }
   }
+  rec._link = best;
+  rec._linkKey = key;
   return best;
 }
 function heatConsiderTurn(rec) {
   if (rec.corner || !rec.path) return;
   const span = rec.path.b - rec.path.a;
   const remain = rec.dir > 0 ? span - rec.along : rec.along;
+  // Far from the end: no need to probe or choose.
+  if (remain > 2.4) {
+    rec.turned = 0;
+    return;
+  }
   const probe = rec.along + rec.dir * 0.8;
   const blocked = probe > 0.3 && probe < span - 0.3 && walkerBlocked(rec.path, probe, rec.dir);
   if (remain > 1.7 && !blocked) {
@@ -22563,6 +22692,7 @@ function stepHeatCorner(rec, dt) {
     rec.dir = corner.dir;
     rec.turned = 0;
     rec.corner = null;
+    rec.rounded = (rec.rounded || 0) + 1;
     const frame = walkerFrame(rec.path, rec.along, rec.dir);
     rec.x = frame.worldX;
     rec.z = frame.worldZ;
@@ -22571,6 +22701,10 @@ function stepHeatCorner(rec, dt) {
     if (rec.fig) {
       rec.fig.position.set(frame.worldX - SHEAR_K * frame.worldZ, GROUND_Y, frame.worldZ);
       rec.fig.rotation.y = rec.yaw;
+    }
+    // Once around a corner and out of sight, mark for unload.
+    if (rec.rounded >= 1 && !figureInView(rec.x, rec.y + 0.85, rec.z, 0.9)) {
+      rec.leaving = true;
     }
     return;
   }
@@ -22604,6 +22738,17 @@ function beginHeat(spot) {
   heat.t = 0;
   heat.leaving = false;
   heat.trail = [];
+  // Plan a short route for the runner toward a different alley.
+  heat.route = null;
+  const paths = [];
+  for (let i = 0; i < streetPaths.length; i++) {
+    const p = streetPaths[i];
+    if (p !== spot.path && !p.world && p.b - p.a > 8) paths.push(p);
+  }
+  if (paths.length) {
+    const goal = paths[Math.floor(heatUnit(heat.nights * 7 + 3) * paths.length)];
+    heat.route = heatFindRoute(spot.path, spot.dir, goal, 3);
+  }
   const span = spot.path.b - spot.path.a;
   const d = spot.dir;
   const seats = [
@@ -22762,25 +22907,56 @@ function stepAlleyHeat(now, dt) {
       const remain = rec.dir > 0 ? spanNow - rec.along : rec.along;
       const runnerGone = !!(lead && lead.path !== rec.path);
       const left = !!(heat.trail && heat.trail.some(function (step) { return step.from === rec.path; }));
-      if (rec.role === "run") rec.speed = 2.55;
-      else if (lead && lead.path === rec.path && lead.corner && remain < 2.4) rec.speed = 0;
+      if (rec.role === "run") {
+        rec.speed = 2.6 + Math.sin(heat.t * 1.4 + rec.offset) * 0.15;
+        // Glance back occasionally.
+        if (Math.sin(heat.t * 0.7 + rec.offset) > 0.75 && lead) rec.bias = turnToward(rec, lead.x - 0.5, lead.z);
+      } else if (lead && lead.path === rec.path && lead.corner && remain < 2.2) rec.speed = 0;
       else if (lead && lead.path === rec.path && !lead.corner) {
         const ahead = (lead.along - rec.along) * lead.dir;
-        if (ahead < 0.8) rec.speed = 0;
-        else if (ahead < 1.35) rec.speed = 1.45;
-        else if (ahead > 2.3) rec.speed = 3.3;
-        else rec.speed = 2.3;
-      } else if (runnerGone && left) rec.speed = 2.7;
-      else if (remain < 1.2) rec.speed = 0;
-      else rec.speed = 2.3;
+        if (ahead < 1.0) rec.speed = 0.4;
+        else if (ahead < 1.6) rec.speed = 1.6;
+        else if (ahead > 2.5) rec.speed = 3.1;
+        else rec.speed = 2.4;
+        // Look at the runner.
+        rec.bias = turnToward(rec, lead.x, lead.z) * 0.4;
+      } else if (runnerGone && left) rec.speed = 2.8;
+      else if (remain < 1.1) rec.speed = 0.3;
+      else rec.speed = 2.35;
       if (rec.speed > 0) heatConsiderTurn(rec);
     }
-    if (heat.t >= 16) heatMarkLeaving();
+    // End the chase once the runner has rounded a corner and is out of sight.
+    const runnerGone = runner && runner.rounded >= 1 && runner.leaving;
+    if (heat.t >= 16 || runnerGone) heatMarkLeaving();
   }
   for (let i = 0; i < alleyHeat.length; i++) {
     const rec = alleyHeat[i];
     if (rec.corner) stepHeatCorner(rec, step);
     advanceWalker(rec, now, rec.fig || null);
+  }
+  // Wall-aware separation. Push apart, but not into a wall.
+  const minGap = 0.7;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < alleyHeat.length; i++) {
+      const a = alleyHeat[i];
+      if (!a.fig || a.leaving) continue;
+      for (let j = i + 1; j < alleyHeat.length; j++) {
+        const b = alleyHeat[j];
+        if (!b.fig || b.leaving) continue;
+        let dx = b.x - a.x, dz = b.z - a.z;
+        let dist = Math.hypot(dx, dz);
+        if (dist >= minGap) continue;
+        if (dist < 1e-4) { dx = 1; dz = 0; dist = 1; }
+        const push = (minGap - dist) * 0.5;
+        const ux = dx / dist, uz = dz / dist;
+        const ax = a.x - ux * push, az = a.z - uz * push;
+        const bx = b.x + ux * push, bz = b.z + uz * push;
+        if (!walkBlocked(ax, az, { pad: 0.05, bodies: false })) { a.x = ax; a.z = az; }
+        if (!walkBlocked(bx, bz, { pad: 0.05, bodies: false })) { b.x = bx; b.z = bz; }
+        if (a.fig) a.fig.position.set(a.x - SHEAR_K * a.z, a.y, a.z);
+        if (b.fig) b.fig.position.set(b.x - SHEAR_K * b.z, b.y, b.z);
+      }
+    }
   }
   // Off the rail and out of the lens: drop that body now. The others keep going.
   cullHeatUnseen();
@@ -22967,7 +23143,8 @@ function stepGangFight(now, dt) {
   const hourOpen = gangHour();
   if (walkMode && hourOpen && !gang.rolled && !gang.leaving && !gangFight.length) {
     gang.rolled = true;
-    beginGang();
+    // 50% chance each night. The roll is fixed for the night.
+    if (heatUnit(gang.nights * 47 + 13) < 0.5) beginGang();
   }
   if (gangFight.length && (!walkMode || !hourOpen)) gang.leaving = true;
   refreshFigureView();
@@ -22991,15 +23168,42 @@ function stepGangFight(now, dt) {
         rec.wait = 2.2;
         rec.act = "guard";
         rec.speed = 0;
-        // Small chaotic drift so pairs do not stay locked on rails.
-        const drift = Math.sin(gang.t * 1.4 + (rec.beat || 0) * 5) * 0.04;
-        const side = Math.cos(gang.t * 0.9 + (rec.offset || 0)) * 0.03;
-        rec.x += drift * (rec.slip || 1);
-        rec.z += side;
-        const clamped = gangClamp(rec.x, rec.z);
-        rec.x = clamped.x;
-        rec.z = clamped.z;
+        // Aggressive drift. Press toward the foe when out of range.
+        const prevX = rec.x, prevZ = rec.z;
+        const seed = (rec.beat || 0) * 5.1 + (rec.offset || 0);
+        const burst = Math.pow(Math.abs(Math.sin(gang.t * 0.9 + seed * 1.3)), 1.6);
+        const pause = Math.sin(gang.t * 2.4 + seed) > 0.6 ? 0.1 : 1;
+        let pressX = 0, pressZ = 0;
+        if (rec.foe && rec.foe.x != null) {
+          const fdx = rec.foe.x - rec.x, fdz = rec.foe.z - rec.z;
+          const fdist = Math.hypot(fdx, fdz) || 1;
+          if (fdist > 0.9) {
+            pressX = (fdx / fdist) * 0.06 * burst;
+            pressZ = (fdz / fdist) * 0.06 * burst;
+          }
+        }
+        const driftX = Math.sin(gang.t * 1.9 + seed) * 0.05 * burst * pause * (rec.slip || 1);
+        const driftZ = Math.cos(gang.t * 1.4 + seed * 0.8) * 0.04 * burst * pause;
+        // Knockback when taking a hit.
+        let kbX = 0, kbZ = 0;
+        if (rec.hit && rec.foe) {
+          const kdx = rec.x - rec.foe.x, kdz = rec.z - rec.foe.z;
+          const kd = Math.hypot(kdx, kdz) || 1;
+          kbX = (kdx / kd) * rec.hit * 0.08;
+          kbZ = (kdz / kd) * rec.hit * 0.08;
+        }
+        rec.x += (driftX + pressX + kbX) * 0.5;
+        rec.z += (driftZ + pressZ + kbZ) * 0.5;
+        const c = gangClamp(rec.x, rec.z);
+        rec.x = c.x; rec.z = c.z;
         if (rec.fig) rec.fig.position.set(rec.x - SHEAR_K * rec.z, rec.y, rec.z);
+        const dx = rec.x - prevX, dz = rec.z - prevZ;
+        const speed = Math.hypot(dx, dz);
+        // Lift scales with speed but with a soft knee so it does not snap.
+        rec.stepLift = Math.min(1, Math.pow(speed * 22, 0.7));
+        rec.stepSide = (dx * Math.cos(rec.yaw || 0) + dz * Math.sin(rec.yaw || 0)) >= 0 ? 1 : -1;
+        rec.moveX = dx; rec.moveZ = dz;
+        rec.stepBurst = burst;
         advanceWalker(rec, now, rec.fig);
         aimGang(rec);
         flushFigure(rec.fig);
@@ -23016,6 +23220,30 @@ function stepGangFight(now, dt) {
   if (want) {
     if (offer.a >= 0) attachGang(gangFight[offer.a]);
     if (budget > 1 && offer.b >= 0) attachGang(gangFight[offer.b]);
+  }
+  // Separation. Push overlapping fighters apart so they do not clip.
+  const minGap = 0.72;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < gangFight.length; i++) {
+      const a = gangFight[i];
+      if (!a.fig) continue;
+      for (let j = i + 1; j < gangFight.length; j++) {
+        const b = gangFight[j];
+        if (!b.fig) continue;
+        let dx = b.x - a.x, dz = b.z - a.z;
+        let dist = Math.hypot(dx, dz);
+        if (dist >= minGap) continue;
+        if (dist < 1e-4) { dx = 1; dz = 0; dist = 1; }
+        const push = (minGap - dist) * 0.5;
+        const ux = dx / dist, uz = dz / dist;
+        const ca = gangClamp(a.x - ux * push, a.z - uz * push);
+        const cb = gangClamp(b.x + ux * push, b.z + uz * push);
+        a.x = ca.x; a.z = ca.z;
+        b.x = cb.x; b.z = cb.z;
+        if (a.fig) a.fig.position.set(a.x - SHEAR_K * a.z, a.y, a.z);
+        if (b.fig) b.fig.position.set(b.x - SHEAR_K * b.z, b.y, b.z);
+      }
+    }
   }
   // The hour only gates new bodies. A bout already in the picture keeps
   // its phrase until the lens has left the fighters, so they do not freeze
@@ -23477,24 +23705,44 @@ function stepKeeper(fig, now) {
     L = [-0.4, -0.22, -0.85, 0.06];
     R = [-0.7 + s * 0.16, 0.18, -1.15, s2 * 0.16];
   } else if (trade === "make") {
-    lean = 0.32; headX = 0.4; headY = s * 0.05;
-    L = [-0.85 + s2 * 0.12, -0.3, -1.35, 0.16];
-    R = [-0.95 + s * 0.16, 0.28, -1.3, -0.14];
+    // Stirring with weight transfer and shoulder counter.
+    const work = Math.pow(Math.abs(Math.sin(now * 1.4 * rate + phase)), 0.6);
+    const pause = Math.sin(now * 0.35 + phase) > 0.55 ? 0.25 : 1;
+    lean = 0.25 + work * 0.1;
+    headX = 0.32 + s2 * 0.05;
+    headY = s * 0.08;
+    sway = s * 0.025 * pause;
+    torsoY = -s * 0.06 * pause;
+    L = [-0.65 - work * 0.25, -0.22, -1.15 - work * 0.2, 0.1];
+    R = [-0.75 - Math.sin(now * 1.4 * rate + phase + 0.8) * 0.2 * pause, 0.2, -1.1 - work * 0.15, -0.08];
   } else if (trade === "cut") {
-    lean = 0.06; headX = 0.08; headY = 0.22 + s * 0.06;
-    L = [-0.55, -0.2, -0.9, 0.05];
-    R = [-1.25, 0.18, -0.55, s2 * 0.4];
+    // Chop with wind-up and follow-through.
+    const cycle = (now * 2.8 * rate + phase) % (Math.PI * 2);
+    const wind = cycle < 1.2 ? cycle / 1.2 : 0;
+    const strike = cycle >= 1.2 && cycle < 2.2 ? (cycle - 1.2) : 0;
+    const follow = cycle >= 2.2 ? Math.max(0, 1 - (cycle - 2.2) / 1.5) : 0;
+    const chop = strike > 0 ? Math.sin(strike * Math.PI) : follow * 0.3;
+    lean = 0.06 + chop * 0.15 + wind * 0.04;
+    headX = 0.08 + chop * 0.1;
+    headY = 0.12 + s * 0.03;
+    sway = chop * 0.02;
+    torsoY = -chop * 0.08;
+    L = [-0.48, -0.16, -0.8, 0.03];
+    R = [-1.05 - wind * 0.15 - chop * 0.35, 0.12, -0.35 - chop * 0.25, s2 * 0.15];
   } else if (trade === "watch") {
     lean = 0.02; headX = 0.04; headY = s * 0.28;
     L = [-0.4, -0.85, -2.2, 0.35];
     R = [-0.35, 0.9, -2.15, -0.4];
   } else {
-    // One hand stays by the hip. The other works the counter on its own phase.
-    lean = 0.1 + s * 0.03;
-    headX = 0.16 + s2 * 0.05;
-    headY = s * 0.14;
-    L = [-0.32, -0.24, -0.55, 0.06];
-    R = [-0.62 + s2 * 0.2, 0.2, -0.95, -0.1];
+    // One hand stays by the hip. The other works the counter with pauses.
+    const work = Math.pow(Math.abs(s2), 0.6);
+    const pause = Math.sin(now * 0.35 + phase2) > 0.5 ? 0.4 : 1;
+    lean = 0.08 + work * 0.06;
+    headX = 0.14 + s * 0.04;
+    headY = s2 * 0.1;
+    sway = s * 0.015 * pause;
+    L = [-0.28, -0.2, -0.5, 0.05];
+    R = [-0.55 - work * 0.15 * pause, 0.18, -0.85 - work * 0.1, -0.08];
   }
   if (waving) {
     headY = ud.aimYaw * (stance === "sit" ? 0.65 : 1);
@@ -23515,9 +23763,9 @@ function stepKeeper(fig, now) {
   }
   rig.hip.position.y += (hipY - rig.hip.position.y) * w;
   rig.hip.position.x += (sway - rig.hip.position.x) * w;
-  rig.hip.rotation.x += ((stance === "sit" ? 0.04 : 0.02) - rig.hip.rotation.x) * w;
-  rig.hip.rotation.z += (0 - rig.hip.rotation.z) * w;
-  rig.torso.rotation.x += (lean + breath * 0.015 - rig.torso.rotation.x) * w;
+  rig.hip.rotation.x += ((stance === "sit" ? 0.04 : 0.02 + lean * 0.15) - rig.hip.rotation.x) * w;
+  rig.hip.rotation.z += (sway * 0.5 - rig.hip.rotation.z) * w;
+  rig.torso.rotation.x += (lean + breath * 0.018 - rig.torso.rotation.x) * w;
   rig.torso.rotation.y += (torsoY - rig.torso.rotation.y) * w;
   rig.torso.rotation.z += (sway * 0.35 - rig.torso.rotation.z) * w;
   rig.head.rotation.x += (headX + breath * 0.02 - rig.head.rotation.x) * w;
@@ -23531,6 +23779,10 @@ function stepKeeper(fig, now) {
   rig.legR.ankle.rotation.x = -(rig.legR.pivot.rotation.x + rig.legR.knee.rotation.x);
   poseToward(rig.armL, L[0], L[1], L[2], L[3], w);
   poseToward(rig.armR, R[0], R[1], R[2], R[3], w);
+  // Shoulder follows the working arm.
+  if (rig.armR && rig.armR.spread && stance !== "sit") {
+    rig.armR.spread.rotation.y += (R[0] * 0.08 - (rig.armR.spread.rotation.y || 0)) * w;
+  }
   flushFigure(fig);
 }
 (function dressRiderHeads() {
@@ -24816,6 +25068,61 @@ function nightDrip() {
   src.stop(t + 0.1);
   src.onended = cityDone([src, bp, g, pan].filter(Boolean));
 }
+function fightPunch() {
+  const ctx = rainSound.ctx;
+  if (!ctx || ctx.state !== "running" || !rainSound.cityGain) return;
+  const t = ctx.currentTime;
+  const n = Math.floor(ctx.sampleRate * 0.08);
+  const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) {
+    const u = i / n;
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - u, 2.2) * (0.6 + Math.random() * 0.4);
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = 280 + Math.random() * 120;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.22 + Math.random() * 0.08, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+  src.connect(lp);
+  lp.connect(g);
+  const pan = cityPan(ctx, g, rainSound.cityGain);
+  src.start(t);
+  src.stop(t + 0.1);
+  src.onended = cityDone([src, lp, g, pan].filter(Boolean));
+}
+function fightGrunt() {
+  const ctx = rainSound.ctx;
+  if (!ctx || ctx.state !== "running" || !rainSound.cityGain) return;
+  const t = ctx.currentTime;
+  const dur = 0.12 + Math.random() * 0.08;
+  const n = Math.floor(ctx.sampleRate * dur);
+  const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  const f = 140 + Math.random() * 80;
+  for (let i = 0; i < n; i++) {
+    const u = i / n;
+    const gate = Math.sin(u * Math.PI);
+    data[i] = Math.sin(u * f * 0.8) * gate * (0.5 + Math.random() * 0.3);
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.value = 220 + Math.random() * 160;
+  bp.Q.value = 1.4;
+  const g = ctx.createGain();
+  g.gain.value = 0.08 + Math.random() * 0.04;
+  src.connect(bp);
+  bp.connect(g);
+  const pan = cityPan(ctx, g, rainSound.cityGain);
+  src.start(t);
+  src.stop(t + dur);
+  src.onended = cityDone([src, bp, g, pan].filter(Boolean));
+}
 function stepCityBed(now, alive, wet, low) {
   const ctx = rainSound.ctx;
   if (!ctx || !rainSound.cityGain) return;
@@ -25214,10 +25521,10 @@ const CAT_HIND_U = 0.084, CAT_HIND_L = 0.072;
 const CAT_BODY_H = 0.124;
 function makeCat() {
   if (catFig) return;
-  const FUR = 0xe3943a;
-  const STRIPE = 0xc56a28;
-  const CREAM = 0xf4e6cf;
-  const EAR = 0xf2b56a;
+  const FUR = 0x8a6a48;
+  const STRIPE = 0x3a2a18;
+  const CREAM = 0xf0e6d4;
+  const EAR = 0xc4a070;
   const EYE = 0xfff8f0;
   const PUPIL = 0x1a1410;
   const MOUTH = 0x2c1814;
@@ -25256,9 +25563,11 @@ function makeCat() {
   torso.add(hips);
   const body = brick(hips, fur, 0, 0.05, 0.02, 0.22, CAT_BODY_H, 0.4);
   brick(hips, cream, 0, -0.008, -0.04, 0.14, 0.042, 0.16);
-  [-0.02, 0.06, 0.14].forEach(function (z) {
-    brick(hips, stripe, 0, 0.118, z, 0.2, 0.016, 0.034);
+  [-0.04, 0.02, 0.08, 0.14].forEach(function (z) {
+    brick(hips, stripe, 0, 0.115, z, 0.18, 0.014, 0.028);
   });
+  brick(hips, stripe, -0.06, 0.08, 0.04, 0.03, 0.012, 0.06);
+  brick(hips, stripe, 0.06, 0.08, 0.04, 0.03, 0.012, 0.06);
   const chest = new THREE.Group();
   chest.position.set(0, 0.01, -0.1);
   hips.add(chest);
@@ -25266,6 +25575,10 @@ function makeCat() {
   head.position.set(0, 0.09, -0.08);
   chest.add(head);
   brick(head, fur, 0, 0.01, 0.01, 0.19, 0.15, 0.15);
+  // Forehead tabby marks.
+  brick(head, stripe, 0, 0.05, -0.06, 0.04, 0.012, 0.02);
+  brick(head, stripe, -0.03, 0.04, -0.05, 0.025, 0.01, 0.015);
+  brick(head, stripe, 0.03, 0.04, -0.05, 0.025, 0.01, 0.015);
   brick(head, cream, 0, -0.046, -0.078, 0.15, 0.062, 0.05);
   const nose = brick(head, mouthMat, 0, -0.012, -0.098, 0.024, 0.014, 0.016);
   brick(head, mouthMat, 0, -0.052, -0.1, 0.09, 0.028, 0.02);
