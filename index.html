@@ -4167,17 +4167,14 @@ function makeSack() {
   return mergeGeos([body, neck, belly]);
 }
 const shopFinish = buildShopFinish();
-// Night ambient for open shops. The tubes glow, but emissive does not
-// light the walls. A low warm fill on the interior surfaces makes the
-// room read as lived-in without a PointLight per shop.
-(function shopAmbient() {
-  const warm = new THREE.Color(0xffe8c0);
+// Shop interiors. Emissive on the tubes does not light the walls.
+// A falloff fill with contact darkening sits on the interior surfaces
+// so the room reads as lit by the tube, not painted with glow.
+(function shopInteriorLight() {
   const surfaces = [shopFinish.plaster, shopFinish.concrete, shopFinish.shopTile, shopFinish.timber];
   surfaces.forEach(mat => {
     if (!mat) return;
-    mat.emissive = warm.clone();
-    mat.emissiveIntensity = 0;
-    shopGlow.push({ mat, day: 0.0, night: 0.42 });
+    mat.userData.shopInterior = 1;
   });
 })();
 const shopGeo = {
@@ -6324,7 +6321,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
   }
   if (lined && spec.tube && variant !== "shut" && kind !== "door") byDay(function () {
     // The tube stays inside the opening. One hung at the lot line read as a bar in the lane.
-    const tubeMat = solidMat("tube-" + spec.tube.toString(16), spec.tube, 0.35, 0, spec.dim ? 0.35 : 0.7, spec.dim ? 1.6 : 2.6);
+    const tubeMat = solidMat("tube-" + spec.tube.toString(16), spec.tube, 0.35, 0, spec.dim ? 0.28 : 0.55, spec.dim ? 1.15 : 1.75);
     const len = front ? Math.min(1.05, Math.max(0.5, front.unit * 0.62)) : Math.min(Math.max(0.62, openW * 0.42), 1.15);
     const out = front ? -0.48 : -0.32;
     const y = front ? 2.06 : 1.82;
@@ -6342,7 +6339,7 @@ function placeBay(bay, face, kind, rng, data, clearance, lotZ, pinX, pinZ) {
     });
   });
   if (kind === "door" && variant === 0) {
-    const bulbMat = solidMat("bulb", 0xffd2a0, 0.4, 0, 0.45, 2.2);
+    const bulbMat = solidMat("bulb", 0xffd2a0, 0.4, 0, 0.38, 1.55);
     const bp = facePose(bay.x, bay.z, bay.w, bay.d, face, dMid, -0.16 - SHOP_SEAT, 2.02);
     addShopMesh(shopGeo.bulb, bulbMat, bp.x, bp.y, bp.z, 0, 1, 1, 1);
   }
@@ -6548,7 +6545,7 @@ function placeStair(bay, face, data, lotZ, pinX, pinZ, stair) {
   put(shopGeo.box, shopFinish.metal, edge + 0.06, -0.1 - railD * 0.5, 1.02, 0.028, 0.028, railD);
   put(shopGeo.box, shopFinish.metal, edge + 0.06, -0.16, 0.72, 0.028, 0.7, 0.028);
   const bulbOut = layoutNotch > 0.35 ? Math.min(-0.55, -(recess + 0.08)) : -0.22;
-  const bulbMat = solidMat("bulb", 0xffd2a0, 0.4, 0, 0.45, 2.2);
+  const bulbMat = solidMat("bulb", 0xffd2a0, 0.4, 0, 0.38, 1.55);
   put(shopGeo.bulb, bulbMat, 0.58, bulbOut, 2.02, 1, 1, 1);
   put(shopGeo.box, shopFinish.metal, 0.58, bulbOut, 2.14, 0.012, 0.2, 0.012);
   addShopMesh.pinX = addShopMesh.pinZ = null;
@@ -8372,12 +8369,12 @@ function dressAlleys() {
     color: 0xd8d0b4, emissive: new THREE.Color(0xd8d0b4), emissiveIntensity: 0.38,
     roughness: 0.32, clippingPlanes: clips
   });
-  shopGlow.push({ mat: tubeMat, day: 0.55, night: 2.4 });
+  shopGlow.push({ mat: tubeMat, day: 0.42, night: 1.65 });
   const warmTube = new THREE.MeshStandardMaterial({
     color: 0xf0d2a4, emissive: new THREE.Color(0xf0d2a4), emissiveIntensity: 0.4,
     roughness: 0.35, clippingPlanes: clips
   });
-  shopGlow.push({ mat: warmTube, day: 0.5, night: 2.2 });
+  shopGlow.push({ mat: warmTube, day: 0.38, night: 1.5 });
   const netMat = new THREE.MeshStandardMaterial({
     color: 0x2a2724, transparent: true, opacity: 0.58, side: THREE.DoubleSide,
     roughness: 0.9, clippingPlanes: clips
@@ -8511,12 +8508,12 @@ function dressAlleys() {
     color: 0xc5d2c0, emissive: new THREE.Color(0xaebda8), emissiveIntensity: 0.28,
     roughness: 0.48, clippingPlanes: clips
   });
-  shopGlow.push({ mat: greenTube, day: 0.35, night: 1.6 });
+  shopGlow.push({ mat: greenTube, day: 0.26, night: 1.15 });
   const lanternMat = new THREE.MeshStandardMaterial({
     color: 0xc43a2a, emissive: new THREE.Color(0xff3a28), emissiveIntensity: 0.55,
     roughness: 0.48, clippingPlanes: clips
   });
-  shopGlow.push({ mat: lanternMat, day: 0.3, night: 2.1 });
+  shopGlow.push({ mat: lanternMat, day: 0.22, night: 1.4 });
   function ironGateMap() {
     const c = document.createElement("canvas");
     c.width = 128; c.height = 128;
@@ -11151,7 +11148,7 @@ attachTriTile(woodMat, 0.42);
 const darkHole = new THREE.MeshStandardMaterial({ color: 0x141210, roughness: 1, clippingPlanes: clips });
 const censerMat = new THREE.MeshStandardMaterial({ color: 0x6e726e, roughness: 0.55, metalness: 0.42, clippingPlanes: clips });
 const lanternMat = new THREE.MeshStandardMaterial({ color: 0x9d1c1c, roughness: 0.45, emissive: 0x9d1c1c, emissiveIntensity: 0.2, clippingPlanes: clips });
-shopGlow.push({ mat: lanternMat, day: 0.28, night: 1.7 });
+shopGlow.push({ mat: lanternMat, day: 0.2, night: 1.2 });
 function repeatTex(paint, rw, rh) {
   const c = document.createElement("canvas");
   c.width = 128;
@@ -11891,7 +11888,7 @@ function schoolWestFace() {
   const bulbMat = new THREE.MeshStandardMaterial({
     color: 0xf0e6c8, emissive: 0xf0e2b0, emissiveIntensity: 0.35, roughness: 0.4, metalness: 0, clippingPlanes: clips
   });
-  shopGlow.push({ mat: bulbMat, day: 0.15, night: 1.9 });
+  shopGlow.push({ mat: bulbMat, day: 0.1, night: 1.35 });
   const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.03, 0.46), bulbMat);
   bulb.position.set(groundWall + 0.12, 1.675, doorZ);
   city.add(bulb);
@@ -12768,7 +12765,7 @@ squareAnchor = null;
     color: 0xffb060, emissive: new THREE.Color(0xff7a32), emissiveIntensity: 0.35,
     roughness: 0.4, clippingPlanes: clips
   });
-  shopGlow.push({ mat: flameMat, day: 0.35, night: 1.8 });
+  shopGlow.push({ mat: flameMat, day: 0.25, night: 1.25 });
   [-1, 1].forEach(sign => {
     const candle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.2, 0.07), doorRed);
     candle.position.set(cx + sign * 0.4, 1.1, az + 0.1);
@@ -16722,7 +16719,7 @@ function mountFitting(x, y, z) {
 [[9.75, 3.2, 48, 0xd7f0e4], [57.75, 2.6, 82, 0xd4eee2], [104.25, 3.6, 100, 0xc5ead2], [138.75, 3.4, 52, 0xb7e2c8], [180.75, 3.2, 72, 0xd7f0e4], [160, 2.4, 95.25]].forEach(([x, y, z, color]) => {
   const tint = new THREE.Color(color);
   const seat = mountFitting(x, y, z);
-  const lamp = new THREE.PointLight(color, 0.85, 22, 1.6);
+  const lamp = new THREE.PointLight(color, 0.62, 16, 1.85);
   lamp.position.set(seat ? seat.x : x, seat ? seat.y : y, seat ? seat.z : z);
   vfx.add(lamp);
   lamps.push(lamp);
@@ -16736,7 +16733,7 @@ function mountFitting(x, y, z) {
     color: tint.clone(), emissive: tint.clone(), emissiveIntensity: 0.55,
     roughness: 0.34, metalness: 0, clippingPlanes: clips
   });
-  shopGlow.push({ mat: bulbMat, day: 0.45, night: 2.0 });
+  shopGlow.push({ mat: bulbMat, day: 0.32, night: 1.45 });
   const bulb = new THREE.Mesh(
     new THREE.BoxGeometry(seat.alongZ ? 0.05 : seat.len, 0.042, seat.alongZ ? seat.len : 0.05),
     bulbMat
@@ -29375,6 +29372,36 @@ function streetGradeShader(shader, kind) {
   }
   shader.fragmentShader = frag;
 }
+// Shop interiors. A tube hangs near 2.1 m. The fill is warm, falls with
+// distance from that height, and darkens in contact and on down faces so
+// the room is not a flat glow.
+function shopInteriorShader(shader) {
+  if (shader.fragmentShader.indexOf("shopFill") >= 0) return;
+  if (shader.fragmentShader.indexOf("vBodyWorld") < 0) return;
+  shader.uniforms.uDark = sky.material.uniforms.uDark;
+  const chunk = [
+    "float shopDark = clamp(uDark, 0.0, 1.0);",
+    "if (shopDark > 0.12) {",
+    "  vec3 shopN = normalize(vBodyN);",
+    "  float shopY = vBodyWorld.y;",
+    "  float shopFall = 1.0 - smoothstep(1.15, 2.35, abs(shopY - 2.05));",
+    "  float shopUp = clamp(shopN.y, 0.0, 1.0);",
+    "  float shopDown = clamp(-shopN.y, 0.0, 1.0);",
+    "  float shopContact = smoothstep(0.55, 0.18, shopY) * (0.35 + shopDown * 0.65);",
+    "  float shopCavity = shopDown * 0.55 + shopContact * 0.7;",
+    "  float shopWrap = mix(0.35, 1.0, shopUp);",
+    "  vec3 shopWarm = vec3(1.12, 0.92, 0.68);",
+    "  float shopK = shopDark * shopFall * shopWrap * (1.0 - shopCavity * 0.72);",
+    "  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * shopWarm, shopK * 0.55);",
+    "  diffuseColor.rgb *= mix(1.0, 0.62, shopCavity * shopDark);",
+    "}"
+  ].join("\n");
+  const next = shader.fragmentShader.replace(
+    "#include <metalnessmap_fragment>",
+    "#include <metalnessmap_fragment>\n" + chunk
+  );
+  if (next !== shader.fragmentShader) shader.fragmentShader = next;
+}
 function quietBodyLight(mat) {
   if (!mat || !mat.isMeshStandardMaterial || mat.userData.quietBody) return;
   const ud = mat.userData;
@@ -29387,13 +29414,15 @@ function quietBodyLight(mat) {
   const prev = mat.onBeforeCompile;
   const prevKey = mat.customProgramCacheKey;
   const grade = mat.userData.streetGrade || "";
+  const shop = !!ud.shopInterior;
   mat.customProgramCacheKey = function () {
-    return (prevKey ? prevKey.call(this) : "") + "|quietBody" + (grade ? "|sky" + grade : "");
+    return (prevKey ? prevKey.call(this) : "") + "|quietBody" + (grade ? "|sky" + grade : "") + (shop ? "|shop" : "");
   };
   mat.onBeforeCompile = function (shader) {
     if (prev) prev.call(this, shader);
     quietLightShader(shader, grade === "figure" || grade === "prop" ? grade : (grade === "ride" || grade === "glass"));
     if (grade) streetGradeShader(shader, grade);
+    if (shop) shopInteriorShader(shader);
   };
 }
 function fillBodyLights() {
