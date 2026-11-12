@@ -1923,7 +1923,7 @@ function fxGateGlsl(worldExpr) {
     "float fxSpec = fxSeen * uFxGrade;"
   ].join("\n");
 }
-const wetReflect = new THREE.WebGLRenderTarget(640, 360, {
+const wetReflect = new THREE.WebGLRenderTarget(handset ? 384 : 640, handset ? 216 : 360, {
   minFilter: THREE.LinearFilter,
   magFilter: THREE.LinearFilter,
   format: THREE.RGBFormat,
@@ -1954,7 +1954,7 @@ const uWetMatrix = { value: new THREE.Matrix4() };
 const uRoofReflOn = { value: 0 };
 const uRoofPlane = { value: 12 };
 const uRoofMatrix = { value: new THREE.Matrix4() };
-const roofReflect = new THREE.WebGLRenderTarget(480, 270, {
+const roofReflect = new THREE.WebGLRenderTarget(handset ? 320 : 480, handset ? 180 : 270, {
   minFilter: THREE.LinearFilter,
   magFilter: THREE.LinearFilter,
   format: THREE.RGBFormat,
@@ -29996,7 +29996,9 @@ function flushFigure(fig) {
   const tintSmoke = smokeQ !== tick.smoke;
   if (tintSmoke) tick.smoke = smokeQ;
   const rainK = wxNow.rain;
+  const highCam = camera.position.y > 80;
   smokes.forEach((s, i) => {
+    if (highCam && i % 2) return;
     const span = 9 - rainK * 3.5;
     const rise = (now * s.userData.speed + i * 0.7) % span;
     const k = rise / span;
@@ -30073,7 +30075,10 @@ function flushFigure(fig) {
   }
   const gust = 0.16 + wxNow.rain * (0.58 - 0.16) + wxNow.clear * (0.07 - 0.16);
   const flap = 1.3 + wxNow.rain * (3.2 - 1.3);
+  const camX = camera.position.x, camZ = camera.position.z;
   laundry.forEach(cloth => {
+    const dx = cloth.userData.x - camX, dz = cloth.position.z - camZ;
+    if (dx * dx + dz * dz > 400) return;
     cloth.rotation.z = Math.sin(now * flap + cloth.userData.phase) * gust;
     cloth.position.x = cloth.userData.x + Math.sin(now * (1 + wxNow.rain * 1.1) + cloth.userData.phase) * (0.07 + wxNow.rain * 0.13);
   });
@@ -30129,10 +30134,11 @@ function flushFigure(fig) {
   stepAirliner(now);
   stepRoofKids(now);
   squareMovers();
-  if (shadowWarm > 0) {
+  if (shadowWarm > 0 && (tick.frame || 0) % 2 === 0) {
     renderer.shadowMap.needsUpdate = true;
     shadowWarm--;
   }
+  tick.frame = (tick.frame || 0) + 1;
   tick.ready = (tick.ready || 0) + 1;
   const prevT = tick.prev || now;
   tick.prev = now;
