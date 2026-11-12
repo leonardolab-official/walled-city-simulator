@@ -23979,19 +23979,19 @@ let darkness = darknessOf(OPEN_CLOCK);
 let night = darkness > 0.55;
 const WX = {
   clear: {
-    day:    { near: 460, far: 1400, sky: 0xc5d2da, sun: 1.02, sunColor: 0xfff3dc, exp: 1.04, hemi: 0.7, hemiSky: 0xd7e4ea, hemiGround: 0x4a4036, fill: 0.3, fillColor: 0xc5d4de, ground: 0x24211e },
-    sunset: { near: 280, far: 1100, sky: 0xe08a58, sun: 0.86, sunColor: 0xffb07a, exp: 1.08, hemi: 0.62, hemiSky: 0xf2b48a, hemiGround: 0x6a4030, fill: 0.38, fillColor: 0xc5d4ea, ground: 0x3a2820 },
-    night:  { near: 190, far: 960, sky: 0x070e18, sun: 0.2, sunColor: 0xd4dce8, exp: 0.94, hemi: 1.05, hemiSky: 0x6c88a6, hemiGround: 0x6e5648, fill: 0.46, fillColor: 0xc9d4e0, ground: 0x1a2028 }
+    day:    { near: 420, far: 1320, sky: 0xc8d4dc, sun: 1.08, sunColor: 0xfff0d4, exp: 1.06, hemi: 0.68, hemiSky: 0xd4e0e8, hemiGround: 0x4e4438, fill: 0.28, fillColor: 0xc8d6e0, ground: 0x26221e },
+    sunset: { near: 260, far: 1040, sky: 0xe89060, sun: 0.92, sunColor: 0xffa868, exp: 1.1, hemi: 0.58, hemiSky: 0xf0b080, hemiGround: 0x6e4430, fill: 0.36, fillColor: 0xc8d0e4, ground: 0x3c2a20 },
+    night:  { near: 180, far: 900, sky: 0x060c16, sun: 0.18, sunColor: 0xd0d8e4, exp: 0.92, hemi: 1.0, hemiSky: 0x6884a0, hemiGround: 0x6a5246, fill: 0.44, fillColor: 0xc4d0dc, ground: 0x181e26 }
   },
   haze: {
-    day:    { near: 220, far: 980, sky: 0x9aa6b2, sun: 0.62, sunColor: 0xe6eef4, exp: 0.94, hemi: 0.56, hemiSky: 0xc5d0d8, hemiGround: 0x3a403c, fill: 0.24, fillColor: 0xc5ced6, ground: 0x1c1e22 },
-    sunset: { near: 200, far: 900, sky: 0xc48458, sun: 0.55, sunColor: 0xf0a070, exp: 1.02, hemi: 0.5, hemiSky: 0xe0a078, hemiGround: 0x5a4034, fill: 0.3, fillColor: 0xc8c4c0, ground: 0x322820 },
-    night:  { near: 160, far: 820, sky: 0x0c121c, sun: 0.16, sunColor: 0xd0d8e4, exp: 0.92, hemi: 1.0, hemiSky: 0x687888, hemiGround: 0x5a5048, fill: 0.42, fillColor: 0xc5ced8, ground: 0x181c22 }
+    day:    { near: 200, far: 920, sky: 0x96a2ae, sun: 0.58, sunColor: 0xe4ecf2, exp: 0.92, hemi: 0.52, hemiSky: 0xc0ccd4, hemiGround: 0x383e3a, fill: 0.22, fillColor: 0xc0cad2, ground: 0x1a1c20 },
+    sunset: { near: 180, far: 840, sky: 0xc08050, sun: 0.5, sunColor: 0xec9870, exp: 1.0, hemi: 0.46, hemiSky: 0xd89870, hemiGround: 0x563c30, fill: 0.28, fillColor: 0xc4c0bc, ground: 0x30261e },
+    night:  { near: 150, far: 780, sky: 0x0a1018, sun: 0.14, sunColor: 0xccd4e0, exp: 0.9, hemi: 0.96, hemiSky: 0x647484, hemiGround: 0x564c44, fill: 0.4, fillColor: 0xc0cad4, ground: 0x161a20 }
   },
   rain: {
-    day:    { near: 74, far: 390, sky: 0x8e9aa4, sun: 0.48, sunColor: 0xd7e1ea, exp: 1.0, hemi: 0.56, hemiSky: 0xb0bcc4, hemiGround: 0x2c2a26, fill: 0.26, fillColor: 0xc3ced6, ground: 0x1a1816 },
-    sunset: { near: 80, far: 520, sky: 0x6a5a58, sun: 0.36, sunColor: 0xd8b0a0, exp: 0.96, hemi: 0.48, hemiSky: 0xb0a098, hemiGround: 0x3a3028, fill: 0.22, fillColor: 0xb8c0c8, ground: 0x241c1a },
-    night:  { near: 78, far: 700, sky: 0x070b14, sun: 0.12, sunColor: 0xb8c4d0, exp: 0.86, hemi: 0.7, hemiSky: 0x425668, hemiGround: 0x3a3028, fill: 0.24, fillColor: 0xb0bcc6, ground: 0x141618 }
+    day:    { near: 68, far: 360, sky: 0x8896a0, sun: 0.44, sunColor: 0xd0dae4, exp: 0.98, hemi: 0.52, hemiSky: 0xa8b4bc, hemiGround: 0x2a2824, fill: 0.24, fillColor: 0xbec8d0, ground: 0x181614 },
+    sunset: { near: 74, far: 480, sky: 0x645450, sun: 0.32, sunColor: 0xd0a898, exp: 0.94, hemi: 0.44, hemiSky: 0xa89890, hemiGround: 0x362c24, fill: 0.2, fillColor: 0xb4bcc4, ground: 0x221a18 },
+    night:  { near: 70, far: 640, sky: 0x060a12, sun: 0.1, sunColor: 0xb0bcc8, exp: 0.84, hemi: 0.66, hemiSky: 0x3e5264, hemiGround: 0x362c24, fill: 0.22, fillColor: 0xa8b4be, ground: 0x121416 }
   },
   market: {
     day:    { near: 90, far: 480, sky: 0x241820, sun: 0.1, sunColor: 0xffc098, exp: 0.92, hemi: 0.32, hemiSky: 0x6a4030, hemiGround: 0x24160e, fill: 0.07, fillColor: 0xd09060, ground: 0x181410 },
@@ -24311,10 +24311,13 @@ function applyFogReach() {
   const rain = wxNow.rain;
   if (rain > 0) {
     const street = 1 - THREE.MathUtils.smoothstep(camera.position.y, 18, 96);
-    // A little mist at eye level, thicker after dark. The wet road still has to read for a block.
-    near *= 1 - street * (0.2 + dark * 0.1) * rain;
-    far *= 1 - street * (0.16 + dark * 0.08) * rain;
+    near *= 1 - street * (0.24 + dark * 0.12) * rain;
+    far *= 1 - street * (0.18 + dark * 0.1) * rain;
   }
+  // Slight atmospheric pull at street level for all weather.
+  const eye = 1 - THREE.MathUtils.smoothstep(camera.position.y, 12, 60);
+  near *= 1 - eye * 0.04;
+  far *= 1 - eye * 0.03;
   scene.fog.near = near;
   scene.fog.far = Math.max(far, near + 48);
 }
